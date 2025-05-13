@@ -1,0 +1,146 @@
+<!-- Sidebar.html - Navigation component for SimBudget -->
+<div id="sidebar" class="sidebar expanded">
+  <!-- Sidebar Header -->
+  <div class="sidebar-header">
+    <div class="logo">
+      <i class="material-icons">account_balance</i>
+      <span class="logo-text">SimBudget</span>
+    </div>
+    <button id="toggleSidebar" class="toggle-btn">
+      <i class="material-icons">menu</i>
+    </button>
+  </div>
+  
+  <!-- Navigation Items -->
+  <nav class="sidebar-nav">
+    <ul>
+      <li class="sidebar-item active" data-view="budget">
+        <a href="#budget">
+          <i class="material-icons">account_balance_wallet</i>
+          <span class="item-text">Budget</span>
+        </a>
+      </li>
+      <li class="sidebar-item" data-view="expense">
+        <a href="#expense">
+          <i class="material-icons">receipt_long</i>
+          <span class="item-text">Expenses</span>
+        </a>
+      </li>
+      <li class="sidebar-item" data-view="income">
+        <a href="#income">
+          <i class="material-icons">payments</i>
+          <span class="item-text">Income</span>
+        </a>
+      </li>
+      <li class="sidebar-item" data-view="recurring">
+        <a href="#recurring">
+          <i class="material-icons">repeat</i>
+          <span class="item-text">Recurring</span>
+        </a>
+      </li>
+      <li class="sidebar-item" data-view="netWorth">
+        <a href="#netWorth">
+          <i class="material-icons">trending_up</i>
+          <span class="item-text">Net Worth</span>
+        </a>
+      </li>
+      <li class="sidebar-item" data-view="reports">
+        <a href="#reports">
+          <i class="material-icons">bar_chart</i>
+          <span class="item-text">Reports</span>
+        </a>
+      </li>
+      <li class="sidebar-item" data-view="setup">
+        <a href="#setup">
+          <i class="material-icons">category</i>
+          <span class="item-text">Categories</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+  
+  <!-- Sidebar Footer -->
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <i class="material-icons">account_circle</i>
+      <span id="userEmail" class="item-text">Loading...</span>
+    </div>
+    <div class="settings">
+      <a href="#settings" class="sidebar-item" data-view="settings">
+        <i class="material-icons">settings</i>
+        <span class="item-text">Settings</span>
+      </a>
+    </div>
+    <div class="app-info">
+      <span class="version">SimBudget v1.0</span>
+      <span class="disclaimer">For educational purposes only</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // This script will be merged with other scripts when included
+  // Functions for sidebar functionality are defined here but will be called from Init.js
+  
+  // Function to toggle sidebar expansion
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const contentArea = document.getElementById('contentArea');
+    
+    if (sidebar.classList.contains('expanded')) {
+      sidebar.classList.remove('expanded');
+      sidebar.classList.add('collapsed');
+      contentArea.classList.add('full-width');
+    } else {
+      sidebar.classList.remove('collapsed');
+      sidebar.classList.add('expanded');
+      contentArea.classList.remove('full-width');
+    }
+  }
+  
+  // Function to handle sidebar item clicks
+  function handleSidebarItemClick(event) {
+    event.preventDefault();
+    
+    // Find the closest sidebar-item parent
+    const sidebarItem = event.target.closest('.sidebar-item');
+    if (!sidebarItem) return;
+    
+    // Get the view name
+    const viewName = sidebarItem.dataset.view;
+    if (!viewName) return;
+    
+    // Update active state in sidebar
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+      item.classList.remove('active');
+    });
+    sidebarItem.classList.add('active');
+    
+    // Switch to the corresponding view
+    switchView(viewName);
+    
+    // On mobile, collapse sidebar after selection
+    if (window.innerWidth < 768) {
+      toggleSidebar();
+    }
+  }
+  
+  // Function to switch views
+  function switchView(viewName) {
+    // Hide all views
+    document.querySelectorAll('.view').forEach(view => {
+      view.classList.remove('active-view');
+    });
+    
+    // Show the selected view
+    const targetView = document.getElementById(viewName + 'View');
+    if (targetView) {
+      targetView.classList.add('active-view');
+      
+      // Load data for the view if needed
+      if (SimBudget && SimBudget.loadViewData) {
+        SimBudget.loadViewData(viewName);
+      }
+    }
+  }
+</script>

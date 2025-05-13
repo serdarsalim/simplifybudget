@@ -1,0 +1,615 @@
+<script>
+
+    /**
+ * Init.html - Initialization script for SimBudget
+ * Handles application startup, event binding, and view management
+ */
+
+// Main SimBudget namespace
+var SimBudget = (function() {
+  // Private variables
+  let _initialized = false;
+  let _currentView = 'budget';
+  
+  // Settings module
+  const Settings = {
+    // Default settings
+    defaults: {
+      currencySymbol: '€',
+      dateFormat: 'MM/DD/YYYY',
+      darkMode: false,
+      showRemaining: true,
+      enableAlerts: true,
+      startingDay: '1',
+      language: 'en'
+    },
+    
+    // Get a setting with fallback to default
+    getSetting: function(key) {
+      const userSettings = Utils.getLocalStorage('simbudget_settings', {});
+      return userSettings[key] !== undefined ? userSettings[key] : this.defaults[key];
+    },
+    
+    // Set a setting
+    setSetting: function(key, value) {
+      const userSettings = Utils.getLocalStorage('simbudget_settings', {});
+      userSettings[key] = value;
+      return Utils.setLocalStorage('simbudget_settings', userSettings);
+    },
+    
+    // Save all settings
+    saveAll: function(settings) {
+      return Utils.setLocalStorage('simbudget_settings', settings);
+    },
+    
+    // Get all settings
+    getAll: function() {
+      const userSettings = Utils.getLocalStorage('simbudget_settings', {});
+      // Merge with defaults for any missing settings
+      return { ...this.defaults, ...userSettings };
+    },
+    
+    // Convenience methods for common settings
+    getCurrencySymbol: function() {
+      return this.getSetting('currencySymbol');
+    },
+    
+    getDateFormat: function() {
+      return this.getSetting('dateFormat');
+    },
+    
+    isDarkMode: function() {
+      return this.getSetting('darkMode');
+    }
+  };
+  
+  // View management
+  const Views = {
+    // Switch to a view
+    switchTo: function(viewName) {
+      if (!viewName) return;
+      
+      // Hide all views
+      document.querySelectorAll('.view').forEach(view => {
+        view.classList.remove('active-view');
+      });
+      
+      // Show the selected view
+      const targetView = document.getElementById(viewName + 'View');
+      if (targetView) {
+        targetView.classList.add('active-view');
+        _currentView = viewName;
+        
+        // Update sidebar active state
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+          item.classList.remove('active');
+        });
+        
+        const activeItem = document.querySelector(`.sidebar-item[data-view="${viewName}"]`);
+        if (activeItem) {
+          activeItem.classList.add('active');
+        }
+        
+        // Load data for the view
+        SimBudget.loadViewData(viewName);
+      }
+    },
+    
+    // Get current view
+    getCurrent: function() {
+      return _currentView;
+    }
+  };
+  
+  // Public methods
+  return {
+    // Settings module reference
+    Settings: Settings,
+    
+    // Views module reference
+    Views: Views,
+    
+    /**
+     * Initialize the application
+     */
+    initialize: function() {
+      if (_initialized) return;
+      
+      console.log('Initializing SimBudget...');
+      
+      // Set up event listeners
+      this.bindEvents();
+      
+      // Check for existing sheet URL
+      this.checkExistingConnection();
+      
+      // Apply settings
+      this.applySettings();
+      
+      // Load user info
+      this.loadUserInfo();
+      
+      // Initial view
+      this.loadViewData('budget');
+      
+      _initialized = true;
+      console.log('SimBudget initialized');
+    },
+    
+    /**
+     * Bind all event listeners
+     */
+    bindEvents: function() {
+      // Sidebar toggle
+      const toggleBtn = document.getElementById('toggleSidebar');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', toggleSidebar);
+      }
+      
+      // Sidebar navigation
+      document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', handleSidebarItemClick);
+      });
+      
+      // Settings panel
+      const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+      if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', this.saveSettings);
+      }
+      
+      const resetSettingsBtn = document.getElementById('resetSettings');
+      if (resetSettingsBtn) {
+        resetSettingsBtn.addEventListener('click', this.resetSettings);
+      }
+      
+      const testConnectionBtn = document.getElementById('testConnection');
+      if (testConnectionBtn) {
+        testConnectionBtn.addEventListener('click', this.testConnection);
+      }
+      
+      // Responsive design - auto-collapse sidebar on small screens
+      window.addEventListener('resize', Utils.debounce(function() {
+        const sidebar = document.getElementById('sidebar');
+        if (window.innerWidth < 768 && sidebar && sidebar.classList.contains('expanded')) {
+          toggleSidebar();
+        }
+      }, 250));
+      
+      // Set up view-specific buttons
+      document.getElementById('refreshBudget').addEventListener('click', () => this.loadViewData('budget'));
+      document.getElementById('refreshNetWorth').addEventListener('click', () => this.loadViewData('netWorth'));
+      
+      // TODO: Set up other view-specific buttons (add expense, add income, etc.)
+    },
+    
+    /**
+     * Check for existing connection and load if available
+     */
+    checkExistingConnection: function() {
+      API.getUserCredentials(
+        function(result) {
+          if (result.sheetUrl) {
+            const urlInput = document.getElementById('budgetSheetUrl');
+            if (urlInput) {
+              urlInput.value = result.sheetUrl;
+            }
+            
+            // Auto-test connection 
+            SimBudget.testConnection();
+          }
+        },
+        function(error) {
+          console.error('Error getting user credentials:', error);
+        }
+      );
+    },
+    
+    /**
+     * Apply user settings
+     */
+    applySettings: function() {
+      const settings = Settings.getAll();
+      
+      // Apply dark mode if enabled
+      if (settings.darkMode) {
+        document.body.classList.add('dark-mode');
+      } else {
+        document.body.classList.remove('dark-mode');
+      }
+      
+      // Set values in settings form
+      const currencyInput = document.getElementById('currencySymbol');
+      if (currencyInput) {
+        currencyInput.value = settings.currencySymbol;
+      }
+      
+      const dateFormatSelect = document.getElementById('dateFormat');
+      if (dateFormatSelect) {
+        dateFormatSelect.value = settings.dateFormat;
+      }
+      
+      const darkModeCheckbox = document.getElementById('darkMode');
+      if (darkModeCheckbox) {
+        darkModeCheckbox.checked = settings.darkMode;
+      }
+      
+      const languageSelect = document.getElementById('languageSelector');
+      if (languageSelect) {
+        languageSelect.value = settings.language;
+      }
+      
+      const showRemainingCheckbox = document.getElementById('showRemaining');
+      if (showRemainingCheckbox) {
+        showRemainingCheckbox.checked = settings.showRemaining;
+      }
+      
+      const enableAlertsCheckbox = document.getElementById('enableAlerts');
+      if (enableAlertsCheckbox) {
+        enableAlertsCheckbox.checked = settings.enableAlerts;
+      }
+      
+      const startingDaySelect = document.getElementById('startingDay');
+      if (startingDaySelect) {
+        startingDaySelect.value = settings.startingDay;
+      }
+    },
+    
+    /**
+     * Load user info
+     */
+    loadUserInfo: function() {
+      API.getUserCredentials(
+        function(result) {
+          const userEmailEl = document.getElementById('userEmail');
+          if (userEmailEl) {
+            userEmailEl.textContent = result.email || 'Not signed in';
+          }
+        },
+        function(error) {
+          console.error('Error getting user credentials:', error);
+          const userEmailEl = document.getElementById('userEmail');
+          if (userEmailEl) {
+            userEmailEl.textContent = 'Error loading user info';
+          }
+        }
+      );
+    },
+    
+    /**
+     * Save settings
+     */
+    saveSettings: function() {
+      // Get values from form
+      const settings = {
+        currencySymbol: document.getElementById('currencySymbol').value,
+        dateFormat: document.getElementById('dateFormat').value,
+        darkMode: document.getElementById('darkMode').checked,
+        showRemaining: document.getElementById('showRemaining').checked,
+        enableAlerts: document.getElementById('enableAlerts').checked,
+        startingDay: document.getElementById('startingDay').value,
+        language: document.getElementById('languageSelector').value
+      };
+      
+      // Save to local storage
+      if (SimBudget.Settings.saveAll(settings)) {
+        // Apply settings
+        SimBudget.applySettings();
+        
+        // Save sheet URL if provided
+        const sheetUrl = document.getElementById('budgetSheetUrl').value;
+        if (sheetUrl) {
+          API.setBudgetSheetUrl(sheetUrl, 
+            function() {
+              Utils.showStatus('Settings saved successfully', false, document.getElementById('settingsStatus'), 3000);
+            },
+            function(error) {
+              Utils.showStatus('Settings saved but sheet URL could not be saved: ' + error, true, document.getElementById('settingsStatus'));
+            }
+          );
+        } else {
+          Utils.showStatus('Settings saved successfully', false, document.getElementById('settingsStatus'), 3000);
+        }
+      } else {
+        Utils.showStatus('Error saving settings', true, document.getElementById('settingsStatus'));
+      }
+    },
+    
+    /**
+     * Reset settings to defaults
+     */
+    resetSettings: function() {
+      // Reset to defaults
+      if (SimBudget.Settings.saveAll(SimBudget.Settings.defaults)) {
+        // Apply settings
+        SimBudget.applySettings();
+        
+        Utils.showStatus('Settings reset to defaults', false, document.getElementById('settingsStatus'), 3000);
+      } else {
+        Utils.showStatus('Error resetting settings', true, document.getElementById('settingsStatus'));
+      }
+    },
+    
+    /**
+     * Test connection to sheet
+     */
+    testConnection: function() {
+      const sheetUrl = document.getElementById('budgetSheetUrl').value;
+      if (!sheetUrl) {
+        Utils.showStatus('Please enter a spreadsheet URL', true, document.getElementById('connectionStatus'));
+        return;
+      }
+      
+      // Show loading state
+      Utils.showStatus('Testing connection...', false, document.getElementById('connectionStatus'));
+      
+      API.verifySheetUrl(sheetUrl,
+        function(result) {
+          Utils.showStatus('Connection successful!', false, document.getElementById('connectionStatus'), 3000);
+        },
+        function(error) {
+          Utils.showStatus('Connection failed: ' + error, true, document.getElementById('connectionStatus'));
+        }
+      );
+    },
+    
+    /**
+     * Load data for a specific view
+     * @param {string} viewName - Name of the view to load
+     */
+    loadViewData: function(viewName) {
+      switch(viewName) {
+        case 'budget':
+          this.loadBudgetData();
+          break;
+        case 'expense':
+          this.loadExpenseData();
+          break;
+        case 'income':
+          // TODO: Add income data loading
+          break;
+        case 'recurring':
+          // TODO: Add recurring data loading
+          break;
+        case 'netWorth':
+          // TODO: Add net worth data loading
+          break;
+        case 'reports':
+          // TODO: Add reports data loading
+          break;
+        case 'setup':
+          // TODO: Add setup data loading
+          break;
+        case 'settings':
+          // Settings data is loaded inline
+          break;
+      }
+    },
+    
+    /**
+     * Load budget data
+     */
+    loadBudgetData: function() {
+      const contentArea = document.getElementById('budgetContent');
+      
+      // Show loading state
+      contentArea.innerHTML = '<div class="loading-spinner"></div>';
+      
+      API.getBudgetData(
+        function(result) {
+          const budget = result.budget;
+          
+          // Create budget summary
+          let html = `
+            <div class="budget-summary">
+              <div class="budget-card">
+                <div class="budget-header">Income</div>
+                <div class="budget-amount">${Utils.formatCurrency(budget.income)}</div>
+              </div>
+              <div class="budget-card">
+                <div class="budget-header">Spent</div>
+                <div class="budget-amount">${Utils.formatCurrency(budget.spent)}</div>
+              </div>
+              <div class="budget-card">
+                <div class="budget-header">Left to Spend</div>
+                <div class="budget-amount">${Utils.formatCurrency(budget.leftToSpend)}</div>
+              </div>
+            </div>
+            
+            <h2>Budget Categories</h2>
+            <div class="budget-categories">
+              <table class="budget-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Budgeted</th>
+                    <th>Actual</th>
+                    <th>Remaining</th>
+                    <th>Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+          
+          // Add rows for each category
+          budget.categories.forEach(function(category) {
+            const percentSpent = category.budgeted > 0 ? (category.actual / category.budgeted) * 100 : 0;
+            const progressClass = percentSpent > 100 ? 'over-budget' : (percentSpent > 80 ? 'near-limit' : '');
+            
+            html += `
+              <tr>
+                <td>${category.name}</td>
+                <td>${Utils.formatCurrency(category.budgeted)}</td>
+                <td>${Utils.formatCurrency(category.actual)}</td>
+                <td>${Utils.formatCurrency(category.remaining)}</td>
+                <td>
+                  <div class="progress-bar-container">
+                    <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
+                  </div>
+                </td>
+              </tr>
+            `;
+          });
+          
+          html += `
+                </tbody>
+              </table>
+            </div>
+          `;
+          
+          // Update the budget content
+          contentArea.innerHTML = html;
+        },
+        function(error) {
+          contentArea.innerHTML = `
+            <div class="error-message">
+              <i class="material-icons">error</i>
+              <span>Error loading budget data: ${error}</span>
+            </div>
+          `;
+        }
+      );
+    },
+    
+    /**
+     * Load expense data
+     */
+    loadExpenseData: function() {
+      const contentArea = document.getElementById('expenseContent');
+      
+      // Show loading state
+      contentArea.innerHTML = '<div class="loading-spinner"></div>';
+      
+      API.getExpenseData(
+        function(result) {
+          const expenses = result.expenses;
+          
+          // Create expense list
+          let html = `
+            <div class="expense-controls">
+              <div class="search-container">
+                <input type="text" id="expenseSearch" placeholder="Search expenses...">
+                <i class="material-icons">search</i>
+              </div>
+              <div class="filter-container">
+                <select id="categoryFilter">
+                  <option value="">All Categories</option>
+                  <!-- Categories will be added dynamically -->
+                </select>
+                <select id="dateFilter">
+                  <option value="">All Dates</option>
+                  <option value="current-month">Current Month</option>
+                  <option value="last-month">Last Month</option>
+                  <option value="last-3-months">Last 3 Months</option>
+                  <option value="current-year">Current Year</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="expense-list">
+              <table class="expense-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+          `;
+          
+          // Add rows for each expense
+          if (expenses.length === 0) {
+            html += `
+              <tr>
+                <td colspan="5" class="no-data">No expenses found</td>
+              </tr>
+            `;
+          } else {
+            expenses.forEach(function(expense) {
+              html += `
+                <tr data-row-index="${expense.rowIndex}">
+                  <td>${Utils.formatDate(expense.date)}</td>
+                  <td>${Utils.formatCurrency(expense.amount)}</td>
+                  <td>${expense.category}</td>
+                  <td>${expense.name}</td>
+                  <td>
+                    <button class="btn icon-btn edit-expense" data-id="${expense.rowIndex}">
+                      <i class="material-icons">edit</i>
+                    </button>
+                    <button class="btn icon-btn delete-expense" data-id="${expense.rowIndex}">
+                      <i class="material-icons">delete</i>
+                    </button>
+                  </td>
+                </tr>
+              `;
+            });
+          }
+          
+          html += `
+                </tbody>
+              </table>
+            </div>
+          `;
+          
+          // Update the expense content
+          contentArea.innerHTML = html;
+          
+          // Set up the edit and delete buttons
+          document.querySelectorAll('.edit-expense').forEach(button => {
+            button.addEventListener('click', function() {
+              const rowIndex = this.getAttribute('data-id');
+              // TODO: Add edit expense functionality
+              alert('Edit expense ' + rowIndex);
+            });
+          });
+          
+          document.querySelectorAll('.delete-expense').forEach(button => {
+            button.addEventListener('click', function() {
+              const rowIndex = this.getAttribute('data-id');
+              // TODO: Add delete expense functionality
+              alert('Delete expense ' + rowIndex);
+            });
+          });
+          
+          // Set up search functionality
+          const searchInput = document.getElementById('expenseSearch');
+          if (searchInput) {
+            searchInput.addEventListener('input', Utils.debounce(function() {
+              const searchValue = this.value.toLowerCase();
+              document.querySelectorAll('.expense-table tbody tr').forEach(row => {
+                if (row.classList.contains('no-data')) return;
+                
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchValue)) {
+                  row.style.display = '';
+                } else {
+                  row.style.display = 'none';
+                }
+              });
+            }, 300));
+          }
+        },
+        function(error) {
+          contentArea.innerHTML = `
+            <div class="error-message">
+              <i class="material-icons">error</i>
+              <span>Error loading expense data: ${error}</span>
+            </div>
+          `;
+        }
+      );
+    }
+  };
+})();
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof SimBudget !== 'undefined') {
+    SimBudget.initialize();
+  } else {
+    console.error('SimBudget object not found. Initialization failed.');
+  }
+});
+</script>

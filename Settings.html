@@ -1,0 +1,102 @@
+<!-- Settings.html - Settings panel for SimBudget -->
+<div class="settings-container">
+  <div class="settings-section">
+    <h2>Google Sheet Configuration</h2>
+    <div class="form-group">
+      <label for="budgetSheetUrl">Budget Spreadsheet URL</label>
+      <div class="input-group">
+        <input type="text" id="budgetSheetUrl" class="settings-input" 
+               placeholder="Enter your budget spreadsheet URL">
+        <button id="testConnection" class="btn secondary">
+          <i class="material-icons">check</i>
+          <span>Test</span>
+        </button>
+      </div>
+      <div id="connectionStatus" class="status-message hidden"></div>
+      <p class="help-text">
+        Enter the URL of your Salonomics Google Sheet. This will be used to read and write budget data.
+      </p>
+    </div>
+  </div>
+  
+  <div class="settings-section">
+    <h2>Display Settings</h2>
+    
+    <div class="form-group">
+      <label for="languageSelector">Language</label>
+      <select id="languageSelector" class="settings-select">
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="de">Deutsch</option>
+        <option value="fr">Français</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="currencySymbol">Currency Symbol</label>
+      <input type="text" id="currencySymbol" class="settings-input" value="€" maxlength="3">
+    </div>
+    
+    <div class="form-group">
+      <label for="dateFormat">Date Format</label>
+      <select id="dateFormat" class="settings-select">
+        <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+        <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+        <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="darkMode" class="settings-checkbox">
+        <label for="darkMode">Dark Mode</label>
+      </div>
+    </div>
+  </div>
+  
+  <div class="settings-section">
+    <h2>Budget Preferences</h2>
+    
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="showRemaining" class="settings-checkbox" checked>
+        <label for="showRemaining">Show Remaining Budget</label>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <div class="checkbox-group">
+        <input type="checkbox" id="enableAlerts" class="settings-checkbox" checked>
+        <label for="enableAlerts">Enable Budget Alerts</label>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label for="startingDay">Month Starting Day</label>
+      <select id="startingDay" class="settings-select">
+        <option value="1">1st of Month</option>
+        <option value="15">15th of Month</option>
+        <option value="last">Last Day of Previous Month</option>
+      </select>
+    </div>
+  </div>
+  
+  <div class="settings-footer">
+    <div id="settingsStatus" class="status-message hidden"></div>
+    <div class="button-group">
+      <button id="resetSettings" class="btn secondary">
+        <i class="material-icons">refresh</i>
+        <span>Reset</span>
+      </button>
+      <button id="saveSettingsBtn" class="btn primary">
+        <i class="material-icons">save</i>
+        <span>Save</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Settings functionality will be handled by the SimBudget.Settings module
+  // defined in Init.js
+</script>

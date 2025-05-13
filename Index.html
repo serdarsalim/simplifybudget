@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <?!= include('Styles'); ?>
+    <title>SimBudget</title>
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- SIDEBAR -->
+      <?!= include('Sidebar'); ?>
+      
+      <!-- MAIN CONTENT AREA -->
+      <div id="contentArea" class="content-area">
+        <!-- Default content on load - Budget View -->
+        <div id="budgetView" class="view active-view">
+          <div class="view-header">
+            <h1><i class="material-icons">account_balance_wallet</i> Budget Overview</h1>
+            <div class="view-actions">
+              <button id="refreshBudget" class="btn"><i class="material-icons">refresh</i> Refresh</button>
+            </div>
+          </div>
+          <div id="budgetContent" class="view-content">
+            <div class="loading-spinner"></div>
+            <div class="status-message hidden"></div>
+            <!-- Budget data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Expense View - Initially Hidden -->
+        <div id="expenseView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">receipt_long</i> Expenses</h1>
+            <div class="view-actions">
+              <button id="addExpense" class="btn primary"><i class="material-icons">add</i> Add Expense</button>
+            </div>
+          </div>
+          <div id="expenseContent" class="view-content">
+            <!-- Expense data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Income View - Initially Hidden -->
+        <div id="incomeView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">payments</i> Income</h1>
+            <div class="view-actions">
+              <button id="addIncome" class="btn primary"><i class="material-icons">add</i> Add Income</button>
+            </div>
+          </div>
+          <div id="incomeContent" class="view-content">
+            <!-- Income data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Recurring View - Initially Hidden -->
+        <div id="recurringView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">repeat</i> Recurring</h1>
+            <div class="view-actions">
+              <button id="addRecurring" class="btn primary"><i class="material-icons">add</i> Add Recurring</button>
+            </div>
+          </div>
+          <div id="recurringContent" class="view-content">
+            <!-- Recurring data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Net Worth View - Initially Hidden -->
+        <div id="netWorthView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">trending_up</i> Net Worth</h1>
+            <div class="view-actions">
+              <button id="refreshNetWorth" class="btn"><i class="material-icons">refresh</i> Refresh</button>
+            </div>
+          </div>
+          <div id="netWorthContent" class="view-content">
+            <!-- Net Worth data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Reports View - Initially Hidden -->
+        <div id="reportsView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">bar_chart</i> Reports</h1>
+            <div class="view-actions">
+              <button id="generateReport" class="btn primary"><i class="material-icons">download</i> Generate</button>
+            </div>
+          </div>
+          <div id="reportsContent" class="view-content">
+            <!-- Reports data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Setup View - Initially Hidden -->
+        <div id="setupView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">category</i> Categories</h1>
+            <div class="view-actions">
+              <button id="saveSetup" class="btn primary"><i class="material-icons">save</i> Save</button>
+            </div>
+          </div>
+          <div id="setupContent" class="view-content">
+            <!-- Setup data will be loaded here -->
+          </div>
+        </div>
+        
+        <!-- Settings View - Initially Hidden -->
+        <div id="settingsView" class="view">
+          <div class="view-header">
+            <h1><i class="material-icons">settings</i> Settings</h1>
+            <div class="view-actions">
+              <button id="saveSettings" class="btn primary"><i class="material-icons">save</i> Save</button>
+            </div>
+          </div>
+          <div id="settingsContent" class="view-content">
+            <?!= include('Settings'); ?>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Include JavaScript -->
+    <?!= include('API'); ?>
+    <?!= include('Utils'); ?>
+    <?!= include('Init'); ?>
+    <script>
+      // Main entry point - Initialize the application
+      document.addEventListener('DOMContentLoaded', function() {
+        SimBudget.initialize();
+      });
+    </script>
+  </body>
+</html>
