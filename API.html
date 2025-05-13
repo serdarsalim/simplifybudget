@@ -261,6 +261,87 @@ var API = (function() {
       }
     },
     
+/**
+ * Get net worth data
+ * @param {Function} successCallback - Called on success with net worth data
+ * @param {Function} errorCallback - Called on error
+ */
+getNetWorthData: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getNetWorthData();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Get subscription data
+ * @param {Function} successCallback - Called on success with subscription data
+ * @param {Function} errorCallback - Called on error
+ */
+getSubscriptionData: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getSubscriptionData();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Get all dashboard data in a single call
+ * @param {Function} successCallback - Called on success with all dashboard data
+ * @param {Function} errorCallback - Called on error
+ */
+getDashboardData: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getDashboardData();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
     /**
      * Save expense
      * @param {Object} expense - The expense data to save
@@ -325,6 +406,10 @@ var API = (function() {
     getLastError: function() {
       return _lastError;
     }
+
+
+
+    
   };
 })();
 </script>

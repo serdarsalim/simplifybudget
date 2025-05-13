@@ -1,0 +1,134 @@
+<!-- BudgetDashboardHTML.html - Budget Dashboard Template -->
+ <div id="dashboard-load-test" style="display:none;">Dashboard HTML loaded</div>
+<div id="budgetView" class="view active-view">
+  <div class="view-header">
+            <h1><i class="material-icons">account_balance_wallet</i> Budget Overview</h1>
+            <div class="month-year-selector">
+        <select id="monthSelector" class="month-select">
+          <option value="January">January</option>
+          <option value="February">February</option>
+          <option value="March">March</option>
+          <option value="April">April</option>
+          <option value="May">May</option>
+          <option value="June">June</option>
+          <option value="July">July</option>
+          <option value="August">August</option>
+          <option value="September">September</option>
+          <option value="October">October</option>
+          <option value="November">November</option>
+          <option value="December">December</option>
+        </select>
+        </select>
+        <select id="yearSelector" class="year-select">
+          <!-- Will be populated dynamically -->
+        </select>
+        <button id="refreshBudget" class="btn icon-btn" title="Refresh Budget Data">
+          <i class="material-icons">refresh</i>
+        </button>
+      </div>
+  </div><!-- End of view-header -->
+  
+  <div id="budgetContent" class="view-content">
+    <div class="dashboard-container">
+      <!-- First Column: Financial Summary & Chart -->
+      <div class="col-left">
+        <!-- Top: Income, Spent, Left to Spend -->
+        <div class="dashboard-card budget-summary-card">
+          <div class="budget-summary-row">
+            <div>
+              <div class="value-label">Income</div>
+              <div id="income-value" class="value-amount">€0</div>
+            </div>
+            <div>
+              <div class="value-label">Spent</div>
+              <div id="spent-value" class="value-amount">€0</div>
+            </div>
+            <div>
+              <div class="value-label">Left to Spend</div>
+              <div id="left-to-spend-value" class="value-amount">€0</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Middle: Net Worth Summary -->
+        <div class="dashboard-card budget-summary-card">
+          <div class="budget-summary-row">
+            <div>
+              <div class="value-label">Net Worth</div>
+              <div id="net-worth-value" class="value-amount">€0</div>
+            </div>
+            <div>
+              <div class="value-label">Savings</div>
+              <div id="savings-value" class="value-amount">€0</div>
+            </div>
+            <div>
+              <div class="value-label">Debts</div>
+              <div id="debts-value" class="value-amount">€0</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Bottom: Monthly Expense Donut Chart -->
+        <div class="dashboard-card donut-chart-card">
+          <h3 class="donut-chart-header">Monthly Expense Breakdown</h3>
+          <div class="donut-chart-container">
+            <canvas id="expense-donut-chart"></canvas>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Second Column: Budget Categories -->
+      <div class="dashboard-card budget-data-card">
+        <div id="budget-alert" class="budget-alert">
+          <!-- Budget alert message will be populated dynamically -->
+        </div>
+        
+        <div class="budget-table-container">
+          <table class="budget-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Budgeted</th>
+                <th>Actual</th>
+                <th>Progress</th>
+              </tr>
+            </thead>
+            <tbody id="budget-categories-body">
+              <!-- Will be populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Third Column: Subscription Summary & List -->
+      <div class="col-right">
+        <!-- Top: Subscription Summary Card -->
+        <div class="dashboard-card subscription-summary">
+          <span class="subscription-icon material-icons">sync</span>
+          <div class="subscription-total">0€ for 0 payments</div>
+          <div class="subscription-percentage">0% of income</div>
+        </div>
+        
+        <!-- Bottom: Subscription List Card -->
+        <div class="dashboard-card subscription-list-card">
+          <h3 class="subscription-list-header">Subscriptions</h3>
+          <div class="subscription-list-container">
+            <table class="subscription-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Name</th>
+                  <th class="amount-column">Amount</th>
+                  <th>Next Due</th>
+                </tr>
+              </thead>
+              <tbody id="subscription-list-body">
+                <!-- Will be populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -6,7 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    
     <?!= include('Styles'); ?>
+    
+    <!-- Include the new dashboard styles -->
+    <style>
+      <?!= include('BudgetDashboardStyles'); ?>
+    </style>
+    
     <title>SimBudget</title>
   </head>
   <body>
@@ -17,40 +27,7 @@
       <!-- MAIN CONTENT AREA -->
       <div id="contentArea" class="content-area">
         <!-- Default content on load - Budget View -->
-        <div id="budgetView" class="view active-view">
-          <div class="view-header">
-            <div class="view-header-title">
-              <h1><i class="material-icons">account_balance_wallet</i> Budget Overview</h1>
-              <div class="month-year-selector">
-                <select id="monthSelector" class="month-select">
-                  <option value="January">January</option>
-                  <option value="February">February</option>
-                  <option value="March">March</option>
-                  <option value="April">April</option>
-                  <option value="May">May</option>
-                  <option value="June">June</option>
-                  <option value="July">July</option>
-                  <option value="August">August</option>
-                  <option value="September">September</option>
-                  <option value="October">October</option>
-                  <option value="November">November</option>
-                  <option value="December">December</option>
-                </select>
-                <select id="yearSelector" class="year-select">
-                  <!-- Will be populated dynamically -->
-                </select>
-                <button id="refreshBudget" class="btn icon-btn" title="Refresh Budget Data">
-                  <i class="material-icons">refresh</i>
-                </button>
-              </div>
-            </div>
-          </div>
-          <div id="budgetContent" class="view-content">
-            <div class="loading-spinner"></div>
-            <div class="status-message hidden"></div>
-            <!-- Budget data will be loaded here -->
-          </div>
-        </div>
+        <?!= include('BudgetDashboardHTML'); ?>
         
         <!-- Expense View - Initially Hidden -->
         <div id="expenseView" class="view">
@@ -149,6 +126,7 @@
     <?!= include('API'); ?>
     <?!= include('Utils'); ?>
     <?!= include('Init'); ?>
+    <?!= include('BudgetDashboardJS'); ?>
     <script>
       // Main entry point - Initialize the application
       document.addEventListener('DOMContentLoaded', function() {

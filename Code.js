@@ -267,8 +267,8 @@ function setCurrentMonthYear() {
     const currentYear = now.getFullYear();
     
     // Update the cells
-    sheet.getRange("C6").setValue(currentMonth);
-    sheet.getRange("E6").setValue(currentYear);
+    sheet.getRange("C1").setValue(currentMonth);
+    sheet.getRange("E1").setValue(currentYear);
     
     return { 
       success: true,
@@ -295,8 +295,8 @@ function setMonthYear(month, year) {
     }
     
     // Update the cells
-    sheet.getRange("C6").setValue(month);
-    sheet.getRange("E6").setValue(parseInt(year));
+    sheet.getRange("C1").setValue(month);
+    sheet.getRange("E1").setValue(parseInt(year));
     
     return { success: true };
   } catch (error) {
@@ -620,6 +620,161 @@ function updateBudgetValue(categoryName, budgetValue) {
     };
   } catch (error) {
     Logger.log("Error in updateBudgetValue: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+
+/**
+ * Gets net worth data for the dashboard
+ * @return {Object} Net worth data with assets, savings, and debts
+ */
+function getNetWorthData() {
+  try {
+    const sheet = getBudgetSheet("Budget");
+    if (!sheet) {
+      return { success: false, error: "Net Worth sheet not found" };
+    }
+
+    // Get the raw values first
+    let netWorthRaw = sheet.getRange("C11").getValue();
+    let savingsRaw = sheet.getRange("D11").getValue();
+    let debtsRaw = sheet.getRange("E11").getValue();
+    
+    // Log for debugging
+    Logger.log("Raw values - Net Worth: " + netWorthRaw + ", Savings: " + savingsRaw + ", Debts: " + debtsRaw);
+    
+    // Handle number conversion properly
+    let netWorth, savings, debts;
+    
+    // If the values are strings (with currency symbols), convert to numbers
+    if (typeof netWorthRaw === 'string') {
+      netWorth = parseFloat(netWorthRaw.replace(/[^0-9.-]+/g, ''));
+    } else {
+      netWorth = netWorthRaw;
+    }
+    
+    if (typeof savingsRaw === 'string') {
+      savings = parseFloat(savingsRaw.replace(/[^0-9.-]+/g, ''));
+    } else {
+      savings = savingsRaw;
+    }
+    
+    if (typeof debtsRaw === 'string') {
+      debts = parseFloat(debtsRaw.replace(/[^0-9.-]+/g, ''));
+    } else {
+      debts = debtsRaw;
+    }
+    
+    // Check for NaN values and provide defaults
+    netWorth = isNaN(netWorth) ? 0 : netWorth;
+    savings = isNaN(savings) ? 0 : savings;
+    debts = isNaN(debts) ? 0 : debts;
+    
+    // If net worth is still 0, try calculating it from savings and debts
+    if (netWorth === 0 && (savings !== 0 || debts !== 0)) {
+      netWorth = savings + debts; // Note: debts should already be negative
+    }
+    
+    // Log processed values
+    Logger.log("Processed - Net Worth: " + netWorth + ", Savings: " + savings + ", Debts: " + debts);
+    
+    return {
+      success: true,
+      netWorth: {
+        total: netWorth,
+        savings: savings,
+        debts: debts
+      }
+    };
+  } catch (error) {
+    Logger.log("Error in getNetWorthData: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Gets subscription data from the dontedit sheet
+ * @return {Object} Subscription data with list of subscriptions
+ */
+function getSubscriptionData() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("Dontedit");
+    if (!sheet) {
+      return { success: false, error: "Dontedit sheet not found" };
+    }
+
+    // Get subscription data from GH5:GJ125
+    const dataRange = sheet.getRange("GH5:GJ125").getValues();
+    const subscriptions = [];
+    
+    // Process each row of subscription data
+    for (let i = 0; i < dataRange.length; i++) {
+      const row = dataRange[i];
+      if (row[0]) { // Only process rows with data
+        subscriptions.push({
+          id: i + 1,
+          name: row[0],
+          amount: row[1] || 0,
+          nextDate: row[2] ? Utilities.formatDate(row[2], Session.getScriptTimeZone(), "d MMM yyyy") : ""
+        });
+      }
+    }
+    
+    // Calculate total and number of subscriptions
+    const total = subscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0);
+    const count = subscriptions.length;
+    
+    return {
+      success: true,
+      subscriptions: {
+        items: subscriptions,
+        total: total,
+        count: count
+      }
+    };
+  } catch (error) {
+    Logger.log("Error in getSubscriptionData: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Gets all dashboard data in a single call to reduce API requests
+ * @return {Object} Combined dashboard data
+ */
+function getDashboardData() {
+  try {
+    // Get budget data
+    const budgetData = getBudgetData();
+    if (!budgetData.success) {
+      return budgetData; // Return the error
+    }
+    
+    // Get net worth data
+    const netWorthData = getNetWorthData();
+    if (!netWorthData.success) {
+      return netWorthData; // Return the error
+    }
+    
+    // Get subscription data
+    const subscriptionData = getSubscriptionData();
+    if (!subscriptionData.success) {
+      return subscriptionData; // Return the error
+    }
+    
+    // Combine all data
+    return {
+      success: true,
+      dashboard: {
+        budget: budgetData.budget,
+        netWorth: netWorthData.netWorth,
+        subscriptions: subscriptionData.subscriptions
+      }
+    };
+  } catch (error) {
+    Logger.log("Error in getDashboardData: " + error.toString());
     return { success: false, error: error.toString() };
   }
 }

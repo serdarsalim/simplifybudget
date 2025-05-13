@@ -24,6 +24,8 @@ var Utils = (function() {
         }, wait);
       };
     },
+
+    
     
     /**
      * Format a number as currency
@@ -54,6 +56,20 @@ var Utils = (function() {
       
       // Return formatted string with currency symbol
       return currencySymbol + parts.join('.');
+    },
+    
+       /**
+     * Format a number as currency without decimal places
+     * @param {number} amount - Amount to format
+     * @return {string} Formatted currency string without decimals
+     */
+    formatCurrencyNoDecimals: function(amount) {
+      return new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(amount);
     },
     
     /**

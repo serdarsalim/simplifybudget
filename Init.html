@@ -577,33 +577,63 @@ var SimBudget = (function() {
       }
     },
     
-    /**
-     * Load budget data
-     */
-    loadBudgetData: function() {
-      const contentArea = document.getElementById('budgetContent');
-      
-      // Show loading state
-      contentArea.innerHTML = '<div class="loading-spinner"></div>';
-      
-      API.getBudgetData(
-        function(result) {
+   /**
+ * Load budget data
+ */
+loadBudgetData: function() {
+  const contentArea = document.getElementById('budgetContent');
+  
+  // Show loading state
+  contentArea.innerHTML = '<div class="loading-spinner"></div>';
+  
+  // Try to use the dashboard data API if available
+  if (API.getDashboardData) {
+    API.getDashboardData(
+      function(result) {
+        if (result && result.success && result.dashboard) {
           // Cache the result
-          _cache.set('budget', result.budget);
+          _cache.set('budget', result.dashboard);
           
-          // Render the view
-          SimBudget.renderBudgetView(result.budget);
-        },
-        function(error) {
-          contentArea.innerHTML = `
-            <div class="error-message">
-              <i class="material-icons">error</i>
-              <span>Error loading budget data: ${error}</span>
-            </div>
-          `;
+          // Render the view using the new dashboard directly
+          SimBudget.renderBudgetDashboard(result.dashboard);
+        } else {
+          // Fall back to the original budget data method
+          SimBudget.loadBudgetDataFallback();
         }
-      );
+      },
+      function(error) {
+        SimBudget.loadBudgetDataFallback();
+      }
+    );
+  } else {
+    // Fall back if the new API method isn't available
+    SimBudget.loadBudgetDataFallback();
+  }
+},
+
+/**
+ * Fallback method to load just budget data
+ */
+loadBudgetDataFallback: function() {
+  API.getBudgetData(
+    function(result) {
+      // Cache the result
+      _cache.set('budget', result.budget);
+      
+      // Render the view
+      SimBudget.renderBudgetView(result.budget);
     },
+    function(error) {
+      const contentArea = document.getElementById('budgetContent');
+      contentArea.innerHTML = `
+        <div class="error-message">
+          <i class="material-icons">error</i>
+          <span>Error loading budget data: ${error}</span>
+        </div>
+      `;
+    }
+  );
+},
     
     /**
      * Render budget view with provided data
@@ -814,6 +844,41 @@ var SimBudget = (function() {
                 if (budgetChanged) {
                   SimBudget.updateInfoMessage(true); // Force update
                 }
+
+                // Update the progress bar for this category
+if (budgetChanged) {
+  // Find the row for this category
+  const rows = document.querySelectorAll('.budget-table tr');
+  rows.forEach(row => {
+    const categoryCell = row.querySelector('.category-name');
+    if (categoryCell && categoryCell.textContent === categoryName) {
+      // Get the actual value
+      const actualValue = parseFloat(row.querySelector('.actual-value').textContent.replace(/[^0-9.-]+/g, ''));
+      
+      // Calculate new percentage
+      const newPercentage = newBudgetValue > 0 ? (actualValue / newBudgetValue) * 100 : 0;
+      const progressClass = newPercentage > 100 ? 'over-budget' : (newPercentage > 80 ? 'near-limit' : '');
+      
+      // Update progress bar
+      const progressBar = row.querySelector('.progress-bar');
+      if (progressBar) {
+        progressBar.style.width = Math.min(newPercentage, 100) + '%';
+        
+        // Update classes for color
+        progressBar.classList.remove('over-budget', 'near-limit');
+        if (progressClass) {
+          progressBar.classList.add(progressClass);
+        }
+      }
+      
+      // Update percentage text
+      const percentageText = row.querySelector('.progress-percentage');
+      if (percentageText) {
+        percentageText.textContent = Math.round(newPercentage) + '%';
+      }
+    }
+  });
+}
                 
                 // Show a subtle success indicator
                 setTimeout(() => {
@@ -865,52 +930,106 @@ var SimBudget = (function() {
       });
     },
     
-    /**
-     * Update the info message based on local budget calculations
-     * @param {boolean} force - If true, force a message update even if nothing changed
-     */
-    updateInfoMessage: function(force = false) {
-      if (!this._currentBudgetData) return;
+   /**
+ * Update the info message based on local budget calculations
+ * @param {boolean} force - If true, force a message update even if nothing changed
+ */
+updateInfoMessage: function(force = false) {
+  if (!this._currentBudgetData) {
+    console.log('No budget data available');
+    return;
+  }
+  
+  const budget = this._currentBudgetData;
+  
+  // FAILSAFE: Try multiple element IDs
+  let infoMessageElement = document.getElementById('budget-info-message');
+  
+  // If not found, try the other possible ID
+  if (!infoMessageElement) {
+    infoMessageElement = document.getElementById('budget-alert');
+    console.log('Using alternate element ID: budget-alert');
+  }
+  
+  // Last resort: find by class
+  if (!infoMessageElement) {
+    infoMessageElement = document.querySelector('.budget-alert, .info-message');
+    console.log('Using element found by class selector');
+  }
+  
+  // If still not found, exit but log error
+  if (!infoMessageElement) {
+    console.error('ALERT: Could not find budget message element with any known ID or class');
+    return;
+  }
+  
+  console.log('Found message element:', infoMessageElement);
+  
+  // Calculate total budgeted amount from final values only
+  let totalBudgeted = 0;
+  budget.categories.forEach(cat => {
+    // Only use budgeted values that are numbers, not in-progress edits
+    if (typeof cat.budgeted === 'number') {
+      totalBudgeted += cat.budgeted || 0;
+    }
+  });
+  
+  // Store the current message for comparison
+  const currentMessage = infoMessageElement.textContent;
+  
+  // Calculate the new message
+  let message = '';
+  let messageType = 'info'; // Default styling
+  
+  // Helper function for comparing floating point numbers with a small tolerance
+  const isApproximatelyEqual = (a, b) => Math.abs(a - b) < 0.01;
+  
+  if (budget.income === 0 || budget.income === '') {
+    message = `You budgeted ${Utils.formatCurrency(totalBudgeted)}. Tip: Align it with your income.`;
+  } else if (isApproximatelyEqual(budget.income, totalBudgeted)) {
+    // Positive confirmation when budget matches income (with tolerance for floating point)
+    message = `Your budget of ${Utils.formatCurrency(totalBudgeted)} perfectly matches your income!`;
+    messageType = 'success';
+  } else if (budget.income > totalBudgeted) {
+    message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)} with ${Utils.formatCurrency(Math.max(0, budget.income - totalBudgeted))} left to allocate.`;
+    messageType = 'info';
+  } else if (totalBudgeted > budget.income) {
+    message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)}, exceeding income by ${Utils.formatCurrency(totalBudgeted - budget.income)}.`;
+    messageType = 'warning';
+  }
+  
+  console.log('Current message:', currentMessage);
+  console.log('New message:', message);
+  console.log('Message type:', messageType);
+  console.log('Force update:', force);
+  
+  // FAILSAFE: Always update on force, and add a text difference check
+  const textChanged = currentMessage !== message;
+  if (force || textChanged) {
+    console.log('Updating message: ' + (force ? 'forced' : 'text changed'));
+    
+    // FAILSAFE: Try two different update methods
+
+    // Method 1: Direct update
+    try {
+      // Update the content directly first
+      infoMessageElement.textContent = message;
       
-      const budget = this._currentBudgetData;
-      const infoMessageElement = document.getElementById('budget-info-message');
-      if (!infoMessageElement) return;
-      
-      // Calculate total budgeted amount from final values only
-      let totalBudgeted = 0;
-      budget.categories.forEach(cat => {
-        // Only use budgeted values that are numbers, not in-progress edits
-        if (typeof cat.budgeted === 'number') {
-          totalBudgeted += cat.budgeted || 0;
-        }
-      });
-      
-      // Store the current message for comparison
-      const currentMessage = infoMessageElement.textContent;
-      
-      // Calculate the new message
-      let message = '';
-      let messageType = 'info'; // Default styling
-      
-      // Helper function for comparing floating point numbers with a small tolerance
-      const isApproximatelyEqual = (a, b) => Math.abs(a - b) < 0.01;
-      
-      if (budget.income === 0 || budget.income === '') {
-        message = `You budgeted ${Utils.formatCurrency(totalBudgeted)}. Tip: Align it with your income.`;
-      } else if (isApproximatelyEqual(budget.income, totalBudgeted)) {
-        // Positive confirmation when budget matches income (with tolerance for floating point)
-        message = `Your budget of ${Utils.formatCurrency(totalBudgeted)} perfectly matches your income!`;
-        messageType = 'success';
-      } else if (budget.income > totalBudgeted) {
-        message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)} with ${Utils.formatCurrency(Math.max(0, budget.income - totalBudgeted))} left to allocate.`;
-        messageType = 'info';
-      } else if (totalBudgeted > budget.income) {
-        message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)}, exceeding income by ${Utils.formatCurrency(totalBudgeted - budget.income)}.`;
-        messageType = 'warning';
+      // Now update classes - handle both possible class structures
+      if (infoMessageElement.classList.contains('budget-alert')) {
+        infoMessageElement.className = 'budget-alert';
+        infoMessageElement.classList.add(messageType);
+      } else {
+        infoMessageElement.className = 'info-message';
+        infoMessageElement.classList.add(messageType);
       }
       
-      // Update the message element only if it changed or force is true
-      if (force || currentMessage !== message) {
+      console.log('Direct update successful');
+    } catch (e) {
+      console.error('Error in direct update:', e);
+      
+      // Method 2: Animated update with timeout as backup
+      try {
         // Trigger a reflow to ensure animation works properly
         infoMessageElement.style.opacity = '0.99';
         
@@ -919,28 +1038,44 @@ var SimBudget = (function() {
           infoMessageElement.textContent = message;
           
           // Update the class based on the message type
-          infoMessageElement.className = 'info-message';
-          infoMessageElement.classList.add(messageType);
+          if (infoMessageElement.classList.contains('budget-alert')) {
+            infoMessageElement.className = 'budget-alert';
+            infoMessageElement.classList.add(messageType);
+          } else {
+            infoMessageElement.className = 'info-message';
+            infoMessageElement.classList.add(messageType);
+          }
           
           // Restore opacity
           infoMessageElement.style.opacity = '1';
+          console.log('Animated update successful');
         }, 50);
+      } catch (e2) {
+        console.error('Error in animated update:', e2);
       }
-      
-      // Show or hide the message container based on content
-      if (message) {
-        infoMessageElement.style.display = 'block';
-      } else {
-        infoMessageElement.style.display = 'none';
-      }
-      
-      // Update cached budget data with new message
-      const cachedBudget = _cache.get('budget');
+    }
+  }
+  
+  // FAILSAFE: Always ensure the element is visible
+  infoMessageElement.style.display = message ? 'block' : 'none';
+  
+  // Update cached budget data with new message
+  try {
+    if (window._cache && typeof window._cache.get === 'function') {
+      const cachedBudget = window._cache.get('budget');
       if (cachedBudget) {
         cachedBudget.infoMessage = message;
-        _cache.set('budget', cachedBudget);
+        window._cache.set('budget', cachedBudget);
+        console.log('Cache updated with new message');
       }
-    },
+    }
+  } catch (e) {
+    console.error('Error updating cache:', e);
+  }
+  
+  // Return the message for potential further use
+  return message;
+},
     
     /**
      * Load expense data

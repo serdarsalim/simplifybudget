@@ -1,0 +1,537 @@
+
+<style>
+/* ======================================================
+   SIMBUDGET DASHBOARD STYLES
+   ======================================================
+   Complete styling for the 3-column dashboard layout
+   with responsive breakpoints and interactive elements
+*/
+
+/* Reset and base styles to avoid conflicts */
+.dashboard-container *,
+.dashboard-container *::before,
+.dashboard-container *::after {
+  box-sizing: border-box;
+}
+
+/* ======================
+   LAYOUT: GRID STRUCTURE
+   ====================== */
+/* Dashboard Container - Main Grid Layout */
+.dashboard-container {
+  display: grid !important;
+  /* Adjusted column proportions to give more space to the middle column */
+  grid-template-columns: minmax(220px, 0.8fr) minmax(340px, 1.4fr) minmax(220px, 0.8fr) !important;
+  gap: 20px !important;
+  margin: 0 !important;
+  padding: 20px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Left Column */
+.col-left {
+  grid-column: 1 / 2 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-width: 0; /* Allows proper shrinking */
+}
+
+/* Middle Column - Budget Categories */
+.budget-data-card {
+  grid-column: 2 / 3 !important;
+  grid-row: 1 / span 3 !important;
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: auto !important;
+  min-width: 0; /* Allows proper shrinking */
+}
+
+/* Right Column */
+.col-right {
+  grid-column: 3 / 4 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-width: 0; /* Allows proper shrinking */
+}
+
+/* ======================
+   HEADER LAYOUT
+   ====================== */
+/* Modify view-header for horizontal layout with elements pushed right */
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--border);
+}
+
+.view-header-title {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border-bottom: none;
+}
+
+.view-header-title h1 {
+  margin-right: 20px;
+  font-size: 22px; /* Slightly reduced from default */
+}
+
+.month-year-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.month-select, .year-select {
+  font-size: 13px;
+  padding: 5px 8px;
+}
+
+/* ======================
+   CARD STYLES 
+   ====================== */
+.dashboard-card {
+  background-color: #ffb8a3;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  margin-bottom: 0;
+  width: 100%; /* Ensure cards fill their containers */
+  overflow: hidden; /* Prevent content overflow */
+}
+
+.dashboard-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* White Background Cards */
+.budget-data-card,
+.donut-chart-card,
+.subscription-list-card {
+  background-color: #ffffff;
+}
+
+/* ======================
+   BUDGET SUMMARY CARDS
+   ====================== */
+.budget-summary-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.budget-summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+/* Value labels and amounts - Reduced sizes */
+.value-label {
+  font-size: 11px; /* Reduced from 13px */
+  color: #607d8b;
+  margin-bottom: 3px;
+}
+
+.value-amount {
+  font-size: 19px; /* Smaller for income/net worth sections */
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* ======================
+   DONUT CHART 
+   ====================== */
+.donut-chart-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.donut-chart-container {
+  width: 100%;
+  height: 340px; /* Increased from 280px for taller chart */
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 0 0 8px 8px;
+}
+
+.donut-chart-header {
+  background-color: #fff;
+  padding: 12px 16px; /* Reduced from 15px 20px */
+  margin: 0;
+  border-bottom: 1px solid #eee;
+  font-weight: 500;
+  color: #2c3e50;
+  border-radius: 8px 8px 0 0;
+  font-size: 14px; /* Reduced from default */
+}
+
+/* ======================
+   BUDGET DATA SECTION
+   ====================== */
+/* Ensure budget alert has the correct font size */
+.budget-alert {
+  background-color: #fff3e0;
+  color: #2c3e50;
+  padding: 10px 16px; /* Reduced padding */
+  margin: 0;
+  font-weight: 500;
+  text-align: center;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  border-bottom: 1px solid #eeeeee;
+  font-size: 16px; /* Kept at 16px as requested */
+}
+
+.budget-alert.warning {
+  background-color: #ffecb3;
+  color: #e65100;
+}
+
+.budget-alert.success {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.budget-alert.info {
+  background-color: #e3f2fd;
+  color: #0d47a1;
+}
+
+.budget-table-container {
+  padding: 0 16px 16px; /* Reduced from 0 20px 20px */
+  overflow-x: auto;
+}
+
+/* ======================
+   BUDGET TABLE 
+   ====================== */
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.budget-table th,
+.budget-table td {
+  padding: 14px 8px; /* Consistent padding for all cells */
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  font-size: 15px; /* Increased by 2px from 13px */
+  position: relative; /* For positioning elements inside */
+}
+
+.budget-table th {
+  font-weight: 600;
+  color: #607d8b;
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 10;
+  font-size: 14px; /* Slightly smaller than cell text */
+}
+
+.category-name {
+  font-weight: 500;
+  font-size: 15px; /* Increased by 2px */
+}
+
+/* Progress bar */
+.progress-cell {
+  width: 90px; /* Reduced from 100px */
+  vertical-align: middle;
+  padding-top: 14px !important; /* Push content down to align with text */
+  padding-bottom: 14px !important; /* Match the cell padding */
+}
+
+.progress-bar-container {
+  height: 6px; /* Reduced from 8px */
+  background-color: #f0f2f5;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0; /* Remove any margins */
+  position: relative; /* For absolute positioning of children if needed */
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: #aed581;
+  border-radius: 4px;
+}
+
+.progress-bar.over-budget {
+  background-color: #ef9a9a;
+}
+
+.progress-bar.near-limit {
+  background-color: #ffe082;
+}
+
+/* ======================
+   SUBSCRIPTION SECTION
+   ====================== */
+.subscription-summary {
+  background-color: #ffb8a3;
+  color: #2c3e50;
+  border-radius: 8px;
+  padding: 16px; /* Reduced from 20px */
+  font-size: 16px; /* Reduced from 18px */
+  font-weight: 500;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.subscription-total {
+  font-size: 20px; /* Reduced from 24px */
+  font-weight: 600;
+  margin: 5px 0;
+}
+
+.subscription-percentage {
+  font-size: 14px; /* Reduced from 16px */
+}
+
+.subscription-icon {
+  font-size: 22px; /* Reduced from 24px */
+  margin-bottom: 8px;
+}
+
+.subscription-list-card {
+  padding: 0;
+}
+
+.subscription-list-container {
+  padding: 0 16px 16px; /* Reduced from 0 20px 20px */
+}
+
+.subscription-list-header {
+  padding: 12px 16px; /* Reduced from 15px 20px */
+  margin: 0;
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+  font-weight: 500;
+  color: #2c3e50;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  font-size: 14px; /* Reduced from default */
+}
+
+/* ======================
+   SUBSCRIPTION TABLE
+   ====================== */
+.subscription-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.subscription-table th,
+.subscription-table td {
+  padding: 8px 6px; /* Reduced from 12px 10px */
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  font-size: 12px; /* Reduced text size */
+}
+
+.subscription-table th {
+  font-weight: 600;
+  color: #607d8b;
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 10;
+}
+
+.amount-column {
+  text-align: right;
+}
+
+/* ======================
+   EDITABLE BUDGET VALUES
+   ====================== */
+.budget-value {
+  cursor: pointer;
+  font-size: 15px; /* Increased by 2px */
+}
+
+.budget-value.editable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 4px 6px; /* Reduced from 4px 8px */
+  position: relative;
+}
+
+.budget-value.editable:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.budget-value.editable:focus {
+  outline: none;
+  background-color: rgba(0, 0, 0, 0.04);
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.3);
+}
+
+.budget-value.editing {
+  background-color: rgba(25, 118, 210, 0.05);
+}
+
+.budget-value.saving::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px; /* Reduced from 12px */
+  height: 10px; /* Reduced from 12px */
+  border: 2px solid #1976d2;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.budget-value.saved {
+  background-color: rgba(76, 175, 80, 0.1);
+  transition: background-color 0.5s ease;
+}
+
+.budget-value.error {
+  background-color: rgba(244, 67, 54, 0.1);
+  transition: background-color 0.5s ease;
+}
+
+@keyframes spin {
+  0% { transform: translateY(-50%) rotate(0deg); }
+  100% { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* ======================
+   RESPONSIVE BREAKPOINTS
+   ====================== */
+/* Medium screens - 2 columns */
+@media (max-width: 1100px) {
+  .dashboard-container {
+    grid-template-columns: minmax(250px, 1fr) minmax(300px, 1fr) !important;
+  }
+  
+  .col-left {
+    grid-column: 1 / 2 !important;
+  }
+  
+  .budget-data-card {
+    grid-column: 2 / 3 !important;
+    grid-row: 1 / span 3 !important;
+  }
+  
+  .col-right {
+    grid-column: 1 / 2 !important;
+    grid-row: 4 !important;
+  }
+}
+
+/* Small screens - 1 column */
+@media (max-width: 850px) {
+  .dashboard-container {
+    grid-template-columns: 1fr !important;
+    padding: 10px !important;
+  }
+  
+  .col-left,
+  .budget-data-card,
+  .col-right {
+    grid-column: 1 / 2 !important;
+    grid-row: auto !important;
+  }
+  
+  .budget-summary-card,
+  .donut-chart-card,
+  .budget-data-card,
+  .subscription-summary,
+  .subscription-list-card {
+    margin-bottom: 20px;
+  }
+  
+  .value-amount {
+    font-size: 18px; /* Further reduced for mobile */
+  }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+  .dashboard-container {
+    padding: 5px !important;
+    gap: 10px !important;
+  }
+  
+  .dashboard-card {
+    padding: 12px; /* Reduced from 15px */
+  }
+  
+  .budget-summary-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .budget-summary-row > div {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  
+  .budget-table th,
+  .budget-table td,
+  .subscription-table th,
+  .subscription-table td {
+    padding: 6px 4px; /* Reduced from 8px 5px */
+    font-size: 12px; /* Reduced from 14px */
+  }
+  
+  .progress-cell {
+    width: 60px;
+  }
+}
+
+
+/* Add a specific media query for 13" screens */
+@media screen and (max-height: 800px) {
+  /* Even more aggressive space reduction for small screens */
+  .budget-table th,
+  .budget-table td {
+    padding: 6px 6px !important; /* Ultra compact padding */
+    font-size: 13px;
+  }
+  
+  .category-name, .budget-value, .actual-value {
+    font-size: 13px;
+  }
+  
+  .progress-percentage {
+    font-size: 9px;
+  }
+  
+  .progress-bar-container {
+    height: 5px; /* Slightly smaller bar */
+    margin-bottom: 1px;
+  }
+  
+  /* Make alert message more compact */
+  .budget-alert {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+}
+
+
+
+</style>
