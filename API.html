@@ -96,6 +96,62 @@ var API = (function() {
     },
     
     /**
+     * Set current month and year
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    setCurrentMonthYear: function(successCallback, errorCallback) {
+      try {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              _lastError = result && result.error ? result.error : "Unknown error";
+              errorCallback(_lastError);
+            }
+          })
+          .withFailureHandler(function(error) {
+            _lastError = error;
+            errorCallback(error);
+          })
+          .setCurrentMonthYear();
+      } catch (e) {
+        _lastError = e.message || String(e);
+        errorCallback(_lastError);
+      }
+    },
+    
+    /**
+     * Set specific month and year
+     * @param {string} month - Month name (January, February, etc.)
+     * @param {number|string} year - Year (e.g., 2025)
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    setMonthYear: function(month, year, successCallback, errorCallback) {
+      try {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              _lastError = result && result.error ? result.error : "Unknown error";
+              errorCallback(_lastError);
+            }
+          })
+          .withFailureHandler(function(error) {
+            _lastError = error;
+            errorCallback(error);
+          })
+          .setMonthYear(month, year);
+      } catch (e) {
+        _lastError = e.message || String(e);
+        errorCallback(_lastError);
+      }
+    },
+    
+    /**
      * Get user credentials
      * @param {Function} successCallback - Called on success
      * @param {Function} errorCallback - Called on error
@@ -227,6 +283,35 @@ var API = (function() {
             errorCallback(error);
           })
           .saveExpense(expense);
+      } catch (e) {
+        _lastError = e.message || String(e);
+        errorCallback(_lastError);
+      }
+    },
+    
+    /**
+     * Update budget value for a category
+     * @param {string} categoryName - Name of the category
+     * @param {number|string} budgetValue - New budget value
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    updateBudgetValue: function(categoryName, budgetValue, successCallback, errorCallback) {
+      try {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              _lastError = result && result.error ? result.error : "Unknown error";
+              errorCallback(_lastError);
+            }
+          })
+          .withFailureHandler(function(error) {
+            _lastError = error;
+            errorCallback(error);
+          })
+          .updateBudgetValue(categoryName, budgetValue);
       } catch (e) {
         _lastError = e.message || String(e);
         errorCallback(_lastError);

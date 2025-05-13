@@ -120,6 +120,9 @@ var SimBudget = (function() {
       // Set up event listeners
       this.bindEvents();
       
+      // Set up month and year selectors
+      this.setupMonthYearSelectors();
+      
       // Check for existing sheet URL
       this.checkExistingConnection();
       
@@ -129,11 +132,51 @@ var SimBudget = (function() {
       // Load user info
       this.loadUserInfo();
       
-      // Initial view
+      // Load initial budget data
       this.loadViewData('budget');
       
       _initialized = true;
       console.log('SimBudget initialized');
+    },
+    
+    /**
+     * Set up month and year selectors
+     */
+    setupMonthYearSelectors: function() {
+      const yearSelector = document.getElementById('yearSelector');
+      if (yearSelector) {
+        // Clear existing options
+        yearSelector.innerHTML = '';
+        
+        // Populate with 2 years before and after current year
+        const currentYear = new Date().getFullYear();
+        for (let year = currentYear - 2; year <= currentYear + 2; year++) {
+          const option = document.createElement('option');
+          option.value = year;
+          option.textContent = year;
+          yearSelector.appendChild(option);
+        }
+        
+        // Set current year as selected
+        yearSelector.value = currentYear;
+      }
+    },
+    
+    /**
+     * Update month and year when changed by user
+     */
+    updateMonthYear: function(month, year) {
+      API.setMonthYear(month, year,
+        function(result) {
+          console.log('Month/year updated:', month, year);
+          
+          // Reload budget data with new month/year
+          SimBudget.loadViewData('budget');
+        },
+        function(error) {
+          Utils.showToast('Error updating month/year: ' + error, 'error');
+        }
+      );
     },
     
     /**
@@ -150,6 +193,20 @@ var SimBudget = (function() {
       document.querySelectorAll('.sidebar-item').forEach(item => {
         item.addEventListener('click', handleSidebarItemClick);
       });
+      
+      // Month and year selectors
+      const monthSelector = document.getElementById('monthSelector');
+      const yearSelector = document.getElementById('yearSelector');
+      
+      if (monthSelector && yearSelector) {
+        monthSelector.addEventListener('change', function() {
+          SimBudget.updateMonthYear(this.value, yearSelector.value);
+        });
+        
+        yearSelector.addEventListener('change', function() {
+          SimBudget.updateMonthYear(monthSelector.value, this.value);
+        });
+      }
       
       // Settings panel
       const saveSettingsBtn = document.getElementById('saveSettingsBtn');
@@ -398,8 +455,27 @@ var SimBudget = (function() {
         function(result) {
           const budget = result.budget;
           
+          // Update month and year selectors to match spreadsheet values
+          const monthSelector = document.getElementById('monthSelector');
+          const yearSelector = document.getElementById('yearSelector');
+          
+          if (monthSelector && budget.month) {
+            monthSelector.value = budget.month;
+          }
+          
+          if (yearSelector && budget.year) {
+            yearSelector.value = budget.year;
+          }
+          
+          // Store budget data globally for local calculations
+          SimBudget._currentBudgetData = budget;
+          
           // Create budget summary
           let html = `
+            <div class="budget-alerts">
+              <div id="budget-info-message" class="info-message">${budget.infoMessage || ''}</div>
+            </div>
+            
             <div class="budget-summary">
               <div class="budget-card">
                 <div class="budget-header">Income</div>
@@ -415,19 +491,19 @@ var SimBudget = (function() {
               </div>
             </div>
             
-            <h2>Budget Categories</h2>
             <div class="budget-categories">
-              <table class="budget-table">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th>Budgeted</th>
-                    <th>Actual</th>
-                    <th>Remaining</th>
-                    <th>Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <h2>Budget Categories</h2>
+              <div class="table-container">
+                <table class="budget-table">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Budgeted</th>
+                      <th>Actual</th>
+                      <th>Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody>
           `;
           
           // Add rows for each category
@@ -437,14 +513,14 @@ var SimBudget = (function() {
             
             html += `
               <tr>
-                <td>${category.name}</td>
-                <td>${Utils.formatCurrency(category.budgeted)}</td>
-                <td>${Utils.formatCurrency(category.actual)}</td>
-                <td>${Utils.formatCurrency(category.remaining)}</td>
-                <td>
+                <td class="category-name">${category.name}</td>
+                <td class="budget-value" data-category="${category.name}" data-value="${category.budgeted}">${Utils.formatCurrency(category.budgeted)}</td>
+                <td class="actual-value">${Utils.formatCurrency(category.actual)}</td>
+                <td class="progress-cell">
                   <div class="progress-bar-container">
                     <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
                   </div>
+                  <div class="progress-percentage">${Math.round(percentSpent)}%</div>
                 </td>
               </tr>
             `;
@@ -458,6 +534,164 @@ var SimBudget = (function() {
           
           // Update the budget content
           contentArea.innerHTML = html;
+          
+          // Make the budgeted amounts editable
+          document.querySelectorAll('.budget-value').forEach(cell => {
+            cell.setAttribute('contenteditable', 'true');
+            cell.setAttribute('title', 'Click to edit budget amount');
+            cell.classList.add('editable');
+            
+            // Get the category name from data attribute
+            const categoryName = cell.dataset.category;
+            const originalValue = parseFloat(cell.dataset.value);
+            
+            // Variables for auto-save debounce
+            let saveTimeout = null;
+            let isSaving = false;
+            
+            // Handle key presses
+            cell.addEventListener('keydown', function(e) {
+              // Prevent Enter from creating a new line - just blur the field instead
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                this.blur(); 
+              }
+              
+              // Cancel on Escape key press
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                // Reset to the original formatted value
+                this.textContent = Utils.formatCurrency(originalValue);
+                this.blur();
+                
+                // Cancel any pending save
+                if (saveTimeout) {
+                  clearTimeout(saveTimeout);
+                  saveTimeout = null;
+                }
+              }
+            });
+            
+            // Validate input - allow only numbers, decimal point, and currency symbols
+            cell.addEventListener('input', function(e) {
+              // Cancel any pending save
+              if (saveTimeout) {
+                clearTimeout(saveTimeout);
+              }
+              
+              // Clean the value to show just numbers
+              const rawValue = this.textContent.replace(/[^0-9.-]+/g, '');
+              const numValue = parseFloat(rawValue);
+              
+              if (isNaN(numValue)) {
+                // Invalid input, will be corrected on blur
+                return;
+              }
+              
+              // Apply the styling to indicate editing is in progress
+              this.classList.add('editing');
+              
+              // Schedule auto-save after 1 second of no typing
+              saveTimeout = setTimeout(() => {
+                // Don't save if we're already saving
+                if (isSaving) return;
+                
+                // Get the current numeric value
+                const cleanValue = this.textContent.replace(/[^0-9.-]+/g, '');
+                const numValue = parseFloat(cleanValue);
+                
+                // Don't save if invalid number
+                if (isNaN(numValue)) {
+                  this.classList.remove('editing');
+                  return;
+                }
+                
+                // Store the current value to use in our local state update
+                const newBudgetValue = numValue;
+                
+                // Don't save if the value hasn't changed significantly (within small rounding error)
+                if (Math.abs(numValue - originalValue) < 0.001) {
+                  this.classList.remove('editing');
+                  return;
+                }
+                
+                // Indicate saving
+                isSaving = true;
+                this.classList.add('saving');
+                
+                // Format with currency symbol for display
+                this.textContent = Utils.formatCurrency(numValue);
+                
+                // Save the new value to the spreadsheet in the background
+                API.updateBudgetValue(categoryName, numValue,
+                  (result) => {
+                    // Update was successful
+                    isSaving = false;
+                    this.classList.remove('editing', 'saving');
+                    this.classList.add('saved');
+                    
+                    // Update our local data with the final value
+                    let budgetChanged = false;
+                    SimBudget._currentBudgetData.categories.forEach(cat => {
+                      if (cat.name === categoryName) {
+                        // Only mark changed if there's a significant difference
+                        if (Math.abs(cat.budgeted - newBudgetValue) > 0.001) {
+                          budgetChanged = true;
+                          cat.budgeted = newBudgetValue;
+                        }
+                      }
+                    });
+                    
+                    // Always update the info message based on local calculations
+                    if (budgetChanged) {
+                      SimBudget.updateInfoMessage(true); // Force update
+                    }
+                    
+                    // Show a subtle success indicator
+                    setTimeout(() => {
+                      this.classList.remove('saved');
+                    }, 1500);
+                  },
+                  (error) => {
+                    // Update failed
+                    isSaving = false;
+                    this.classList.remove('editing', 'saving');
+                    this.classList.add('error');
+                    
+                    // Show error toast
+                    Utils.showToast('Error updating budget: ' + error, 'error');
+                    
+                    // Remove error indicator after a delay
+                    setTimeout(() => {
+                      this.classList.remove('error');
+                    }, 1500);
+                  }
+                );
+              }, 1000); // Wait 1 second after typing stops
+            });
+            
+            // Format value on blur
+            cell.addEventListener('blur', function() {
+              // Get numeric value
+              const value = parseFloat(this.textContent.replace(/[^0-9.-]+/g, ''));
+              if (!isNaN(value)) {
+                // Format with currency symbol
+                this.textContent = Utils.formatCurrency(value);
+              } else {
+                // If not a valid number, revert to original
+                this.textContent = Utils.formatCurrency(originalValue);
+              }
+            });
+            
+            // Select all text when focused
+            cell.addEventListener('focus', function() {
+              const range = document.createRange();
+              range.selectNodeContents(this);
+              const selection = window.getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+            });
+          });
         },
         function(error) {
           contentArea.innerHTML = `
@@ -468,6 +702,76 @@ var SimBudget = (function() {
           `;
         }
       );
+    },
+    
+    /**
+     * Update the info message based on local budget calculations
+     * @param {boolean} force - If true, force a message update even if nothing changed
+     */
+    updateInfoMessage: function(force = false) {
+      if (!this._currentBudgetData) return;
+      
+      const budget = this._currentBudgetData;
+      const infoMessageElement = document.getElementById('budget-info-message');
+      if (!infoMessageElement) return;
+      
+      // Calculate total budgeted amount from final values only
+      let totalBudgeted = 0;
+      budget.categories.forEach(cat => {
+        // Only use budgeted values that are numbers, not in-progress edits
+        if (typeof cat.budgeted === 'number') {
+          totalBudgeted += cat.budgeted || 0;
+        }
+      });
+      
+      // Store the current message for comparison
+      const currentMessage = infoMessageElement.textContent;
+      
+      // Calculate the new message
+      let message = '';
+      let messageType = 'info'; // Default styling
+      
+      // Helper function for comparing floating point numbers with a small tolerance
+      const isApproximatelyEqual = (a, b) => Math.abs(a - b) < 0.01;
+      
+      if (budget.income === 0 || budget.income === '') {
+        message = `You budgeted ${Utils.formatCurrency(totalBudgeted)}. Tip: Align it with your income.`;
+      } else if (isApproximatelyEqual(budget.income, totalBudgeted)) {
+        // Positive confirmation when budget matches income (with tolerance for floating point)
+        message = `Your budget of ${Utils.formatCurrency(totalBudgeted)} perfectly matches your income!`;
+        messageType = 'success';
+      } else if (budget.income > totalBudgeted) {
+        message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)} with ${Utils.formatCurrency(Math.max(0, budget.income - totalBudgeted))} left to allocate.`;
+        messageType = 'info';
+      } else if (totalBudgeted > budget.income) {
+        message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)}, exceeding income by ${Utils.formatCurrency(totalBudgeted - budget.income)}.`;
+        messageType = 'warning';
+      }
+      
+      // Update the message element only if it changed or force is true
+      if (force || currentMessage !== message) {
+        // Trigger a reflow to ensure animation works properly
+        infoMessageElement.style.opacity = '0.99';
+        
+        // Update content after a tiny delay to allow CSS transition
+        setTimeout(() => {
+          infoMessageElement.textContent = message;
+          
+          // Update the class based on the message type
+          infoMessageElement.className = 'info-message';
+          infoMessageElement.classList.add(messageType);
+          
+          // Restore opacity
+          infoMessageElement.style.opacity = '1';
+        }, 50);
+      }
+      
+      // Show or hide the message container based on content
+      if (message) {
+        infoMessageElement.style.display = 'block';
+      } else {
+        infoMessageElement.style.display = 'none';
+      }
     },
     
     /**

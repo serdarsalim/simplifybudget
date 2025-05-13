@@ -23,6 +23,8 @@
  * getRecurringData() - Gets recurring payments data
  * saveExpense() - Saves an expense with account balance adjustment
  * saveIncome() - Saves income with account balance adjustment
+ * setCurrentMonthYear() - Sets the current month and year in the budget sheet
+ * setMonthYear() - Sets specific month and year in the budget sheet
  * 
  * // Utility functions
  * getUserCredentials() - Retrieves user credentials from UserProperties
@@ -249,6 +251,61 @@ function getBudgetSheet(sheetName) {
 }
 
 /**
+ * Sets the current month and year in the Budget sheet
+ * @return {Object} Result with success flag and the current month/year
+ */
+function setCurrentMonthYear() {
+  try {
+    const sheet = getBudgetSheet("Budget");
+    if (!sheet) {
+      return { success: false, error: "Budget sheet not found" };
+    }
+    
+    // Get the current date
+    const now = new Date();
+    const currentMonth = now.toLocaleString('default', { month: 'MMMM' }); // "January", "February", etc.
+    const currentYear = now.getFullYear();
+    
+    // Update the cells
+    sheet.getRange("C6").setValue(currentMonth);
+    sheet.getRange("E6").setValue(currentYear);
+    
+    return { 
+      success: true,
+      month: currentMonth,
+      year: currentYear
+    };
+  } catch (error) {
+    Logger.log("Error in setCurrentMonthYear: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Sets a specific month and year in the Budget sheet
+ * @param {string} month - Month name (January, February, etc.)
+ * @param {number|string} year - Year (e.g., 2025)
+ * @return {Object} Result with success flag
+ */
+function setMonthYear(month, year) {
+  try {
+    const sheet = getBudgetSheet("Budget");
+    if (!sheet) {
+      return { success: false, error: "Budget sheet not found" };
+    }
+    
+    // Update the cells
+    sheet.getRange("C6").setValue(month);
+    sheet.getRange("E6").setValue(parseInt(year));
+    
+    return { success: true };
+  } catch (error) {
+    Logger.log("Error in setMonthYear: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
  * Get budget summary data
  * @return {Object} Budget data including totals and categories
  */
@@ -259,24 +316,34 @@ function getBudgetData() {
       return { success: false, error: "Budget sheet not found" };
     }
 
-    // Get the data from the Budget sheet
-    // We'll use specific ranges based on the sheet structure
-    const incomeRange = sheet.getRange("C10").getValue();
-    const spentRange = sheet.getRange("D10").getValue();
-    const leftToSpendRange = sheet.getRange("E10").getValue();
+    // Get the info/alert message from H6:L7
+    const infoMessage = sheet.getRange("H6").getValue();
     
-    // Get category budgets
-    const categoryRange = sheet.getRange("I9:L19").getValues();
+    // Get month and year
+    const month = sheet.getRange("C6").getValue();
+    const year = sheet.getRange("E6").getValue();
+    
+    // Get financial summary
+    const income = sheet.getRange("C10").getValue();
+    const spent = sheet.getRange("D10").getValue();
+    const leftToSpend = sheet.getRange("E10").getValue();
+    
+    // Get category data (names, budgeted, actual spending)
+    const categoryNames = sheet.getRange("I9:I39").getValues();
+    const budgetedAmounts = sheet.getRange("J9:J39").getValues();
+    const actualSpending = sheet.getRange("K9:K39").getValues();
+    
+    // Combine into category objects
     const categories = [];
-    
-    for (let i = 0; i < categoryRange.length; i++) {
-      const row = categoryRange[i];
-      if (row[0]) { // Category name exists
+    for (let i = 0; i < categoryNames.length; i++) {
+      const categoryName = categoryNames[i][0];
+      
+      // Only include non-empty categories
+      if (categoryName) {
         categories.push({
-          name: row[0],
-          actual: row[1] || 0,
-          budgeted: row[2] || 0,
-          remaining: (row[2] || 0) - (row[1] || 0)
+          name: categoryName,
+          budgeted: budgetedAmounts[i][0] || 0,
+          actual: actualSpending[i][0] || 0
         });
       }
     }
@@ -284,12 +351,13 @@ function getBudgetData() {
     return {
       success: true,
       budget: {
-        income: incomeRange,
-        spent: spentRange,
-        leftToSpend: leftToSpendRange,
-        categories: categories,
-        month: new Date().toLocaleString('default', { month: 'long' }),
-        year: new Date().getFullYear()
+        month: month,
+        year: year,
+        income: income,
+        spent: spent,
+        leftToSpend: leftToSpend,
+        infoMessage: infoMessage,
+        categories: categories
       }
     };
   } catch (error) {
@@ -508,9 +576,50 @@ function setUserProperty(key, value) {
 }
 
 /**
- * Gets the current user's email address
- * @return {string} The user's email address
+ * Updates a budget value for a specific category
+ * @param {string} categoryName - Name of the category to update
+ * @param {number|string} budgetValue - New budget value
+ * @return {Object} Result with success flag
  */
-function getCurrentUserEmail() {
-  return Session.getActiveUser().getEmail();
+function updateBudgetValue(categoryName, budgetValue) {
+  try {
+    const sheet = getBudgetSheet("Budget");
+    if (!sheet) {
+      return { success: false, error: "Budget sheet not found" };
+    }
+    
+    // Get all category names
+    const categoryRange = sheet.getRange("I9:I39");
+    const categories = categoryRange.getValues();
+    
+    // Find the row index of the category
+    let rowIndex = -1;
+    for (let i = 0; i < categories.length; i++) {
+      if (categories[i][0] === categoryName) {
+        rowIndex = i + 9; // Add 9 to get the actual row number
+        break;
+      }
+    }
+    
+    if (rowIndex === -1) {
+      return { success: false, error: "Category not found" };
+    }
+    
+    // Convert the budget value to a number
+    const numericValue = parseFloat(budgetValue);
+    if (isNaN(numericValue)) {
+      return { success: false, error: "Invalid budget value" };
+    }
+    
+    // Update the budget value in column J (budgeted amount)
+    sheet.getRange(rowIndex, 10).setValue(numericValue); // Column J is index 10
+    
+    return { 
+      success: true,
+      message: "Budget updated successfully"
+    };
+  } catch (error) {
+    Logger.log("Error in updateBudgetValue: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
 }
