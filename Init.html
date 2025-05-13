@@ -1,6 +1,6 @@
 <script>
 
-    /**
+  /**
  * Init.html - Initialization script for SimBudget
  * Handles application startup, event binding, and view management
  */
@@ -10,6 +10,93 @@ var SimBudget = (function() {
   // Private variables
   let _initialized = false;
   let _currentView = 'budget';
+  
+  // Cache system for data
+  const _cache = {
+    // Cache storage with data and metadata
+    data: {
+      budget: { content: null, timestamp: null },
+      expense: { content: null, timestamp: null },
+      income: { content: null, timestamp: null },
+      recurring: { content: null, timestamp: null },
+      netWorth: { content: null, timestamp: null },
+      reports: { content: null, timestamp: null }
+    },
+    
+    // Cache configuration
+    config: {
+      // Default cache expiry time in milliseconds (5 minutes)
+      expiryTime: 5 * 60 * 1000,
+      
+      // Flags to determine if certain actions should invalidate cache
+      invalidateOnMonthYearChange: true
+    },
+    
+    // Store data in cache
+    set: function(key, data) {
+      if (!this.data[key]) return false;
+      
+      this.data[key].content = data;
+      this.data[key].timestamp = new Date().getTime();
+      return true;
+    },
+    
+    // Get data from cache if valid
+    get: function(key) {
+      const cacheEntry = this.data[key];
+      if (!cacheEntry || !cacheEntry.content) return null;
+      
+      const now = new Date().getTime();
+      if ((now - cacheEntry.timestamp) > this.config.expiryTime) {
+        // Cache expired
+        return null;
+      }
+      
+      return cacheEntry.content;
+    },
+    
+    // Check if cache for key is valid
+    isValid: function(key) {
+      return this.get(key) !== null;
+    },
+    
+    // Invalidate specific cache entries
+    invalidate: function(key) {
+      if (key && this.data[key]) {
+        this.data[key].content = null;
+        this.data[key].timestamp = null;
+      }
+    },
+    
+    // Invalidate all cache entries
+    invalidateAll: function() {
+      Object.keys(this.data).forEach(key => {
+        this.invalidate(key);
+      });
+    },
+    
+    // Invalidate related caches when a type of data is modified
+    invalidateRelated: function(key) {
+      // Define relationships between data types
+      const relationships = {
+        budget: ['reports'],
+        expense: ['budget', 'reports'],
+        income: ['budget', 'reports'],
+        recurring: ['reports'],
+        netWorth: ['reports']
+      };
+      
+      // Invalidate the primary key
+      this.invalidate(key);
+      
+      // Invalidate related keys
+      if (relationships[key]) {
+        relationships[key].forEach(relatedKey => {
+          this.invalidate(relatedKey);
+        });
+      }
+    }
+  };
   
   // Settings module
   const Settings = {
@@ -170,6 +257,11 @@ var SimBudget = (function() {
         function(result) {
           console.log('Month/year updated:', month, year);
           
+          // Invalidate budget cache when month/year changes
+          if (_cache.config.invalidateOnMonthYearChange) {
+            _cache.invalidateRelated('budget');
+          }
+          
           // Reload budget data with new month/year
           SimBudget.loadViewData('budget');
         },
@@ -233,8 +325,17 @@ var SimBudget = (function() {
       }, 250));
       
       // Set up view-specific buttons
-      document.getElementById('refreshBudget').addEventListener('click', () => this.loadViewData('budget'));
-      document.getElementById('refreshNetWorth').addEventListener('click', () => this.loadViewData('netWorth'));
+      document.getElementById('refreshBudget').addEventListener('click', () => {
+        // Force refresh by invalidating cache
+        _cache.invalidate('budget');
+        this.loadViewData('budget');
+      });
+      
+      document.getElementById('refreshNetWorth').addEventListener('click', () => {
+        // Force refresh by invalidating cache
+        _cache.invalidate('netWorth');
+        this.loadViewData('netWorth');
+      });
       
       // TODO: Set up other view-specific buttons (add expense, add income, etc.)
     },
@@ -358,6 +459,9 @@ var SimBudget = (function() {
           API.setBudgetSheetUrl(sheetUrl, 
             function() {
               Utils.showStatus('Settings saved successfully', false, document.getElementById('settingsStatus'), 3000);
+              
+              // Invalidate all caches when sheet URL changes
+              _cache.invalidateAll();
             },
             function(error) {
               Utils.showStatus('Settings saved but sheet URL could not be saved: ' + error, true, document.getElementById('settingsStatus'));
@@ -402,6 +506,9 @@ var SimBudget = (function() {
       API.verifySheetUrl(sheetUrl,
         function(result) {
           Utils.showStatus('Connection successful!', false, document.getElementById('connectionStatus'), 3000);
+          
+          // Invalidate all caches when connection changes
+          _cache.invalidateAll();
         },
         function(error) {
           Utils.showStatus('Connection failed: ' + error, true, document.getElementById('connectionStatus'));
@@ -410,10 +517,19 @@ var SimBudget = (function() {
     },
     
     /**
-     * Load data for a specific view
+     * Load data for a specific view with caching
      * @param {string} viewName - Name of the view to load
+     * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
      */
-    loadViewData: function(viewName) {
+    loadViewData: function(viewName, forceRefresh = false) {
+      // Check cache first unless force refresh is requested
+      if (!forceRefresh && _cache.isValid(viewName)) {
+        console.log(`Using cached data for ${viewName} view`);
+        this.renderViewFromCache(viewName);
+        return;
+      }
+      
+      // Otherwise load from server
       switch(viewName) {
         case 'budget':
           this.loadBudgetData();
@@ -443,6 +559,25 @@ var SimBudget = (function() {
     },
     
     /**
+     * Render view using cached data
+     * @param {string} viewName - Name of the view to render
+     */
+    renderViewFromCache: function(viewName) {
+      const cachedData = _cache.get(viewName);
+      if (!cachedData) return;
+      
+      switch(viewName) {
+        case 'budget':
+          this.renderBudgetView(cachedData);
+          break;
+        case 'expense':
+          this.renderExpenseView(cachedData);
+          break;
+        // Add cases for other views as they're implemented
+      }
+    },
+    
+    /**
      * Load budget data
      */
     loadBudgetData: function() {
@@ -453,245 +588,11 @@ var SimBudget = (function() {
       
       API.getBudgetData(
         function(result) {
-          const budget = result.budget;
+          // Cache the result
+          _cache.set('budget', result.budget);
           
-          // Update month and year selectors to match spreadsheet values
-          const monthSelector = document.getElementById('monthSelector');
-          const yearSelector = document.getElementById('yearSelector');
-          
-          if (monthSelector && budget.month) {
-            monthSelector.value = budget.month;
-          }
-          
-          if (yearSelector && budget.year) {
-            yearSelector.value = budget.year;
-          }
-          
-          // Store budget data globally for local calculations
-          SimBudget._currentBudgetData = budget;
-          
-          // Create budget summary
-          let html = `
-            <div class="budget-alerts">
-              <div id="budget-info-message" class="info-message">${budget.infoMessage || ''}</div>
-            </div>
-            
-            <div class="budget-summary">
-              <div class="budget-card">
-                <div class="budget-header">Income</div>
-                <div class="budget-amount">${Utils.formatCurrency(budget.income)}</div>
-              </div>
-              <div class="budget-card">
-                <div class="budget-header">Spent</div>
-                <div class="budget-amount">${Utils.formatCurrency(budget.spent)}</div>
-              </div>
-              <div class="budget-card">
-                <div class="budget-header">Left to Spend</div>
-                <div class="budget-amount">${Utils.formatCurrency(budget.leftToSpend)}</div>
-              </div>
-            </div>
-            
-            <div class="budget-categories">
-              <h2>Budget Categories</h2>
-              <div class="table-container">
-                <table class="budget-table">
-                  <thead>
-                    <tr>
-                      <th>Category</th>
-                      <th>Budgeted</th>
-                      <th>Actual</th>
-                      <th>Progress</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-          `;
-          
-          // Add rows for each category
-          budget.categories.forEach(function(category) {
-            const percentSpent = category.budgeted > 0 ? (category.actual / category.budgeted) * 100 : 0;
-            const progressClass = percentSpent > 100 ? 'over-budget' : (percentSpent > 80 ? 'near-limit' : '');
-            
-            html += `
-              <tr>
-                <td class="category-name">${category.name}</td>
-                <td class="budget-value" data-category="${category.name}" data-value="${category.budgeted}">${Utils.formatCurrency(category.budgeted)}</td>
-                <td class="actual-value">${Utils.formatCurrency(category.actual)}</td>
-                <td class="progress-cell">
-                  <div class="progress-bar-container">
-                    <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
-                  </div>
-                  <div class="progress-percentage">${Math.round(percentSpent)}%</div>
-                </td>
-              </tr>
-            `;
-          });
-          
-          html += `
-                </tbody>
-              </table>
-            </div>
-          `;
-          
-          // Update the budget content
-          contentArea.innerHTML = html;
-          
-          // Make the budgeted amounts editable
-          document.querySelectorAll('.budget-value').forEach(cell => {
-            cell.setAttribute('contenteditable', 'true');
-            cell.setAttribute('title', 'Click to edit budget amount');
-            cell.classList.add('editable');
-            
-            // Get the category name from data attribute
-            const categoryName = cell.dataset.category;
-            const originalValue = parseFloat(cell.dataset.value);
-            
-            // Variables for auto-save debounce
-            let saveTimeout = null;
-            let isSaving = false;
-            
-            // Handle key presses
-            cell.addEventListener('keydown', function(e) {
-              // Prevent Enter from creating a new line - just blur the field instead
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                this.blur(); 
-              }
-              
-              // Cancel on Escape key press
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                // Reset to the original formatted value
-                this.textContent = Utils.formatCurrency(originalValue);
-                this.blur();
-                
-                // Cancel any pending save
-                if (saveTimeout) {
-                  clearTimeout(saveTimeout);
-                  saveTimeout = null;
-                }
-              }
-            });
-            
-            // Validate input - allow only numbers, decimal point, and currency symbols
-            cell.addEventListener('input', function(e) {
-              // Cancel any pending save
-              if (saveTimeout) {
-                clearTimeout(saveTimeout);
-              }
-              
-              // Clean the value to show just numbers
-              const rawValue = this.textContent.replace(/[^0-9.-]+/g, '');
-              const numValue = parseFloat(rawValue);
-              
-              if (isNaN(numValue)) {
-                // Invalid input, will be corrected on blur
-                return;
-              }
-              
-              // Apply the styling to indicate editing is in progress
-              this.classList.add('editing');
-              
-              // Schedule auto-save after 1 second of no typing
-              saveTimeout = setTimeout(() => {
-                // Don't save if we're already saving
-                if (isSaving) return;
-                
-                // Get the current numeric value
-                const cleanValue = this.textContent.replace(/[^0-9.-]+/g, '');
-                const numValue = parseFloat(cleanValue);
-                
-                // Don't save if invalid number
-                if (isNaN(numValue)) {
-                  this.classList.remove('editing');
-                  return;
-                }
-                
-                // Store the current value to use in our local state update
-                const newBudgetValue = numValue;
-                
-                // Don't save if the value hasn't changed significantly (within small rounding error)
-                if (Math.abs(numValue - originalValue) < 0.001) {
-                  this.classList.remove('editing');
-                  return;
-                }
-                
-                // Indicate saving
-                isSaving = true;
-                this.classList.add('saving');
-                
-                // Format with currency symbol for display
-                this.textContent = Utils.formatCurrency(numValue);
-                
-                // Save the new value to the spreadsheet in the background
-                API.updateBudgetValue(categoryName, numValue,
-                  (result) => {
-                    // Update was successful
-                    isSaving = false;
-                    this.classList.remove('editing', 'saving');
-                    this.classList.add('saved');
-                    
-                    // Update our local data with the final value
-                    let budgetChanged = false;
-                    SimBudget._currentBudgetData.categories.forEach(cat => {
-                      if (cat.name === categoryName) {
-                        // Only mark changed if there's a significant difference
-                        if (Math.abs(cat.budgeted - newBudgetValue) > 0.001) {
-                          budgetChanged = true;
-                          cat.budgeted = newBudgetValue;
-                        }
-                      }
-                    });
-                    
-                    // Always update the info message based on local calculations
-                    if (budgetChanged) {
-                      SimBudget.updateInfoMessage(true); // Force update
-                    }
-                    
-                    // Show a subtle success indicator
-                    setTimeout(() => {
-                      this.classList.remove('saved');
-                    }, 1500);
-                  },
-                  (error) => {
-                    // Update failed
-                    isSaving = false;
-                    this.classList.remove('editing', 'saving');
-                    this.classList.add('error');
-                    
-                    // Show error toast
-                    Utils.showToast('Error updating budget: ' + error, 'error');
-                    
-                    // Remove error indicator after a delay
-                    setTimeout(() => {
-                      this.classList.remove('error');
-                    }, 1500);
-                  }
-                );
-              }, 1000); // Wait 1 second after typing stops
-            });
-            
-            // Format value on blur
-            cell.addEventListener('blur', function() {
-              // Get numeric value
-              const value = parseFloat(this.textContent.replace(/[^0-9.-]+/g, ''));
-              if (!isNaN(value)) {
-                // Format with currency symbol
-                this.textContent = Utils.formatCurrency(value);
-              } else {
-                // If not a valid number, revert to original
-                this.textContent = Utils.formatCurrency(originalValue);
-              }
-            });
-            
-            // Select all text when focused
-            cell.addEventListener('focus', function() {
-              const range = document.createRange();
-              range.selectNodeContents(this);
-              const selection = window.getSelection();
-              selection.removeAllRanges();
-              selection.addRange(range);
-            });
-          });
+          // Render the view
+          SimBudget.renderBudgetView(result.budget);
         },
         function(error) {
           contentArea.innerHTML = `
@@ -702,6 +603,266 @@ var SimBudget = (function() {
           `;
         }
       );
+    },
+    
+    /**
+     * Render budget view with provided data
+     * @param {Object} budget - Budget data to render
+     */
+    renderBudgetView: function(budget) {
+      const contentArea = document.getElementById('budgetContent');
+      
+      // Update month and year selectors to match spreadsheet values
+      const monthSelector = document.getElementById('monthSelector');
+      const yearSelector = document.getElementById('yearSelector');
+      
+      if (monthSelector && budget.month) {
+        monthSelector.value = budget.month;
+      }
+      
+      if (yearSelector && budget.year) {
+        yearSelector.value = budget.year;
+      }
+      
+      // Store budget data globally for local calculations
+      this._currentBudgetData = budget;
+      
+      // Create budget summary
+      let html = `
+        <div class="budget-alerts">
+          <div id="budget-info-message" class="info-message">${budget.infoMessage || ''}</div>
+        </div>
+        
+        <div class="budget-summary">
+          <div class="budget-card">
+            <div class="budget-header">Income</div>
+            <div class="budget-amount">${Utils.formatCurrency(budget.income)}</div>
+          </div>
+          <div class="budget-card">
+            <div class="budget-header">Spent</div>
+            <div class="budget-amount">${Utils.formatCurrency(budget.spent)}</div>
+          </div>
+          <div class="budget-card">
+            <div class="budget-header">Left to Spend</div>
+            <div class="budget-amount">${Utils.formatCurrency(budget.leftToSpend)}</div>
+          </div>
+        </div>
+        
+        <div class="budget-categories">
+          <h2>Budget Categories</h2>
+          <div class="table-container">
+            <table class="budget-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Budgeted</th>
+                  <th>Actual</th>
+                  <th>Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+      
+      // Add rows for each category
+      budget.categories.forEach(function(category) {
+        const percentSpent = category.budgeted > 0 ? (category.actual / category.budgeted) * 100 : 0;
+        const progressClass = percentSpent > 100 ? 'over-budget' : (percentSpent > 80 ? 'near-limit' : '');
+        
+        html += `
+          <tr>
+            <td class="category-name">${category.name}</td>
+            <td class="budget-value" data-category="${category.name}" data-value="${category.budgeted}">${Utils.formatCurrency(category.budgeted)}</td>
+            <td class="actual-value">${Utils.formatCurrency(category.actual)}</td>
+            <td class="progress-cell">
+              <div class="progress-bar-container">
+                <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
+              </div>
+              <div class="progress-percentage">${Math.round(percentSpent)}%</div>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      // Update the budget content
+      contentArea.innerHTML = html;
+      
+      // Make the budgeted amounts editable
+      document.querySelectorAll('.budget-value').forEach(cell => {
+        cell.setAttribute('contenteditable', 'true');
+        cell.setAttribute('title', 'Click to edit budget amount');
+        cell.classList.add('editable');
+        
+        // Get the category name from data attribute
+        const categoryName = cell.dataset.category;
+        const originalValue = parseFloat(cell.dataset.value);
+        
+        // Variables for auto-save debounce
+        let saveTimeout = null;
+        let isSaving = false;
+        
+        // Handle key presses
+        cell.addEventListener('keydown', function(e) {
+          // Prevent Enter from creating a new line - just blur the field instead
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this.blur(); 
+          }
+          
+          // Cancel on Escape key press
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            // Reset to the original formatted value
+            this.textContent = Utils.formatCurrency(originalValue);
+            this.blur();
+            
+            // Cancel any pending save
+            if (saveTimeout) {
+              clearTimeout(saveTimeout);
+              saveTimeout = null;
+            }
+          }
+        });
+        
+        // Validate input - allow only numbers, decimal point, and currency symbols
+        cell.addEventListener('input', function(e) {
+          // Cancel any pending save
+          if (saveTimeout) {
+            clearTimeout(saveTimeout);
+          }
+          
+          // Clean the value to show just numbers
+          const rawValue = this.textContent.replace(/[^0-9.-]+/g, '');
+          const numValue = parseFloat(rawValue);
+          
+          if (isNaN(numValue)) {
+            // Invalid input, will be corrected on blur
+            return;
+          }
+          
+          // Apply the styling to indicate editing is in progress
+          this.classList.add('editing');
+          
+          // Schedule auto-save after 1 second of no typing
+          saveTimeout = setTimeout(() => {
+            // Don't save if we're already saving
+            if (isSaving) return;
+            
+            // Get the current numeric value
+            const cleanValue = this.textContent.replace(/[^0-9.-]+/g, '');
+            const numValue = parseFloat(cleanValue);
+            
+            // Don't save if invalid number
+            if (isNaN(numValue)) {
+              this.classList.remove('editing');
+              return;
+            }
+            
+            // Store the current value to use in our local state update
+            const newBudgetValue = numValue;
+            
+            // Don't save if the value hasn't changed significantly (within small rounding error)
+            if (Math.abs(numValue - originalValue) < 0.001) {
+              this.classList.remove('editing');
+              return;
+            }
+            
+            // Indicate saving
+            isSaving = true;
+            this.classList.add('saving');
+            
+            // Format with currency symbol for display
+            this.textContent = Utils.formatCurrency(numValue);
+            
+            // Save the new value to the spreadsheet in the background
+            API.updateBudgetValue(categoryName, numValue,
+              (result) => {
+                // Update was successful
+                isSaving = false;
+                this.classList.remove('editing', 'saving');
+                this.classList.add('saved');
+                
+                // Update our local data with the final value
+                let budgetChanged = false;
+                SimBudget._currentBudgetData.categories.forEach(cat => {
+                  if (cat.name === categoryName) {
+                    // Only mark changed if there's a significant difference
+                    if (Math.abs(cat.budgeted - newBudgetValue) > 0.001) {
+                      budgetChanged = true;
+                      cat.budgeted = newBudgetValue;
+                    }
+                  }
+                });
+                
+                // Update cached data with the new value
+                const cachedBudget = _cache.get('budget');
+                if (cachedBudget) {
+                  cachedBudget.categories.forEach(cat => {
+                    if (cat.name === categoryName) {
+                      cat.budgeted = newBudgetValue;
+                    }
+                  });
+                  _cache.set('budget', cachedBudget);
+                }
+                
+                // Always update the info message based on local calculations
+                if (budgetChanged) {
+                  SimBudget.updateInfoMessage(true); // Force update
+                }
+                
+                // Show a subtle success indicator
+                setTimeout(() => {
+                  this.classList.remove('saved');
+                }, 1500);
+              },
+              (error) => {
+                // Update failed
+                isSaving = false;
+                this.classList.remove('editing', 'saving');
+                this.classList.add('error');
+                
+                // Invalidate cache to ensure fresh data next time
+                _cache.invalidateRelated('budget');
+                
+                // Show error toast
+                Utils.showToast('Error updating budget: ' + error, 'error');
+                
+                // Remove error indicator after a delay
+                setTimeout(() => {
+                  this.classList.remove('error');
+                }, 1500);
+              }
+            );
+          }, 1000); // Wait 1 second after typing stops
+        });
+        
+        // Format value on blur
+        cell.addEventListener('blur', function() {
+          // Get numeric value
+          const value = parseFloat(this.textContent.replace(/[^0-9.-]+/g, ''));
+          if (!isNaN(value)) {
+            // Format with currency symbol
+            this.textContent = Utils.formatCurrency(value);
+          } else {
+            // If not a valid number, revert to original
+            this.textContent = Utils.formatCurrency(originalValue);
+          }
+        });
+        
+        // Select all text when focused
+        cell.addEventListener('focus', function() {
+          const range = document.createRange();
+          range.selectNodeContents(this);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        });
+      });
     },
     
     /**
@@ -772,6 +933,13 @@ var SimBudget = (function() {
       } else {
         infoMessageElement.style.display = 'none';
       }
+      
+      // Update cached budget data with new message
+      const cachedBudget = _cache.get('budget');
+      if (cachedBudget) {
+        cachedBudget.infoMessage = message;
+        _cache.set('budget', cachedBudget);
+      }
     },
     
     /**
@@ -785,115 +953,11 @@ var SimBudget = (function() {
       
       API.getExpenseData(
         function(result) {
-          const expenses = result.expenses;
+          // Cache the result
+          _cache.set('expense', result.expenses);
           
-          // Create expense list
-          let html = `
-            <div class="expense-controls">
-              <div class="search-container">
-                <input type="text" id="expenseSearch" placeholder="Search expenses...">
-                <i class="material-icons">search</i>
-              </div>
-              <div class="filter-container">
-                <select id="categoryFilter">
-                  <option value="">All Categories</option>
-                  <!-- Categories will be added dynamically -->
-                </select>
-                <select id="dateFilter">
-                  <option value="">All Dates</option>
-                  <option value="current-month">Current Month</option>
-                  <option value="last-month">Last Month</option>
-                  <option value="last-3-months">Last 3 Months</option>
-                  <option value="current-year">Current Year</option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="expense-list">
-              <table class="expense-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-          `;
-          
-          // Add rows for each expense
-          if (expenses.length === 0) {
-            html += `
-              <tr>
-                <td colspan="5" class="no-data">No expenses found</td>
-              </tr>
-            `;
-          } else {
-            expenses.forEach(function(expense) {
-              html += `
-                <tr data-row-index="${expense.rowIndex}">
-                  <td>${Utils.formatDate(expense.date)}</td>
-                  <td>${Utils.formatCurrency(expense.amount)}</td>
-                  <td>${expense.category}</td>
-                  <td>${expense.name}</td>
-                  <td>
-                    <button class="btn icon-btn edit-expense" data-id="${expense.rowIndex}">
-                      <i class="material-icons">edit</i>
-                    </button>
-                    <button class="btn icon-btn delete-expense" data-id="${expense.rowIndex}">
-                      <i class="material-icons">delete</i>
-                    </button>
-                  </td>
-                </tr>
-              `;
-            });
-          }
-          
-          html += `
-                </tbody>
-              </table>
-            </div>
-          `;
-          
-          // Update the expense content
-          contentArea.innerHTML = html;
-          
-          // Set up the edit and delete buttons
-          document.querySelectorAll('.edit-expense').forEach(button => {
-            button.addEventListener('click', function() {
-              const rowIndex = this.getAttribute('data-id');
-              // TODO: Add edit expense functionality
-              alert('Edit expense ' + rowIndex);
-            });
-          });
-          
-          document.querySelectorAll('.delete-expense').forEach(button => {
-            button.addEventListener('click', function() {
-              const rowIndex = this.getAttribute('data-id');
-              // TODO: Add delete expense functionality
-              alert('Delete expense ' + rowIndex);
-            });
-          });
-          
-          // Set up search functionality
-          const searchInput = document.getElementById('expenseSearch');
-          if (searchInput) {
-            searchInput.addEventListener('input', Utils.debounce(function() {
-              const searchValue = this.value.toLowerCase();
-              document.querySelectorAll('.expense-table tbody tr').forEach(row => {
-                if (row.classList.contains('no-data')) return;
-                
-                const text = row.textContent.toLowerCase();
-                if (text.includes(searchValue)) {
-                  row.style.display = '';
-                } else {
-                  row.style.display = 'none';
-                }
-              });
-            }, 300));
-          }
+          // Render the expenses
+          SimBudget.renderExpenseView(result.expenses);
         },
         function(error) {
           contentArea.innerHTML = `
@@ -904,6 +968,122 @@ var SimBudget = (function() {
           `;
         }
       );
+    },
+    
+    /**
+     * Render expense view with provided data
+     * @param {Array} expenses - Expense data to render
+     */
+    renderExpenseView: function(expenses) {
+      const contentArea = document.getElementById('expenseContent');
+      
+      // Create expense list
+      let html = `
+        <div class="expense-controls">
+          <div class="search-container">
+            <input type="text" id="expenseSearch" placeholder="Search expenses...">
+            <i class="material-icons">search</i>
+          </div>
+          <div class="filter-container">
+            <select id="categoryFilter">
+              <option value="">All Categories</option>
+              <!-- Categories will be added dynamically -->
+            </select>
+            <select id="dateFilter">
+              <option value="">All Dates</option>
+              <option value="current-month">Current Month</option>
+              <option value="last-month">Last Month</option>
+              <option value="last-3-months">Last 3 Months</option>
+              <option value="current-year">Current Year</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="expense-list">
+          <table class="expense-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      // Add rows for each expense
+      if (expenses.length === 0) {
+        html += `
+          <tr>
+            <td colspan="5" class="no-data">No expenses found</td>
+          </tr>
+        `;
+      } else {
+        expenses.forEach(function(expense) {
+          html += `
+            <tr data-row-index="${expense.rowIndex}">
+              <td>${Utils.formatDate(expense.date)}</td>
+              <td>${Utils.formatCurrency(expense.amount)}</td>
+              <td>${expense.category}</td>
+              <td>${expense.name}</td>
+              <td>
+                <button class="btn icon-btn edit-expense" data-id="${expense.rowIndex}">
+                  <i class="material-icons">edit</i>
+                </button>
+                <button class="btn icon-btn delete-expense" data-id="${expense.rowIndex}">
+                  <i class="material-icons">delete</i>
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+      }
+      
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      // Update the expense content
+      contentArea.innerHTML = html;
+      
+      // Set up the edit and delete buttons
+      document.querySelectorAll('.edit-expense').forEach(button => {
+        button.addEventListener('click', function() {
+          const rowIndex = this.getAttribute('data-id');
+          // TODO: Add edit expense functionality
+          alert('Edit expense ' + rowIndex);
+        });
+      });
+      
+      document.querySelectorAll('.delete-expense').forEach(button => {
+        button.addEventListener('click', function() {
+          const rowIndex = this.getAttribute('data-id');
+          // TODO: Add delete expense functionality
+          alert('Delete expense ' + rowIndex);
+        });
+      });
+      
+      // Set up search functionality
+      const searchInput = document.getElementById('expenseSearch');
+      if (searchInput) {
+        searchInput.addEventListener('input', Utils.debounce(function() {
+          const searchValue = this.value.toLowerCase();
+          document.querySelectorAll('.expense-table tbody tr').forEach(row => {
+            if (row.classList.contains('no-data')) return;
+            
+            const text = row.textContent.toLowerCase();
+            if (text.includes(searchValue)) {
+              row.style.display = '';
+            } else {
+              row.style.display = 'none';
+            }
+          });
+        }, 300));
+      }
     }
   };
 })();

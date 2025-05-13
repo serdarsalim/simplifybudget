@@ -320,13 +320,13 @@ function getBudgetData() {
     const infoMessage = sheet.getRange("H6").getValue();
     
     // Get month and year
-    const month = sheet.getRange("C6").getValue();
-    const year = sheet.getRange("E6").getValue();
+    const month = sheet.getRange("C1").getValue();
+    const year = sheet.getRange("E1").getValue();
     
     // Get financial summary
-    const income = sheet.getRange("C10").getValue();
-    const spent = sheet.getRange("D10").getValue();
-    const leftToSpend = sheet.getRange("E10").getValue();
+    const income = sheet.getRange("C7").getValue();
+    const spent = sheet.getRange("D7").getValue();
+    const leftToSpend = sheet.getRange("E7").getValue();
     
     // Get category data (names, budgeted, actual spending)
     const categoryNames = sheet.getRange("I9:I39").getValues();
