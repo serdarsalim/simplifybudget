@@ -14,7 +14,7 @@
     
     <!-- Include the new dashboard styles -->
     <style>
-      <?!= include('BudgetDashboardStyles'); ?>
+      <?!= include('dashboard.css'); ?>
     </style>
     
     <title>SimBudget</title>
@@ -27,7 +27,7 @@
       <!-- MAIN CONTENT AREA -->
       <div id="contentArea" class="content-area">
         <!-- Default content on load - Budget View -->
-        <?!= include('BudgetDashboardHTML'); ?>
+        <?!= include('dashboard.html'); ?>
         
         <!-- Expense View - Initially Hidden -->
         <div id="expenseView" class="view">
@@ -126,7 +126,7 @@
     <?!= include('API'); ?>
     <?!= include('Utils'); ?>
     <?!= include('Init'); ?>
-    <?!= include('BudgetDashboardJS'); ?>
+    <?!= include('dashboard.js'); ?>
     <script>
       // Main entry point - Initialize the application
       document.addEventListener('DOMContentLoaded', function() {

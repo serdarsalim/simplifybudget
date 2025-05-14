@@ -2,30 +2,19 @@
  <div id="dashboard-load-test" style="display:none;">Dashboard HTML loaded</div>
 <div id="budgetView" class="view active-view">
   <div class="view-header">
-            <h1><i class="material-icons">account_balance_wallet</i> Budget Overview</h1>
-            <div class="month-year-selector">
-        <select id="monthSelector" class="month-select">
-          <option value="January">January</option>
-          <option value="February">February</option>
-          <option value="March">March</option>
-          <option value="April">April</option>
-          <option value="May">May</option>
-          <option value="June">June</option>
-          <option value="July">July</option>
-          <option value="August">August</option>
-          <option value="September">September</option>
-          <option value="October">October</option>
-          <option value="November">November</option>
-          <option value="December">December</option>
-        </select>
-        </select>
-        <select id="yearSelector" class="year-select">
-          <!-- Will be populated dynamically -->
-        </select>
-        <button id="refreshBudget" class="btn icon-btn" title="Refresh Budget Data">
-          <i class="material-icons">refresh</i>
-        </button>
-      </div>
+            <h1><i class="material-icons">account_balance_wallet</i> Budget Dashboard</h1>
+           <div class="month-year-selector">
+  <select id="monthSelector" class="month-select">
+    <!-- Will be populated dynamically -->
+  </select>
+  <!-- Remove the extra closing tag -->
+  <select id="yearSelector" class="year-select">
+    <!-- Will be populated dynamically -->
+  </select>
+  <button id="refreshBudget" class="btn icon-btn" title="Refresh Budget Data">
+    <i class="material-icons">refresh</i>
+  </button>
+</div>
   </div><!-- End of view-header -->
   
   <div id="budgetContent" class="view-content">
@@ -104,10 +93,9 @@
       <div class="col-right">
         <!-- Top: Subscription Summary Card -->
         <div class="dashboard-card subscription-summary">
-          <span class="subscription-icon material-icons">sync</span>
-          <div class="subscription-total">0€ for 0 payments</div>
-          <div class="subscription-percentage">0% of income</div>
-        </div>
+    <div class="subscription-info">
+    </div>
+</div>
         
         <!-- Bottom: Subscription List Card -->
         <div class="dashboard-card subscription-list-card">

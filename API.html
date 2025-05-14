@@ -1,7 +1,7 @@
-<script>
-/**
+<script>/**
  * API.html - API abstraction layer for SimBudget
  * Creates a clean interface between UI and server code
+ * Rewritten for modular loading approach
  */
 
 // SimBudget API namespace
@@ -208,169 +208,6 @@ var API = (function() {
     },
     
     /**
-     * Get budget data
-     * @param {Function} successCallback - Called on success with budget data
-     * @param {Function} errorCallback - Called on error
-     */
-    getBudgetData: function(successCallback, errorCallback) {
-      try {
-        google.script.run
-          .withSuccessHandler(function(result) {
-            if (result && result.success) {
-              successCallback(result);
-            } else {
-              _lastError = result && result.error ? result.error : "Unknown error";
-              errorCallback(_lastError);
-            }
-          })
-          .withFailureHandler(function(error) {
-            _lastError = error;
-            errorCallback(error);
-          })
-          .getBudgetData();
-      } catch (e) {
-        _lastError = e.message || String(e);
-        errorCallback(_lastError);
-      }
-    },
-    
-    /**
-     * Get expense data
-     * @param {Function} successCallback - Called on success with expense data
-     * @param {Function} errorCallback - Called on error
-     */
-    getExpenseData: function(successCallback, errorCallback) {
-      try {
-        google.script.run
-          .withSuccessHandler(function(result) {
-            if (result && result.success) {
-              successCallback(result);
-            } else {
-              _lastError = result && result.error ? result.error : "Unknown error";
-              errorCallback(_lastError);
-            }
-          })
-          .withFailureHandler(function(error) {
-            _lastError = error;
-            errorCallback(error);
-          })
-          .getExpenseData();
-      } catch (e) {
-        _lastError = e.message || String(e);
-        errorCallback(_lastError);
-      }
-    },
-    
-/**
- * Get net worth data
- * @param {Function} successCallback - Called on success with net worth data
- * @param {Function} errorCallback - Called on error
- */
-getNetWorthData: function(successCallback, errorCallback) {
-  try {
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          successCallback(result);
-        } else {
-          _lastError = result && result.error ? result.error : "Unknown error";
-          errorCallback(_lastError);
-        }
-      })
-      .withFailureHandler(function(error) {
-        _lastError = error;
-        errorCallback(error);
-      })
-      .getNetWorthData();
-  } catch (e) {
-    _lastError = e.message || String(e);
-    errorCallback(_lastError);
-  }
-},
-
-/**
- * Get subscription data
- * @param {Function} successCallback - Called on success with subscription data
- * @param {Function} errorCallback - Called on error
- */
-getSubscriptionData: function(successCallback, errorCallback) {
-  try {
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          successCallback(result);
-        } else {
-          _lastError = result && result.error ? result.error : "Unknown error";
-          errorCallback(_lastError);
-        }
-      })
-      .withFailureHandler(function(error) {
-        _lastError = error;
-        errorCallback(error);
-      })
-      .getSubscriptionData();
-  } catch (e) {
-    _lastError = e.message || String(e);
-    errorCallback(_lastError);
-  }
-},
-
-/**
- * Get all dashboard data in a single call
- * @param {Function} successCallback - Called on success with all dashboard data
- * @param {Function} errorCallback - Called on error
- */
-getDashboardData: function(successCallback, errorCallback) {
-  try {
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          successCallback(result);
-        } else {
-          _lastError = result && result.error ? result.error : "Unknown error";
-          errorCallback(_lastError);
-        }
-      })
-      .withFailureHandler(function(error) {
-        _lastError = error;
-        errorCallback(error);
-      })
-      .getDashboardData();
-  } catch (e) {
-    _lastError = e.message || String(e);
-    errorCallback(_lastError);
-  }
-},
-
-    /**
-     * Save expense
-     * @param {Object} expense - The expense data to save
-     * @param {Function} successCallback - Called on success
-     * @param {Function} errorCallback - Called on error
-     */
-    saveExpense: function(expense, successCallback, errorCallback) {
-      try {
-        google.script.run
-          .withSuccessHandler(function(result) {
-            if (result && result.success) {
-              successCallback(result);
-            } else {
-              _lastError = result && result.error ? result.error : "Unknown error";
-              errorCallback(_lastError);
-            }
-          })
-          .withFailureHandler(function(error) {
-            _lastError = error;
-            errorCallback(error);
-          })
-          .saveExpense(expense);
-      } catch (e) {
-        _lastError = e.message || String(e);
-        errorCallback(_lastError);
-      }
-    },
-    
-    /**
      * Update budget value for a category
      * @param {string} categoryName - Name of the category
      * @param {number|string} budgetValue - New budget value
@@ -400,16 +237,99 @@ getDashboardData: function(successCallback, errorCallback) {
     },
     
     /**
+     * Save expense
+     * @param {Object} expense - The expense data to save
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    saveExpense: function(expense, successCallback, errorCallback) {
+      try {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              _lastError = result && result.error ? result.error : "Unknown error";
+              errorCallback(_lastError);
+            }
+          })
+          .withFailureHandler(function(error) {
+            _lastError = error;
+            errorCallback(error);
+          })
+          .saveExpense(expense);
+      } catch (e) {
+        _lastError = e.message || String(e);
+        errorCallback(_lastError);
+      }
+    },
+    
+    
+
+/**
+ * Get all dashboard data in a single call
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+getDashboardData: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getDashboardData();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+
+    
+    /**
+     * Get expense data
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    getExpenseData: function(successCallback, errorCallback) {
+      try {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              _lastError = result && result.error ? result.error : "Unknown error";
+              errorCallback(_lastError);
+            }
+          })
+          .withFailureHandler(function(error) {
+            _lastError = error;
+            errorCallback(error);
+          })
+          .getExpenseData();
+      } catch (e) {
+        _lastError = e.message || String(e);
+        errorCallback(_lastError);
+      }
+    },
+    
+    /**
      * Gets the last error that occurred in any API call
      * @return {string} Last error message
      */
     getLastError: function() {
       return _lastError;
     }
-
-
-
-    
   };
 })();
+
 </script>

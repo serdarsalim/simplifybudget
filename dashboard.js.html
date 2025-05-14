@@ -1,0 +1,654 @@
+<script>
+
+
+// Add this SaveQueue implementation at the beginning of BudgetDashboardJS.html
+// This creates a queue system to handle sequential save operations
+
+/**
+ * SaveQueue - Manages sequential saving of budget values
+ * Prevents race conditions when multiple values are changed quickly
+ */
+const SaveQueue = (function() {
+  // Private variables
+  let _queue = [];
+  let _isProcessing = false;
+  
+  // Process the next item in the queue
+  function processNextItem() {
+    if (_queue.length === 0) {
+      _isProcessing = false;
+      return;
+    }
+    
+    _isProcessing = true;
+    const nextItem = _queue.shift();
+    
+    // Call the API to save the value
+    API.updateBudgetValue(
+      nextItem.categoryName, 
+      nextItem.value,
+      (result) => {
+        // Success callback
+        try {
+          // Call the original success callback
+          if (nextItem.onSuccess) {
+            nextItem.onSuccess(result);
+          }
+        } finally {
+          // Process the next item in the queue, even if callback throws an error
+          setTimeout(processNextItem, 50);
+        }
+      },
+      (error) => {
+        // Error callback
+        try {
+          // Call the original error callback
+          if (nextItem.onError) {
+            nextItem.onError(error);
+          }
+        } finally {
+          // Continue processing the queue even if there was an error
+          setTimeout(processNextItem, 50);
+        }
+      }
+    );
+  }
+  
+  // Public methods
+  return {
+    /**
+     * Add a save operation to the queue
+     * @param {string} categoryName - Name of the budget category
+     * @param {number} value - New budget value
+     * @param {Function} onSuccess - Success callback
+     * @param {Function} onError - Error callback
+     */
+    add: function(categoryName, value, onSuccess, onError) {
+      // Add to the queue
+      _queue.push({
+        categoryName: categoryName,
+        value: value,
+        onSuccess: onSuccess,
+        onError: onError,
+        timestamp: Date.now()
+      });
+      
+      // Start processing if not already processing
+      if (!_isProcessing) {
+        processNextItem();
+      }
+    },
+    
+    /**
+     * Cancel pending operations for a category
+     * @param {string} categoryName - Name of the budget category to cancel
+     */
+    cancelCategory: function(categoryName) {
+      _queue = _queue.filter(item => item.categoryName !== categoryName);
+    },
+    
+    /**
+     * Check if there are pending saves
+     * @return {boolean} True if queue is not empty
+     */
+    hasPendingSaves: function() {
+      return _queue.length > 0;
+    }
+  };
+})();
+
+
+/**
+ * Budget Dashboard JavaScript - Render functions for the 3-column dashboard
+ */
+
+// Extend the SimBudget namespace with dashboard-specific functions
+(function() {
+
+  // Get emoji from category name
+  function getEmoji(categoryName) {
+    const match = categoryName.match(/\p{Emoji}/u);
+    return match ? match[0] : '📊';
+  }
+  
+  // Get color from category name
+  function getCategoryColor(categoryName) {
+    return categoryColors[categoryName] || '#9e9e9e'; // Default gray if not found
+  }
+  
+    // Render the budget dashboard
+  /**
+   * Render the budget dashboard with modular data
+   * @param {Object} data - Combined dashboard data from all modules
+   */
+  SimBudget.renderBudgetDashboard = function(data) {
+    console.log("Rendering modular budget dashboard");
+  
+  // CRITICAL FIX: Only remove the loading overlay, not the entire content
+  const contentArea = document.getElementById('budgetContent');
+  if (contentArea) {
+    // Just remove the loading overlay
+    const overlay = contentArea.querySelector('.loading-overlay');
+    if (overlay) {
+      console.log("Removing loading overlay");
+      overlay.remove();
+    }
+    
+    // Restore full opacity to dashboard container
+    const dashboardContainer = contentArea.querySelector('.dashboard-container');
+    if (dashboardContainer) {
+      dashboardContainer.style.opacity = '1';
+    }
+  }
+  
+  // Store categories for reference
+  if (data.categories) {
+    SimBudget._currentBudgetData = {
+      categories: data.categories,
+      income: data.summary ? data.summary.income : 0
+    };
+  }
+  
+  try {
+    // 1. RENDER HEADER (MONTH & YEAR)
+    if (data.header) {
+      const monthSelector = document.getElementById('monthSelector');
+      const yearSelector = document.getElementById('yearSelector');
+      
+      // Set values without triggering change events
+      // Values are updated directly - event handlers are already detached by loadBudgetData
+      if (monthSelector && data.header.month) {
+        monthSelector.value = data.header.month;
+      }
+      
+      if (yearSelector && data.header.year) {
+        yearSelector.value = data.header.year.toString();
+      }
+    }
+    
+    // 2. RENDER FINANCIAL SUMMARY
+    if (data.summary) {
+      const incomeElement = document.getElementById('income-value');
+      const spentElement = document.getElementById('spent-value');
+      const leftToSpendElement = document.getElementById('left-to-spend-value');
+      
+      if (incomeElement) incomeElement.textContent = Utils.formatCurrencyNoDecimals(data.summary.income || 0);
+      if (spentElement) spentElement.textContent = Utils.formatCurrencyNoDecimals(data.summary.spent || 0);
+      if (leftToSpendElement) leftToSpendElement.textContent = Utils.formatCurrencyNoDecimals(data.summary.leftToSpend || 0);
+      
+      // Update budget alert
+      const budgetAlert = document.getElementById('budget-alert');
+      if (budgetAlert) {
+        budgetAlert.textContent = data.summary.infoMessage || '';
+        
+        // Clear existing alert classes
+        budgetAlert.className = 'budget-alert';
+        
+        // Add appropriate class based on message content
+        if (data.summary.infoMessage) {
+          if (data.summary.infoMessage.includes('exceeding income')) {
+            budgetAlert.classList.add('warning');
+          } else if (data.summary.infoMessage.includes('perfectly matches')) {
+            budgetAlert.classList.add('success');
+          } else if (data.summary.infoMessage.includes('left to allocate')) {
+            budgetAlert.classList.add('info');
+          }
+        }
+      }
+    }
+    
+    // 3. RENDER NET WORTH
+    if (data.netWorth) {
+      const netWorthElement = document.getElementById('net-worth-value');
+      const savingsElement = document.getElementById('savings-value');
+      const debtsElement = document.getElementById('debts-value');
+      
+      if (netWorthElement) netWorthElement.textContent = Utils.formatCurrencyNoDecimals(data.netWorth.total || 0);
+      if (savingsElement) savingsElement.textContent = Utils.formatCurrencyNoDecimals(data.netWorth.savings || 0);
+      if (debtsElement) debtsElement.textContent = Utils.formatCurrencyNoDecimals(data.netWorth.debts || 0);
+    }
+    
+    // 4. RENDER CATEGORIES
+    if (data.categories && data.categories.length > 0) {
+      const categoriesBody = document.getElementById('budget-categories-body');
+      if (categoriesBody) {
+        categoriesBody.innerHTML = '';
+        
+        data.categories.forEach(category => {
+          const percentSpent = category.budgeted > 0 ? (category.actual / category.budgeted) * 100 : 0;
+          const progressClass = percentSpent > 100 ? 'over-budget' : (percentSpent > 80 ? 'near-limit' : '');
+          
+          // Create row
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td class="category-name">${category.name}</td>
+            <td class="budget-value" data-category="${category.name}" data-value="${category.budgeted}">${Utils.formatCurrency(category.budgeted)}</td>
+            <td class="actual-value">${Utils.formatCurrency(category.actual)}</td>
+            <td class="progress-cell">
+              <div class="progress-bar-container">
+                <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
+              </div>
+              <div class="progress-percentage">${Math.round(percentSpent)}%</div>
+            </td>
+          `;
+      
+          categoriesBody.appendChild(row);
+        });
+        
+        // Make budget values editable in the next animation frame
+        window.requestAnimationFrame(function() {
+          if (typeof SimBudget.makeEditableBudgetValues === 'function') {
+            try {
+              SimBudget.makeEditableBudgetValues();
+            } catch (error) {
+              console.error("Error making budget values editable:", error);
+            }
+          }
+        });
+      }
+    }
+    
+    // 5. RENDER SUBSCRIPTIONS
+    if (data.subscriptions) {
+      try {
+        // 5.1 Update subscription summary
+        const subscriptionInfo = document.querySelector('.subscription-info');
+        if (subscriptionInfo) {
+          subscriptionInfo.innerHTML = data.subscriptions.summaryText || 
+            `${data.subscriptions.count} subscriptions · ${Utils.formatCurrencyNoDecimals(data.subscriptions.total)} / month`;
+        }
+        
+        // 5.2 Render subscription list
+        const subscriptionBody = document.getElementById('subscription-list-body');
+        if (subscriptionBody) {
+          subscriptionBody.innerHTML = '';
+          
+          if (data.subscriptions.items && data.subscriptions.items.length > 0) {
+            data.subscriptions.items.forEach(subscription => {
+              const row = document.createElement('tr');
+              row.innerHTML = `
+                <td>${subscription.id}</td>
+                <td>${subscription.name || ''}</td>
+                <td class="amount-column">${Utils.formatCurrency(subscription.amount)}</td>
+                <td>${subscription.nextDate || ''}</td>
+              `;
+              subscriptionBody.appendChild(row);
+            });
+          }
+        }
+      } catch (subError) {
+        console.error("Error rendering subscriptions:", subError);
+      }
+    }
+    
+    // 6. RENDER CHART (After small delay to ensure DOM is ready)
+    setTimeout(function() {
+      try {
+        if (typeof SimBudget.renderExpenseChart === 'function' && data.categories) {
+          SimBudget.renderExpenseChart(data.categories);
+        }
+      } catch (chartError) {
+        console.error("Error rendering expense chart:", chartError);
+      }
+    }, 200);
+    
+    console.log("Budget dashboard rendering completed successfully");
+  } catch (error) {
+    console.error("Error rendering budget dashboard:", error);
+  }
+};
+
+
+/**
+ * Updates the progress bar for a budget category immediately
+ * @param {string} categoryName - The category to update
+ * @param {number} newBudgetValue - The new budget value
+ */
+SimBudget.updateProgressBar = function(categoryName, newBudgetValue) {
+  // Find the row for this category
+  const rows = document.querySelectorAll('.budget-table tr');
+  rows.forEach(row => {
+    const categoryCell = row.querySelector('.category-name');
+    if (categoryCell && categoryCell.textContent === categoryName) {
+      // Get the actual value
+      const actualValue = parseFloat(row.querySelector('.actual-value').textContent.replace(/[^0-9.-]+/g, ''));
+      
+      // Calculate new percentage
+      const newPercentage = newBudgetValue > 0 ? (actualValue / newBudgetValue) * 100 : 0;
+      const progressClass = newPercentage > 100 ? 'over-budget' : (newPercentage > 80 ? 'near-limit' : '');
+      
+      // Update progress bar
+      const progressBar = row.querySelector('.progress-bar');
+      if (progressBar) {
+        progressBar.style.width = Math.min(newPercentage, 100) + '%';
+        
+        // Update classes for color
+        progressBar.classList.remove('over-budget', 'near-limit');
+        if (progressClass) {
+          progressBar.classList.add(progressClass);
+        }
+      }
+      
+      // Update percentage text
+      const percentageText = row.querySelector('.progress-percentage');
+      if (percentageText) {
+        percentageText.textContent = Math.round(newPercentage) + '%';
+      }
+    }
+  });
+};
+ 
+// Update SimBudget.makeEditableBudgetValues to use the SaveQueue
+SimBudget.makeEditableBudgetValues = function() {
+  // This function will contain the same code that currently makes budget values editable
+  document.querySelectorAll('.budget-value').forEach(cell => {
+    cell.setAttribute('contenteditable', 'true');
+    cell.setAttribute('title', 'Click to edit budget amount');
+    cell.classList.add('editable');
+    
+    // Get the category name from data attribute
+    const categoryName = cell.dataset.category;
+    const originalValue = parseFloat(cell.dataset.value);
+    
+    // Variables for auto-save debounce
+    let saveTimeout = null;
+    let isSaving = false;
+    let currentEditValue = null;
+    
+    // Handle key presses
+    cell.addEventListener('keydown', function(e) {
+      // Prevent Enter from creating a new line - just blur the field instead
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.blur(); 
+      }
+      
+      // Cancel on Escape key press
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // Reset to the original formatted value
+        this.textContent = Utils.formatCurrency(originalValue);
+        this.blur();
+        
+        // Cancel any pending save
+        if (saveTimeout) {
+          clearTimeout(saveTimeout);
+          saveTimeout = null;
+        }
+        
+        // Cancel any pending save in the queue
+        SaveQueue.cancelCategory(categoryName);
+      }
+    });
+    
+    // Validate input and handle auto-save
+    cell.addEventListener('input', function(e) {
+  // Cancel any pending save
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+  
+  // Clean the value to show just numbers
+  const rawValue = this.textContent.replace(/[^0-9.-]+/g, '');
+  const numValue = parseFloat(rawValue);
+  
+  if (isNaN(numValue)) {
+    // Invalid input, will be corrected on blur
+    return;
+  }
+
+  // Apply the styling to indicate editing is in progress
+  this.classList.add('editing');
+  
+  // Store the current edit value
+  currentEditValue = numValue;
+
+  // Update progress bar immediately with the new value
+  SimBudget.updateProgressBar(categoryName, numValue);
+  
+
+      
+      // Schedule auto-save after 1 second of no typing
+      saveTimeout = setTimeout(() => {
+        // Get the final numeric value after timeout
+        const cleanValue = this.textContent.replace(/[^0-9.-]+/g, '');
+        const finalValue = parseFloat(cleanValue);
+        
+        // Don't save if invalid number
+        if (isNaN(finalValue)) {
+          this.classList.remove('editing');
+          return;
+        }
+        
+        // Don't save if the value hasn't changed significantly (within small rounding error)
+        const currentDisplayedValue = parseFloat(this.dataset.value);
+            if (Math.abs(finalValue - currentDisplayedValue) < 0.001) {
+            this.classList.remove('editing');
+            return;
+    }
+        
+        // Indicate saving
+        isSaving = true;
+        this.classList.add('saving');
+        
+        // Format with currency symbol for display
+        this.textContent = Utils.formatCurrency(finalValue);
+        
+        // KEY CHANGE: Use the SaveQueue instead of directly calling API
+        SaveQueue.add(
+          categoryName,
+          finalValue,
+          (result) => {
+            // Update was successful
+            isSaving = false;
+            cell.classList.remove('editing', 'saving');
+            cell.classList.add('saved');
+             cell.dataset.value = finalValue;
+            // Update our local data with the final value
+            let budgetChanged = false;
+            SimBudget._currentBudgetData.categories.forEach(cat => {
+              if (cat.name === categoryName) {
+                // Only mark changed if there's a significant difference
+                if (Math.abs(cat.budgeted - finalValue) > 0.001) {
+                  budgetChanged = true;
+                  cat.budgeted = finalValue;
+                }
+              }
+            });
+            
+            // Update cached data too
+            if (window._dataCache && window._dataCache.budget && window._dataCache.budget.budget) {
+              window._dataCache.budget.budget.categories.forEach(cat => {
+                if (cat.name === categoryName) {
+                  cat.budgeted = finalValue;
+                }
+              });
+            }
+            
+            // Always update the info message based on local calculations
+            SimBudget.updateInfoMessage(true); // Force update
+            
+            // Rerender the chart to reflect the changes
+            SimBudget.renderExpenseChart(SimBudget._currentBudgetData.categories);
+            
+            // Show a subtle success indicator
+            setTimeout(() => {
+              cell.classList.remove('saved');
+            }, 1500);
+          },
+          (error) => {
+            // Update failed
+            isSaving = false;
+            cell.classList.remove('editing', 'saving');
+            cell.classList.add('error');
+            
+            // Revert to original value
+            cell.textContent = Utils.formatCurrency(originalValue);
+            
+            // Show error toast
+            Utils.showToast('Error updating budget: ' + error, 'error');
+            
+            // Remove error indicator after a delay
+            setTimeout(() => {
+              cell.classList.remove('error');
+            }, 1500);
+          }
+        );
+      }, 1000); // Wait 1 second after typing stops
+    });
+    
+    // Format value on blur
+    cell.addEventListener('blur', function() {
+      // Get numeric value
+      const value = parseFloat(this.textContent.replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(value)) {
+        // Format with currency symbol
+        this.textContent = Utils.formatCurrency(value);
+      } else {
+        // If not a valid number, revert to original
+        this.textContent = Utils.formatCurrency(originalValue);
+      }
+    });
+    
+    // Select all text when focused
+    cell.addEventListener('focus', function() {
+      const range = document.createRange();
+      range.selectNodeContents(this);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+  });
+};
+
+/**
+ * Minimal implementation of expense chart to prevent errors
+ * @param {Array} categories - Budget categories data
+ */
+SimBudget.renderExpenseChart = function(categories) {
+  const canvas = document.getElementById('expense-donut-chart');
+  if (!canvas) return;
+  
+  // Check if Chart.js is available
+  if (typeof Chart === 'undefined') {
+    console.log("Chart.js not available, skipping chart render");
+    return;
+  }
+  
+  // Clear any existing chart
+  if (SimBudget._expenseChart) {
+    SimBudget._expenseChart.destroy();
+  }
+  
+  // Predefined palette of 30 matte colors in orange/yellow/warm tones
+  // These colors form a cohesive palette but are still distinguishable
+  const colorPalette = [
+    '#FF9A76', // Warm orange
+    '#FFEADB', // Light peach
+    '#F7C5A8', // Pale apricot
+    '#E3B587', // Light tan
+    '#D4A276', // Medium tan
+    '#C68B59', // Warm tan
+    '#B87A3D', // Amber
+    '#A96A20', // Dark amber
+    '#FFC288', // Light orange
+    '#FFB347', // Medium orange
+    '#FFA500', // Standard orange
+    '#FF8C00', // Dark orange
+    '#F4A460', // Sandy brown
+    '#E2A76F', // Medium sandy brown
+    '#D2B48C', // Tan
+    '#C39953', // Gold-tan
+    '#B58A3F', // Golden brown
+    '#DAA520', // Goldenrod
+    '#FFD700', // Gold
+    '#FFDF00', // Golden yellow
+    '#F0E68C', // Khaki
+    '#EEE8AA', // Pale goldenrod
+    '#E6C35C', // Dark khaki gold
+    '#D8BFD8', // Light warm purple
+    '#DFB8AC', // Beige-pink
+    '#E3A587', // Light copper
+    '#D49A6A', // Medium copper
+    '#CD853F', // Peru (brownish orange)
+    '#BE7F51', // Medium brown
+    '#A67B5B'  // Warm beige-brown
+  ];
+  
+  // Get data for chart and assign colors from palette
+  const chartData = categories
+    .filter(cat => cat.budgeted > 0)
+    .map((cat, index) => ({
+      label: cat.name,
+      value: cat.budgeted,
+      color: colorPalette[index % colorPalette.length] // Cycle through colors if more than 30 categories
+    }));
+  
+  if (chartData.length === 0) return;
+  
+  // Calculate total budget for percentages
+  const totalBudget = chartData.reduce((sum, item) => sum + item.value, 0);
+  
+  // Create simple chart
+  const ctx = canvas.getContext('2d');
+  SimBudget._expenseChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: chartData.map(item => item.label),
+      datasets: [{
+        data: chartData.map(item => item.value),
+        backgroundColor: chartData.map(item => item.color),
+        borderWidth: 1,
+        borderColor: '#ffffff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '70%', // Slightly larger hole for better donut look
+      plugins: {
+        legend: {
+          display: false, // Hide the legend completely as requested
+        },
+        tooltip: {
+          callbacks: {
+            // Customize tooltip to show name and percentage
+            label: function(context) {
+              const value = context.raw;
+              const percentage = ((value / totalBudget) * 100).toFixed(1);
+              const formattedValue = Utils.formatCurrency(value);
+              return `${context.label}: ${formattedValue} (${percentage}%)`;
+            }
+          },
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          padding: 12,
+          titleFont: {
+            size: 14,
+            weight: 'bold'
+          },
+          bodyFont: {
+            size: 13
+          },
+          cornerRadius: 4,
+          displayColors: true, // Show color boxes in tooltip
+          boxWidth: 12,
+          boxHeight: 12,
+          boxPadding: 3
+        }
+      },
+      // Add hover effect to make segments pop out slightly
+      hover: {
+        mode: 'nearest',
+        intersect: true
+      },
+      animation: {
+        animateScale: true,
+        animateRotate: true
+      }
+    }
+  });
+};
+
+})();
+
+</script>

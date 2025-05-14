@@ -1,37 +1,9 @@
 // Code.gs - Server-side logic for SimBudget
+// Rewritten for modular data loading
 
 /**
  * SimBudget - Google Sheets Budget Management App
- * Built on the Architecture of WriteAway CMS
- * 
- * Main server-side script file for SimBudget
- */
-
-/** 
- * Core function list:
- * onOpen() - Creates custom menu when spreadsheet is opened
- * doGet() - Returns HTML service for webapp UI
- * include() - Includes HTML template by file name
- * getSheetByStoredIds() - Gets sheet using stored spreadsheet and sheet IDs
- * setBudgetSheetUrl() - Sets the budget sheet URL for the current session
- * parseSheetUrl() - Parses Google Sheet URL to extract IDs
- * verifySheetUrl() - Verifies Google Sheet URL and extracts IDs
- * getBudgetData() - Gets budget summary data
- * getExpenseData() - Gets expense transaction data
- * getIncomeData() - Gets income transaction data
- * getNetWorthData() - Gets net worth data
- * getRecurringData() - Gets recurring payments data
- * saveExpense() - Saves an expense with account balance adjustment
- * saveIncome() - Saves income with account balance adjustment
- * setCurrentMonthYear() - Sets the current month and year in the budget sheet
- * setMonthYear() - Sets specific month and year in the budget sheet
- * 
- * // Utility functions
- * getUserCredentials() - Retrieves user credentials from UserProperties
- * setUserProperty() - Sets a user property
- * getCurrentUserEmail() - Gets current user's email address
- * formatCurrency() - Formats number as currency
- * testServerConnection() - Tests server communication
+ * Built on a modular architecture for improved performance
  */
 
 /**
@@ -306,102 +278,113 @@ function setMonthYear(month, year) {
 }
 
 /**
- * Get budget summary data
- * @return {Object} Budget data including totals and categories
+ * Get user credentials
+ * @return {Object} User credentials
  */
-function getBudgetData() {
+function getUserCredentials() {
   try {
-    const sheet = getBudgetSheet("Budget");
-    if (!sheet) {
-      return { success: false, error: "Budget sheet not found" };
-    }
-
-    // Get the info/alert message from H6:L7
-    const infoMessage = sheet.getRange("H6").getValue();
-    
-    // Get month and year
-    const month = sheet.getRange("C1").getValue();
-    const year = sheet.getRange("E1").getValue();
-    
-    // Get financial summary
-    const income = sheet.getRange("C7").getValue();
-    const spent = sheet.getRange("D7").getValue();
-    const leftToSpend = sheet.getRange("E7").getValue();
-    
-    // Get category data (names, budgeted, actual spending)
-    const categoryNames = sheet.getRange("I9:I39").getValues();
-    const budgetedAmounts = sheet.getRange("J9:J39").getValues();
-    const actualSpending = sheet.getRange("K9:K39").getValues();
-    
-    // Combine into category objects
-    const categories = [];
-    for (let i = 0; i < categoryNames.length; i++) {
-      const categoryName = categoryNames[i][0];
-      
-      // Only include non-empty categories
-      if (categoryName) {
-        categories.push({
-          name: categoryName,
-          budgeted: budgetedAmounts[i][0] || 0,
-          actual: actualSpending[i][0] || 0
-        });
-      }
-    }
+    const props = PropertiesService.getUserProperties();
     
     return {
       success: true,
-      budget: {
-        month: month,
-        year: year,
-        income: income,
-        spent: spent,
-        leftToSpend: leftToSpend,
-        infoMessage: infoMessage,
-        categories: categories
-      }
+      email: Session.getActiveUser().getEmail(),
+      sheetUrl: props.getProperty('BUDGET_SHEET_URL') || ''
     };
   } catch (error) {
-    Logger.log("Error in getBudgetData: " + error.toString());
+    return {
+      success: false,
+      error: error.toString()
+    };
+  }
+}
+
+/**
+ * Sets a user property
+ * @param {string} key - The property key
+ * @param {string} value - The property value
+ * @return {Object} Result with success flag
+ */
+function setUserProperty(key, value) {
+  try {
+    PropertiesService.getUserProperties().setProperty(key, value);
+    return { success: true };
+  } catch (error) {
     return { success: false, error: error.toString() };
   }
 }
 
 /**
- * Get expense transaction data
- * @return {Object} Expense transactions
+ * Updates a budget value for a specific category
+ * @param {string} categoryName - Name of the category to update
+ * @param {number|string} budgetValue - New budget value
+ * @return {Object} Result with success flag
  */
-function getExpenseData() {
+function updateBudgetValue(categoryName, budgetValue) {
   try {
-    const sheet = getBudgetSheet("Expenses");
+    const sheet = getBudgetSheet("Budget");
     if (!sheet) {
-      return { success: false, error: "Expenses sheet not found" };
+      return { success: false, error: "Budget sheet not found" };
     }
-
-    // Get data starting from row 4 (after headers)
-    const dataRange = sheet.getRange(4, 4, sheet.getLastRow() - 3, 7).getValues();
-    const expenses = [];
     
-    for (let i = 0; i < dataRange.length; i++) {
-      const row = dataRange[i];
-      if (row[0]) { // Date exists
-        expenses.push({
-          date: row[0],
-          amount: row[1] || 0,
-          category: row[2] || "",
-          name: row[3] || "",
-          label: row[4] || "",
-          notes: row[5] || "",
-          rowIndex: i + 4 // Adding 4 to account for the header rows
-        });
+    // Get all category names
+    const categoryRange = sheet.getRange("I9:I39");
+    const categories = categoryRange.getValues();
+    
+    // Find the row index of the category
+    let rowIndex = -1;
+    for (let i = 0; i < categories.length; i++) {
+      if (categories[i][0] === categoryName) {
+        rowIndex = i + 9; // Add 9 to get the actual row number
+        break;
+      }
+    }
+    
+    if (rowIndex === -1) {
+      return { success: false, error: "Category not found" };
+    }
+    
+    // Convert the budget value to a number
+    const numericValue = parseFloat(budgetValue);
+    if (isNaN(numericValue)) {
+      return { success: false, error: "Invalid budget value" };
+    }
+    
+    // Update the budget value in column J (budgeted amount)
+    sheet.getRange(rowIndex, 10).setValue(numericValue); // Column J is index 10
+    
+    return { 
+      success: true,
+      message: "Budget updated successfully"
+    };
+  } catch (error) {
+    Logger.log("Error in updateBudgetValue: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Test server connection
+ * @param {string} sheetUrl - Optional sheet URL to set
+ * @return {Object} Simple response to verify connection
+ */
+function testServerConnection(sheetUrl) {
+  try {
+    // If URL provided, store it
+    if (sheetUrl) {
+      const result = setBudgetSheetUrl(sheetUrl);
+      if (!result.success) {
+        return { success: false, error: result.error };
       }
     }
     
     return {
       success: true,
-      expenses: expenses
+      timestamp: new Date().toString(),
+      message: "Server connection successful",
+      userEmail: Session.getActiveUser().getEmail()
     };
   } catch (error) {
-    Logger.log("Error in getExpenseData: " + error.toString());
+    Logger.log("Error in testServerConnection: " + error.toString());
     return { success: false, error: error.toString() };
   }
 }
@@ -513,264 +496,157 @@ function updateAccountBalance(accountName, amount) {
 }
 
 /**
- * Test server connection
- * @param {string} sheetUrl - Optional sheet URL to set
- * @return {Object} Simple response to verify connection
+ * Get expense data
+ * @return {Object} Expense data array
  */
-function testServerConnection(sheetUrl) {
+function getExpenseData() {
   try {
-    // If URL provided, store it
-    if (sheetUrl) {
-      const result = setBudgetSheetUrl(sheetUrl);
-      if (!result.success) {
-        return { success: false, error: result.error };
-      }
+    const expenseSheet = getBudgetSheet("Expenses");
+    if (!expenseSheet) {
+      return { success: false, error: "Expenses sheet not found" };
+    }
+    
+    // Get expense data starting from row 4 (after headers)
+    const dataRange = expenseSheet.getRange(4, 1, expenseSheet.getLastRow() - 3, 11);
+    const expenseData = dataRange.getValues();
+    
+    // Process into expense objects
+    const expenses = [];
+    for (let i = 0; i < expenseData.length; i++) {
+      const row = expenseData[i];
+      // Skip empty rows
+      if (!row[4] && !row[5]) continue;
+      
+      expenses.push({
+        rowIndex: i + 4, // Actual row in sheet
+        date: row[3], // Date in column D
+        amount: row[4], // Amount in column E
+        category: row[5], // Category in column F
+        name: row[6], // Name in column G
+        label: row[7], // Label in column H
+        notes: row[8] // Notes in column I
+      });
     }
     
     return {
       success: true,
-      timestamp: new Date().toString(),
-      message: "Server connection successful",
-      userEmail: Session.getActiveUser().getEmail()
+      expenses: expenses
     };
   } catch (error) {
-    Logger.log("Error in testServerConnection: " + error.toString());
+    Logger.log("Error in getExpenseData: " + error.toString());
     return { success: false, error: error.toString() };
   }
 }
 
-/**
- * Get user credentials
- * @return {Object} User credentials
- */
-function getUserCredentials() {
-  try {
-    const props = PropertiesService.getUserProperties();
-    
-    return {
-      success: true,
-      email: Session.getActiveUser().getEmail(),
-      sheetUrl: props.getProperty('BUDGET_SHEET_URL') || ''
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.toString()
-    };
-  }
-}
 
 /**
- * Sets a user property
- * @param {string} key - The property key
- * @param {string} value - The property value
- * @return {Object} Result with success flag
+ * Get all dashboard data in a single call
+ * @return {Object} Combined dashboard data
  */
-function setUserProperty(key, value) {
+function getDashboardData() {
   try {
-    PropertiesService.getUserProperties().setProperty(key, value);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.toString() };
-  }
-}
-
-/**
- * Updates a budget value for a specific category
- * @param {string} categoryName - Name of the category to update
- * @param {number|string} budgetValue - New budget value
- * @return {Object} Result with success flag
- */
-function updateBudgetValue(categoryName, budgetValue) {
-  try {
+    // Get the sheet only once
     const sheet = getBudgetSheet("Budget");
     if (!sheet) {
       return { success: false, error: "Budget sheet not found" };
     }
     
-    // Get all category names
-    const categoryRange = sheet.getRange("I9:I39");
-    const categories = categoryRange.getValues();
-    
-    // Find the row index of the category
-    let rowIndex = -1;
-    for (let i = 0; i < categories.length; i++) {
-      if (categories[i][0] === categoryName) {
-        rowIndex = i + 9; // Add 9 to get the actual row number
-        break;
-      }
-    }
-    
-    if (rowIndex === -1) {
-      return { success: false, error: "Category not found" };
-    }
-    
-    // Convert the budget value to a number
-    const numericValue = parseFloat(budgetValue);
-    if (isNaN(numericValue)) {
-      return { success: false, error: "Invalid budget value" };
-    }
-    
-    // Update the budget value in column J (budgeted amount)
-    sheet.getRange(rowIndex, 10).setValue(numericValue); // Column J is index 10
-    
-    return { 
-      success: true,
-      message: "Budget updated successfully"
-    };
-  } catch (error) {
-    Logger.log("Error in updateBudgetValue: " + error.toString());
-    return { success: false, error: error.toString() };
-  }
-}
-
-
-/**
- * Gets net worth data for the dashboard
- * @return {Object} Net worth data with assets, savings, and debts
- */
-function getNetWorthData() {
-  try {
-    const sheet = getBudgetSheet("Budget");
-    if (!sheet) {
-      return { success: false, error: "Net Worth sheet not found" };
-    }
-
-    // Get the raw values first
-    let netWorthRaw = sheet.getRange("C11").getValue();
-    let savingsRaw = sheet.getRange("D11").getValue();
-    let debtsRaw = sheet.getRange("E11").getValue();
-    
-    // Log for debugging
-    Logger.log("Raw values - Net Worth: " + netWorthRaw + ", Savings: " + savingsRaw + ", Debts: " + debtsRaw);
-    
-    // Handle number conversion properly
-    let netWorth, savings, debts;
-    
-    // If the values are strings (with currency symbols), convert to numbers
-    if (typeof netWorthRaw === 'string') {
-      netWorth = parseFloat(netWorthRaw.replace(/[^0-9.-]+/g, ''));
-    } else {
-      netWorth = netWorthRaw;
-    }
-    
-    if (typeof savingsRaw === 'string') {
-      savings = parseFloat(savingsRaw.replace(/[^0-9.-]+/g, ''));
-    } else {
-      savings = savingsRaw;
-    }
-    
-    if (typeof debtsRaw === 'string') {
-      debts = parseFloat(debtsRaw.replace(/[^0-9.-]+/g, ''));
-    } else {
-      debts = debtsRaw;
-    }
-    
-    // Check for NaN values and provide defaults
-    netWorth = isNaN(netWorth) ? 0 : netWorth;
-    savings = isNaN(savings) ? 0 : savings;
-    debts = isNaN(debts) ? 0 : debts;
-    
-    // If net worth is still 0, try calculating it from savings and debts
-    if (netWorth === 0 && (savings !== 0 || debts !== 0)) {
-      netWorth = savings + debts; // Note: debts should already be negative
-    }
-    
-    // Log processed values
-    Logger.log("Processed - Net Worth: " + netWorth + ", Savings: " + savings + ", Debts: " + debts);
-    
-    return {
-      success: true,
-      netWorth: {
-        total: netWorth,
-        savings: savings,
-        debts: debts
-      }
-    };
-  } catch (error) {
-    Logger.log("Error in getNetWorthData: " + error.toString());
-    return { success: false, error: error.toString() };
-  }
-}
-
-/**
- * Gets subscription data from the dontedit sheet
- * @return {Object} Subscription data with list of subscriptions
- */
-function getSubscriptionData() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName("Dontedit");
-    if (!sheet) {
+    // Get dontedit sheet for subscriptions
+    const donteditSheet = getBudgetSheet("Dontedit");
+    if (!donteditSheet) {
       return { success: false, error: "Dontedit sheet not found" };
     }
-
-    // Get subscription data from GH5:GJ125
-    const dataRange = sheet.getRange("GH5:GJ125").getValues();
-    const subscriptions = [];
     
-    // Process each row of subscription data
-    for (let i = 0; i < dataRange.length; i++) {
-      const row = dataRange[i];
-      if (row[0]) { // Only process rows with data
-        subscriptions.push({
-          id: i + 1,
-          name: row[0],
-          amount: row[1] || 0,
-          nextDate: row[2] ? Utilities.formatDate(row[2], Session.getScriptTimeZone(), "d MMM yyyy") : ""
+    // 1. Get header data (month, year)
+    const month = sheet.getRange("C1").getValue();
+    const year = sheet.getRange("E1").getValue();
+    
+    // 2. Get financial summary
+    const income = sheet.getRange("C7").getValue();
+    const spent = sheet.getRange("D7").getValue();
+    const leftToSpend = sheet.getRange("E7").getValue();
+    const infoMessage = sheet.getRange("H6").getValue();
+    
+    // 3. Get net worth data
+    const netWorthTotal = sheet.getRange("C11").getValue() || 0;
+    const savings = sheet.getRange("D11").getValue() || 0;
+    const debts = sheet.getRange("E11").getValue() || 0;
+    
+    // 4. Get category data
+    const categoryNames = sheet.getRange("I9:I39").getValues();
+    const budgetedAmounts = sheet.getRange("J9:J39").getValues();
+    const actualSpending = sheet.getRange("K9:K39").getValues();
+    
+    // Process categories
+    const categories = [];
+    for (let i = 0; i < categoryNames.length; i++) {
+      const categoryName = categoryNames[i][0];
+      if (categoryName) {
+        categories.push({
+          name: categoryName,
+          budgeted: budgetedAmounts[i][0] || 0,
+          actual: actualSpending[i][0] || 0
         });
       }
     }
     
-    // Calculate total and number of subscriptions
-    const total = subscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0);
-    const count = subscriptions.length;
+    // 5. Get subscription data
+    const subscriptionSummary = sheet.getRange("O6").getValue() || '';
+    const subscriptionData = donteditSheet.getRange("GH5:GJ125").getValues();
+    const subscriptions = [];
+    let subscriptionTotal = 0;
     
-    return {
-      success: true,
-      subscriptions: {
-        items: subscriptions,
-        total: total,
-        count: count
+    // Process subscription data
+    for (let i = 0; i < subscriptionData.length; i++) {
+      const row = subscriptionData[i];
+      if (row[0]) {
+        const amount = row[1] || 0;
+        subscriptionTotal += amount;
+        
+        let formattedDate = "";
+        if (row[2]) {
+          if (row[2] instanceof Date && !isNaN(row[2].getTime())) {
+            formattedDate = Utilities.formatDate(row[2], Session.getScriptTimeZone(), "d MMM yyyy");
+          } else {
+            formattedDate = String(row[2]);
+          }
+        }
+        
+        subscriptions.push({
+          id: i + 1,
+          name: row[0],
+          amount: amount,
+          nextDate: formattedDate
+        });
       }
-    };
-  } catch (error) {
-    Logger.log("Error in getSubscriptionData: " + error.toString());
-    return { success: false, error: error.toString() };
-  }
-}
-
-/**
- * Gets all dashboard data in a single call to reduce API requests
- * @return {Object} Combined dashboard data
- */
-function getDashboardData() {
-  try {
-    // Get budget data
-    const budgetData = getBudgetData();
-    if (!budgetData.success) {
-      return budgetData; // Return the error
     }
     
-    // Get net worth data
-    const netWorthData = getNetWorthData();
-    if (!netWorthData.success) {
-      return netWorthData; // Return the error
-    }
-    
-    // Get subscription data
-    const subscriptionData = getSubscriptionData();
-    if (!subscriptionData.success) {
-      return subscriptionData; // Return the error
-    }
-    
-    // Combine all data
+    // 6. Return all data in a single object
     return {
       success: true,
-      dashboard: {
-        budget: budgetData.budget,
-        netWorth: netWorthData.netWorth,
-        subscriptions: subscriptionData.subscriptions
+      dashboardData: {
+        header: {
+          month: month,
+          year: year
+        },
+        summary: {
+          income: income,
+          spent: spent,
+          leftToSpend: leftToSpend,
+          infoMessage: infoMessage
+        },
+        netWorth: {
+          total: netWorthTotal,
+          savings: savings,
+          debts: debts
+        },
+        categories: categories,
+        subscriptions: {
+          summaryText: subscriptionSummary,
+          items: subscriptions,
+          total: subscriptionTotal,
+          count: subscriptions.length
+        }
       }
     };
   } catch (error) {
