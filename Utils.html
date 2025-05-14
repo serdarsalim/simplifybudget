@@ -27,36 +27,70 @@ var Utils = (function() {
 
     
     
-    /**
-     * Format a number as currency
-     * @param {number} amount - Amount to format
-     * @param {string} currencySymbol - Currency symbol (default: €)
-     * @return {string} Formatted currency string
-     */
-    formatCurrency: function(amount, currencySymbol) {
-      if (amount === undefined || amount === null) return '';
-      
-      // Default to Euro symbol if not provided
-      currencySymbol = currencySymbol || '€';
-      
-      // Get currency symbol from settings if available
-      if (window.SimBudget && SimBudget.Settings) {
-        const savedSymbol = SimBudget.Settings.getCurrencySymbol();
-        if (savedSymbol) {
-          currencySymbol = savedSymbol;
-        }
-      }
-      
-      // Format with 2 decimal places
-      const formattedNumber = parseFloat(amount).toFixed(2);
-      
-      // Add thousand separators
-      const parts = formattedNumber.split('.');
-      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-      
-      // Return formatted string with currency symbol
-      return currencySymbol + parts.join('.');
-    },
+/**
+ * Format a number as currency
+ * @param {number} amount - Amount to format
+ * @param {string} currencySymbol - Currency symbol (default: $)
+ * @return {string} Formatted currency string
+ */
+formatCurrency: function(amount, currencySymbol) {
+  if (amount === undefined || amount === null) return '';
+  
+  // Default to USD symbol if not provided
+  currencySymbol = currencySymbol || '$';
+  
+  // Get currency symbol from settings if available
+  if (window.SimBudget && SimBudget.Settings) {
+    const savedSymbol = SimBudget.Settings.getCurrencySymbol();
+    if (savedSymbol) {
+      currencySymbol = savedSymbol;
+    }
+  }
+  
+  // Check if decimals should be shown (default to true if setting not available)
+  let showDecimals = true;
+  if (window.SimBudget && SimBudget.Settings && 
+      typeof SimBudget.Settings.showDecimals === 'function') {
+    showDecimals = SimBudget.Settings.showDecimals();
+  }
+  
+  // Format with appropriate decimal places
+  const decimals = showDecimals ? 2 : 0;
+  const formattedNumber = parseFloat(amount).toFixed(decimals);
+  
+  // Add thousand separators
+  const parts = formattedNumber.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  
+  // Return formatted string with currency symbol
+  return currencySymbol + (parts.length > 1 ? parts.join('.') : parts[0]);
+},
+
+/**
+ * Format a number as currency without decimal places
+ * @param {number} amount - Amount to format
+ * @return {string} Formatted currency string without decimals
+ */
+formatCurrencyNoDecimals: function(amount) {
+  // Get currency symbol from settings if available
+  let currencySymbol = '$';  // Default to USD
+  if (window.SimBudget && SimBudget.Settings) {
+    const savedSymbol = SimBudget.Settings.getCurrencySymbol();
+    if (savedSymbol) {
+      currencySymbol = savedSymbol;
+    }
+  }
+  
+  // Format without decimals using the same logic as formatCurrency
+  const formattedNumber = parseFloat(amount).toFixed(0);
+  
+  // Add thousand separators
+  const parts = formattedNumber.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  
+  // Return formatted string with currency symbol
+  return currencySymbol + parts[0];
+},
     
        /**
      * Format a number as currency without decimal places

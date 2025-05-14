@@ -168,13 +168,13 @@ const SaveQueue = (function() {
     
     // 2. RENDER FINANCIAL SUMMARY
     if (data.summary) {
-      const incomeElement = document.getElementById('income-value');
-      const spentElement = document.getElementById('spent-value');
-      const leftToSpendElement = document.getElementById('left-to-spend-value');
-      
-      if (incomeElement) incomeElement.textContent = Utils.formatCurrencyNoDecimals(data.summary.income || 0);
-      if (spentElement) spentElement.textContent = Utils.formatCurrencyNoDecimals(data.summary.spent || 0);
-      if (leftToSpendElement) leftToSpendElement.textContent = Utils.formatCurrencyNoDecimals(data.summary.leftToSpend || 0);
+    const incomeElement = document.getElementById('income-value');
+    const spentElement = document.getElementById('spent-value');
+    const leftToSpendElement = document.getElementById('left-to-spend-value');
+    
+    if (incomeElement) incomeElement.textContent = Utils.formatCurrency(data.summary.income || 0);
+    if (spentElement) spentElement.textContent = Utils.formatCurrency(data.summary.spent || 0);
+    if (leftToSpendElement) leftToSpendElement.textContent = Utils.formatCurrency(data.summary.leftToSpend || 0);
       
       // Update budget alert
       const budgetAlert = document.getElementById('budget-alert');
@@ -199,14 +199,14 @@ const SaveQueue = (function() {
     
     // 3. RENDER NET WORTH
     if (data.netWorth) {
-      const netWorthElement = document.getElementById('net-worth-value');
-      const savingsElement = document.getElementById('savings-value');
-      const debtsElement = document.getElementById('debts-value');
-      
-      if (netWorthElement) netWorthElement.textContent = Utils.formatCurrencyNoDecimals(data.netWorth.total || 0);
-      if (savingsElement) savingsElement.textContent = Utils.formatCurrencyNoDecimals(data.netWorth.savings || 0);
-      if (debtsElement) debtsElement.textContent = Utils.formatCurrencyNoDecimals(data.netWorth.debts || 0);
-    }
+    const netWorthElement = document.getElementById('net-worth-value');
+    const savingsElement = document.getElementById('savings-value');
+    const debtsElement = document.getElementById('debts-value');
+    
+    if (netWorthElement) netWorthElement.textContent = Utils.formatCurrency(data.netWorth.total || 0);
+    if (savingsElement) savingsElement.textContent = Utils.formatCurrency(data.netWorth.savings || 0);
+    if (debtsElement) debtsElement.textContent = Utils.formatCurrency(data.netWorth.debts || 0);
+  }
     
     // 4. RENDER CATEGORIES
     if (data.categories && data.categories.length > 0) {
@@ -249,37 +249,52 @@ const SaveQueue = (function() {
     }
     
     // 5. RENDER SUBSCRIPTIONS
-    if (data.subscriptions) {
-      try {
-        // 5.1 Update subscription summary
-        const subscriptionInfo = document.querySelector('.subscription-info');
-        if (subscriptionInfo) {
-          subscriptionInfo.innerHTML = data.subscriptions.summaryText || 
-            `${data.subscriptions.count} subscriptions · ${Utils.formatCurrencyNoDecimals(data.subscriptions.total)} / month`;
-        }
-        
-        // 5.2 Render subscription list
-        const subscriptionBody = document.getElementById('subscription-list-body');
-        if (subscriptionBody) {
-          subscriptionBody.innerHTML = '';
-          
-          if (data.subscriptions.items && data.subscriptions.items.length > 0) {
-            data.subscriptions.items.forEach(subscription => {
-              const row = document.createElement('tr');
-              row.innerHTML = `
-                <td>${subscription.id}</td>
-                <td>${subscription.name || ''}</td>
-                <td class="amount-column">${Utils.formatCurrency(subscription.amount)}</td>
-                <td>${subscription.nextDate || ''}</td>
-              `;
-              subscriptionBody.appendChild(row);
-            });
-          }
-        }
-      } catch (subError) {
-        console.error("Error rendering subscriptions:", subError);
+if (data.subscriptions) {
+  try {
+    // 5.1 Update subscription summary
+    const subscriptionInfo = document.querySelector('.subscription-info');
+    if (subscriptionInfo) {
+      // Get subscription data
+      const count = data.subscriptions.count || 0;
+      const total = data.subscriptions.total || 0;
+      const income = data.summary ? data.summary.income : 0;
+      
+      // Calculate percentage of income (if income exists)
+      let percentText = '';
+      if (income > 0) {
+        const percentage = Math.round((total / income) * 100);
+        percentText = ` | ${percentage}% income`;
+      }
+      
+      // Build a consistent format with our currency formatting function
+      const formattedSummary = `${count} 🔁 | ${Utils.formatCurrency(total)} total${percentText}`;
+      
+      // Update the element
+      subscriptionInfo.innerHTML = formattedSummary;
+    }
+    
+    // 5.2 Render subscription list - ADD THIS SECTION
+    const subscriptionBody = document.getElementById('subscription-list-body');
+    if (subscriptionBody) {
+      subscriptionBody.innerHTML = '';
+      
+      if (data.subscriptions.items && data.subscriptions.items.length > 0) {
+        data.subscriptions.items.forEach(subscription => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${subscription.id}</td>
+            <td>${subscription.name || ''}</td>
+            <td class="amount-column">${Utils.formatCurrency(subscription.amount)}</td>
+            <td>${subscription.nextDate || ''}</td>
+          `;
+          subscriptionBody.appendChild(row);
+        });
       }
     }
+  } catch (subError) {
+    console.error("Error rendering subscriptions:", subError);
+  }
+}
     
     // 6. RENDER CHART (After small delay to ensure DOM is ready)
     setTimeout(function() {
@@ -336,6 +351,27 @@ SimBudget.updateProgressBar = function(categoryName, newBudgetValue) {
       }
     }
   });
+  
+  // After updating progress bars, also update the chart
+  if (SimBudget._currentBudgetData && SimBudget._currentBudgetData.categories) {
+    // Update the category data in memory
+    SimBudget._currentBudgetData.categories.forEach(cat => {
+      if (cat.name === categoryName) {
+        cat.budgeted = newBudgetValue;
+      }
+    });
+    
+    // Force redraw the chart
+    if (typeof SimBudget.renderExpenseChart === 'function') {
+      // Ensure any existing chart is destroyed first
+      if (SimBudget._expenseChart) {
+        SimBudget._expenseChart.destroy();
+        SimBudget._expenseChart = null;
+      }
+      // Render the chart with updated data
+      setTimeout(() => SimBudget.renderExpenseChart(SimBudget._currentBudgetData.categories), 50);
+    }
+  }
 };
  
 // Update SimBudget.makeEditableBudgetValues to use the SaveQueue
@@ -577,10 +613,10 @@ SimBudget.renderExpenseChart = function(categories) {
   
   // Get data for chart and assign colors from palette
   const chartData = categories
-    .filter(cat => cat.budgeted > 0)
+    .filter(cat => cat.actual > 0)
     .map((cat, index) => ({
       label: cat.name,
-      value: cat.budgeted,
+      value: cat.actual,
       color: colorPalette[index % colorPalette.length] // Cycle through colors if more than 30 categories
     }));
   

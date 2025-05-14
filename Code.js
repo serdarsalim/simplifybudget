@@ -228,25 +228,21 @@ function getBudgetSheet(sheetName) {
  */
 function setCurrentMonthYear() {
   try {
-    const sheet = getBudgetSheet("Budget");
-    if (!sheet) {
-      return { success: false, error: "Budget sheet not found" };
-    }
-    
     // Get the current date
     const now = new Date();
-    const currentMonth = now.toLocaleString('default', { month: 'MMMM' }); // "January", "February", etc.
+    const currentMonth = now.toLocaleString('default', { month: 'MMMM' });
     const currentYear = now.getFullYear();
     
-    // Update the cells
-    sheet.getRange("C1").setValue(currentMonth);
-    sheet.getRange("E1").setValue(currentYear);
+    // Use existing setMonthYear function to avoid duplication
+    const result = setMonthYear(currentMonth, currentYear);
     
-    return { 
-      success: true,
-      month: currentMonth,
-      year: currentYear
-    };
+    // Add month/year to the result if successful
+    if (result.success) {
+      result.month = currentMonth;
+      result.year = currentYear;
+    }
+    
+    return result;
   } catch (error) {
     Logger.log("Error in setCurrentMonthYear: " + error.toString());
     return { success: false, error: error.toString() };
@@ -540,94 +536,138 @@ function getExpenseData() {
 
 
 /**
- * Get all dashboard data in a single call
+ * Get all dashboard data in a single call from a unified dashboard section
+ * @param {string} month - Optional month to set before fetching data
+ * @param {number|string} year - Optional year to set before fetching data
  * @return {Object} Combined dashboard data
  */
-function getDashboardData() {
+function getDashboardData(month, year) {
   try {
-    // Get the sheet only once
-    const sheet = getBudgetSheet("Budget");
-    if (!sheet) {
+    // Get the Budget sheet for month/year update if needed
+    const budgetSheet = getBudgetSheet("Budget");
+    if (!budgetSheet) {
       return { success: false, error: "Budget sheet not found" };
     }
     
-    // Get dontedit sheet for subscriptions
+    // If month and year provided, update them first in the Budget sheet
+    if (month && year) {
+      console.log(`Updating month/year to ${month} ${year} before fetching data`);
+      budgetSheet.getRange("C1").setValue(month);
+      budgetSheet.getRange("E1").setValue(parseInt(year));
+    }
+    
+    // Get the Dontedit sheet for dashboard data
     const donteditSheet = getBudgetSheet("Dontedit");
     if (!donteditSheet) {
       return { success: false, error: "Dontedit sheet not found" };
     }
     
-    // 1. Get header data (month, year)
-    const month = sheet.getRange("C1").getValue();
-    const year = sheet.getRange("E1").getValue();
+    // Fetch the entire dashboard data range in a single operation
+    // Adjust the range to match your actual data structure
+    const dashboardData = donteditSheet.getRange("C300:O340").getValues();
     
-    // 2. Get financial summary
-    const income = sheet.getRange("C7").getValue();
-    const spent = sheet.getRange("D7").getValue();
-    const leftToSpend = sheet.getRange("E7").getValue();
-    const infoMessage = sheet.getRange("H6").getValue();
+    // Extract values from the SECOND row (row 301) which contains actual data
+    // (row 300 contains headers)
+    const income = dashboardData[1][0] || 0;         // C301
+    const spent = dashboardData[1][1] || 0;          // D301
+    const leftToSpend = dashboardData[1][2] || 0;    // E301
+    const netWorthTotal = dashboardData[1][3] || 0;  // F301
+    const savings = dashboardData[1][4] || 0;        // G301
+    const debts = dashboardData[1][5] || 0;          // H301
     
-    // 3. Get net worth data
-    const netWorthTotal = sheet.getRange("C11").getValue() || 0;
-    const savings = sheet.getRange("D11").getValue() || 0;
-    const debts = sheet.getRange("E11").getValue() || 0;
+    // Get the current month and year from the Budget sheet
+    const currentMonth = budgetSheet.getRange("C1").getValue();
+    const currentYear = budgetSheet.getRange("E1").getValue();
     
-    // 4. Get category data
-    const categoryNames = sheet.getRange("I9:I39").getValues();
-    const budgetedAmounts = sheet.getRange("J9:J39").getValues();
-    const actualSpending = sheet.getRange("K9:K39").getValues();
+    // Get budget info message
+    const infoMessage = budgetSheet.getRange("H6").getValue();
     
-    // Process categories
+    // Process categories from the dashboard data
     const categories = [];
-    for (let i = 0; i < categoryNames.length; i++) {
-      const categoryName = categoryNames[i][0];
-      if (categoryName) {
+    for (let i = 1; i < dashboardData.length; i++) {  // Start from index 1 (row 301)
+      const row = dashboardData[i];
+      const categoryName = row[6];  // Column I (index 6 in the array)
+      const budgeted = row[7];      // Column J (index 7 in the array)
+      const actual = row[8];        // Column K (index 8 in the array)
+      
+      // Only process rows that have category data
+      if (categoryName && typeof categoryName === 'string' && categoryName !== '') {
+        // Parse numeric values, removing currency symbols
+        let budgetedValue = 0;
+        let actualValue = 0;
+        
+        if (budgeted !== null && budgeted !== undefined) {
+          if (typeof budgeted === 'number') {
+            budgetedValue = budgeted;
+          } else {
+            const budgetStr = String(budgeted).replace(/[^0-9.-]+/g, '');
+            if (budgetStr) {
+              budgetedValue = parseFloat(budgetStr);
+            }
+          }
+        }
+        
+        if (actual !== null && actual !== undefined) {
+          if (typeof actual === 'number') {
+            actualValue = actual;
+          } else {
+            const actualStr = String(actual).replace(/[^0-9.-]+/g, '');
+            if (actualStr) {
+              actualValue = parseFloat(actualStr);
+            }
+          }
+        }
+        
         categories.push({
           name: categoryName,
-          budgeted: budgetedAmounts[i][0] || 0,
-          actual: actualSpending[i][0] || 0
+          budgeted: budgetedValue,
+          actual: actualValue
         });
       }
     }
     
-    // 5. Get subscription data
-    const subscriptionSummary = sheet.getRange("O6").getValue() || '';
-    const subscriptionData = donteditSheet.getRange("GH5:GJ125").getValues();
-    const subscriptions = [];
-    let subscriptionTotal = 0;
+    // Extract subscription text - from second row (row 301)
+    const subscriptionSummary = dashboardData[1][9] || ''; // Column L (index 9)
     
-    // Process subscription data
-    for (let i = 0; i < subscriptionData.length; i++) {
-      const row = subscriptionData[i];
-      if (row[0]) {
-        const amount = row[1] || 0;
-        subscriptionTotal += amount;
-        
-        let formattedDate = "";
-        if (row[2]) {
-          if (row[2] instanceof Date && !isNaN(row[2].getTime())) {
-            formattedDate = Utilities.formatDate(row[2], Session.getScriptTimeZone(), "d MMM yyyy");
+    // Process subscriptions
+    const subscriptions = [];
+    for (let i = 1; i < dashboardData.length; i++) {  // Start from index 1 (row 301)
+      const row = dashboardData[i];
+      const expenseName = row[9]; // Column L (index 10)
+      const amount = row[10];      // Column M (index 11)
+      const dueDate = row[11];     // Column N (index 12)
+      
+      // Only process rows that have subscription data
+      if (expenseName && typeof expenseName === 'string' && expenseName !== '') {
+        // Parse amount, removing currency symbols
+        let amountValue = 0;
+        if (amount !== null && amount !== undefined) {
+          if (typeof amount === 'number') {
+            amountValue = amount;
           } else {
-            formattedDate = String(row[2]);
+            const amountStr = String(amount).replace(/[^0-9.-]+/g, '');
+            if (amountStr) {
+              amountValue = parseFloat(amountStr);
+            }
           }
         }
         
         subscriptions.push({
-          id: i + 1,
-          name: row[0],
-          amount: amount,
-          nextDate: formattedDate
+          id: subscriptions.length + 1,
+          name: expenseName,
+          amount: amountValue,
+          nextDate: dueDate || ''
         });
       }
     }
     
-    // 6. Return all data in a single object
+    // Return all data in the same structure as before
     return {
       success: true,
       dashboardData: {
         header: {
-          month: month,
-          year: year
+          month: currentMonth,
+          year: currentYear
         },
         summary: {
           income: income,
@@ -642,9 +682,8 @@ function getDashboardData() {
         },
         categories: categories,
         subscriptions: {
-          summaryText: subscriptionSummary,
           items: subscriptions,
-          total: subscriptionTotal,
+          total: subscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0),
           count: subscriptions.length
         }
       }

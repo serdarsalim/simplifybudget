@@ -1,0 +1,397 @@
+<style>
+
+/* ======================================================
+   SETTINGS STYLES - SIMBUDGET (APPLE-STYLE)
+   ======================================================
+   Clean, professional styling for the settings page
+*/
+
+/* ============= COLOR VARIABLES ============= */
+:root {
+  /* Colors - Warm Orange/Yellow Palette */
+  --settings-primary: #a96322;         /* Main orange */
+  --settings-primary-light: #ffb067;   /* Lighter orange */
+  --settings-primary-dark: #e67e00;    /* Darker orange */
+  --settings-accent: #ffd166;          /* Yellow accent */
+  --settings-success: #4caf50;         /* Success green */
+  --settings-error: #f44336;           /* Error red */
+  
+  /* Background and surfaces */
+  --settings-background: #f5f5f7;      /* Light gray background like iOS */
+  --settings-surface: #ffffff;         /* White cards */
+  --settings-border: #e1e1e1;          /* Light borders */
+  
+  /* Text colors */
+  --settings-text-primary: #000000;    /* Black text */
+  --settings-text-secondary: #86868b;  /* Medium gray text */
+  
+  /* Dark mode colors */
+  --settings-dark-background: #1c1c1e; /* Dark background */
+  --settings-dark-surface: #2c2c2e;    /* Dark card surface */
+  --settings-dark-border: #3d3d3d;     /* Dark borders */
+  --settings-dark-text-primary: #ffffff;   /* White text */
+  --settings-dark-text-secondary: #98989d; /* Light gray text */
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+}
+
+/* ============= MAIN CONTAINER ============= */
+.settings-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--spacing-md);
+  background-color: var(--settings-background);
+}
+
+/* ============= SECTION STYLING ============= */
+.settings-section {
+  background-color: var(--settings-surface);
+  border-radius: 10px;
+  margin-bottom: var(--spacing-lg);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.settings-section h2 {
+  margin: 0;
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--settings-text-primary);
+}
+
+/* ============= USER PROFILE ============= */
+.user-profile {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+}
+
+.user-info {
+  padding: var(--spacing-sm) 0;
+}
+
+.user-email {
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--settings-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.user-role {
+  font-size: 14px;
+  color: var(--settings-text-secondary);
+}
+
+/* ============= FORM STYLING ============= */
+.form-group {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+}
+
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--settings-text-primary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.settings-input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background-color: var(--settings-surface);
+  color: var(--settings-text-primary);
+}
+
+.settings-input:focus {
+  border-color: var(--settings-primary);
+  outline: none;
+}
+
+.currency-input {
+  max-width: 80px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.help-text {
+  margin-top: var(--spacing-xs);
+  font-size: 12px;
+  color: var(--settings-text-secondary);
+}
+
+/* ============= SETTINGS ROW (APPLE STYLE) ============= */
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--settings-border);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-label {
+  color: var(--settings-text-primary);
+  font-size: 16px;
+}
+
+.settings-control {
+  display: flex;
+  align-items: center;
+}
+
+/* ============= SELECT DROPDOWN ============= */
+.select-wrapper {
+  position: relative;
+}
+
+.settings-select {
+  appearance: none;
+  min-width: 120px;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background-color: var(--settings-surface);
+  color: var(--settings-text-primary);
+  padding-right: 24px; /* Space for the dropdown arrow */
+}
+
+.settings-select:focus {
+  border-color: var(--settings-primary);
+  outline: none;
+}
+
+/* Custom dropdown arrow */
+.select-wrapper::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--settings-text-secondary);
+  pointer-events: none;
+}
+
+/* ============= TOGGLE SWITCH (APPLE STYLE) ============= */
+.toggle-container {
+  position: relative;
+  display: inline-block;
+}
+
+.toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-label {
+  display: block;
+  width: 51px;
+  height: 31px;
+  border-radius: 31px;
+  background-color: #e9e9ea; /* Light gray when off */
+  cursor: pointer;
+  position: relative;
+}
+
+/* Toggle switch thumb/slider */
+.toggle-label::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background-color: white;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16);
+  transition: transform 0.2s; /* Only animation is the toggle switch movement */
+}
+
+/* Checked state */
+.toggle-input:checked + .toggle-label {
+  background-color: var(--settings-primary);
+}
+
+.toggle-input:checked + .toggle-label::before {
+  transform: translateX(20px);
+}
+
+/* ============= BUTTON STYLING ============= */
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.btn.primary {
+  background-color: var(--settings-primary);
+  color: white;
+}
+
+.btn.secondary {
+  background-color: transparent;
+  border: 1px solid var(--settings-primary);
+  color: var(--settings-primary);
+}
+
+/* ============= SETTINGS FOOTER ============= */
+.settings-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-xl);
+}
+
+.button-group {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+/* ============= STATUS MESSAGE ============= */
+.status-message {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: #f0f0f0;
+  margin-bottom: var(--spacing-md);
+}
+
+.status-message.success {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: var(--settings-success);
+  border-left: 3px solid var(--settings-success);
+}
+
+.status-message.error {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: var(--settings-error);
+  border-left: 3px solid var(--settings-error);
+}
+
+.status-message.hidden {
+  display: none;
+}
+
+/* ============= DARK MODE ============= */
+body.dark-mode {
+  background-color: var(--settings-dark-background);
+  color: var(--settings-dark-text-primary);
+}
+
+body.dark-mode .settings-container {
+  background-color: var(--settings-dark-background);
+}
+
+body.dark-mode .settings-section {
+  background-color: var(--settings-dark-surface);
+}
+
+body.dark-mode .settings-section h2,
+body.dark-mode .settings-label,
+body.dark-mode .user-email,
+body.dark-mode label {
+  color: var(--settings-dark-text-primary);
+}
+
+body.dark-mode .user-role,
+body.dark-mode .help-text {
+  color: var(--settings-dark-text-secondary);
+}
+
+body.dark-mode .settings-row {
+  border-color: var(--settings-dark-border);
+}
+
+body.dark-mode .settings-input,
+body.dark-mode .settings-select {
+  background-color: var(--settings-dark-surface);
+  border-color: var(--settings-dark-border);
+  color: var(--settings-dark-text-primary);
+}
+
+body.dark-mode .toggle-label {
+  background-color: #39393d; /* Darker gray when off */
+}
+
+body.dark-mode .btn.secondary {
+  color: var(--settings-primary-light);
+  border-color: var(--settings-primary-light);
+}
+
+/* ============= RESPONSIVE STYLES ============= */
+@media (max-width: 768px) {
+  .input-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+  }
+  
+  .settings-footer {
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+  
+  .settings-footer .status-message {
+    width: 100%;
+  }
+  
+  .button-group {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .settings-container {
+    padding: var(--spacing-sm);
+  }
+  
+  .settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+  
+  .settings-control {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .settings-select {
+    width: 100%;
+  }
+  
+  .button-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+</style>

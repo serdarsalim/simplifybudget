@@ -111,141 +111,7 @@ body.dark-mode .view-header {
   overflow: hidden;
 }
 
-/* Sidebar */
-.sidebar {
-  width: var(--sidebar-width);
-  height: 100%;
-  background-color: var(--surface);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  transition: width var(--transition-normal) ease-in-out;
-  overflow: hidden;
-  z-index: 10;
-  box-shadow: var(--shadow-sm);
-}
 
-.sidebar.collapsed {
-  width: var(--sidebar-collapsed-width);
-}
-
-.sidebar-header {
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--spacing-md);
-  border-bottom: 1px solid var(--border);
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  font-weight: 500;
-  font-size: var(--font-size-lg);
-  color: var(--primary);
-}
-
-.logo i {
-  margin-right: var(--spacing-sm);
-}
-
-.sidebar.collapsed .logo-text {
-  display: none;
-}
-
-.toggle-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color var(--transition-fast);
-}
-
-.toggle-btn:hover {
-  background-color: rgba(0, 0, 0, 0.04);
-}
-
-.sidebar-nav {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--spacing-md) 0;
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  padding: var(--spacing-md);
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
-  color: var(--text-secondary);
-  text-decoration: none;
-  border-radius: 0 var(--border-radius) var(--border-radius) 0;
-  margin: 2px 0;
-}
-
-.sidebar-item:hover {
-  background-color: rgba(0, 0, 0, 0.04);
-}
-
-.sidebar-item.active {
-  background-color: rgba(25, 118, 210, 0.12);
-  color: var(--primary);
-  font-weight: 500;
-}
-
-.sidebar-item i {
-  margin-right: var(--spacing-md);
-}
-
-.sidebar.collapsed .item-text {
-  display: none;
-}
-
-.sidebar ul {
-  list-style: none;
-}
-
-.sidebar-footer {
-  padding: var(--spacing-md);
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-}
-
-.user-info i {
-  margin-right: var(--spacing-sm);
-}
-
-.settings {
-  margin-bottom: var(--spacing-md);
-}
-
-.app-info {
-  display: flex;
-  flex-direction: column;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-}
-
-.sidebar.collapsed .app-info,
-.sidebar.collapsed .user-info .item-text {
-  display: none;
-}
 
 /* Content Area */
 .content-area {
@@ -503,21 +369,7 @@ body.dark-mode .view-header {
   margin-bottom: var(--spacing-xs);
 }
 
-.settings-input, 
-.settings-select {
-  width: 100%;
-  padding: var(--spacing-sm);
-  border: 1px solid var(--border);
-  border-radius: var(--border-radius);
-  font-family: var(--font-family);
-  font-size: var(--font-size-md);
-  background-color: var(--surface);
-  color: var(--text-primary);
-}
 
-.settings-checkbox {
-  margin-right: var(--spacing-sm);
-}
 
 .input-group {
   display: flex;
@@ -546,35 +398,26 @@ body.dark-mode .view-header {
   gap: var(--spacing-sm);
 }
 
-/* Settings container */
-.settings-container {
-  max-width: 800px;
-  margin: 0 auto;
+
+
+
+.budget-table {
+  table-layout: fixed;
+  width: 100%;
 }
 
-.settings-section {
-  background-color: var(--surface);
-  border-radius: var(--border-radius);
-  padding: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
-  box-shadow: var(--shadow-sm);
+.budget-table th:nth-child(1) {
+  width: 40%;  /* Category name column */
 }
 
-.settings-section h2 {
-  font-size: var(--font-size-lg);
-  margin-bottom: var(--spacing-md);
-  font-weight: 500;
+.budget-table th:nth-child(2),
+.budget-table th:nth-child(3) {
+  width: 20%;  /* Budgeted and Actual columns */
 }
 
-.settings-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: var(--spacing-xl);
+.budget-table th:nth-child(4) {
+  width: 20%;  /* Progress column */
 }
-
-
-
 
 
 .category-name {
@@ -794,9 +637,6 @@ body.dark-mode .view-header {
     padding: var(--spacing-xs) var(--spacing-sm);
   }
   
-  .settings-section {
-    padding: var(--spacing-md);
-  }
 
 
 

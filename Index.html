@@ -15,9 +15,11 @@
     <!-- Include the new dashboard styles -->
     <style>
       <?!= include('dashboard.css'); ?>
+      <?!= include('sidebar.css'); ?>
+      <?!= include('settings.css'); ?>
     </style>
     
-    <title>SimBudget</title>
+    <title>Simplify</title>
   </head>
   <body>
     <div class="app-container">
@@ -127,6 +129,7 @@
     <?!= include('Utils'); ?>
     <?!= include('Init'); ?>
     <?!= include('dashboard.js'); ?>
+    <?!= include('settings.js'); ?>
     <script>
       // Main entry point - Initialize the application
       document.addEventListener('DOMContentLoaded', function() {

@@ -1,0 +1,256 @@
+<script>
+/**
+ * settings.js - Simplified JavaScript for SimBudget Settings page
+ * Provides clean, professional settings functionality without animations
+ */
+
+// Settings page functionality
+const SettingsPage = (function() {
+  // Private variables
+  let _initialized = false;
+  
+  /**
+   * Initialize settings page functionality
+   */
+  function init() {
+    if (_initialized) return;
+    
+    // Load existing settings values
+    loadSavedSettings();
+    
+    // Set up event listeners
+    initEventListeners();
+    
+    _initialized = true;
+    console.log('Settings page initialized');
+  }
+  
+  /**
+   * Initialize event listeners
+   */
+  function initEventListeners() {
+    // Set up dark mode toggle
+    const darkModeToggle = document.getElementById('darkMode');
+    if (darkModeToggle) {
+      darkModeToggle.addEventListener('change', function() {
+        document.body.classList.toggle('dark-mode', this.checked);
+      });
+    }
+    
+    // Set up save button
+    const saveButton = document.getElementById('saveSettingsBtn');
+    if (saveButton) {
+      saveButton.addEventListener('click', saveSettings);
+    }
+    
+    // Set up reset button
+    const resetButton = document.getElementById('resetSettings');
+    if (resetButton) {
+      resetButton.addEventListener('click', resetSettings);
+    }
+    
+    // Set up test connection button
+    const testConnectionBtn = document.getElementById('testConnection');
+    if (testConnectionBtn) {
+      testConnectionBtn.addEventListener('click', testConnection);
+    }
+  }
+  
+  /**
+   * Load saved settings from localStorage
+   */
+  function loadSavedSettings() {
+    // Use the SimBudget.Settings object if available
+    if (window.SimBudget && SimBudget.Settings) {
+      const settings = SimBudget.Settings.getAll();
+      
+      // Apply settings to form elements
+      const currencyInput = document.getElementById('currencySymbol');
+      if (currencyInput) {
+        currencyInput.value = settings.currencySymbol || '$';
+      }
+      
+      const dateFormatSelect = document.getElementById('dateFormat');
+      if (dateFormatSelect) {
+        dateFormatSelect.value = settings.dateFormat || 'MM/DD/YYYY';
+      }
+      
+      const darkModeCheckbox = document.getElementById('darkMode');
+      if (darkModeCheckbox) {
+        darkModeCheckbox.checked = settings.darkMode || false;
+        // Apply dark mode to body if enabled
+        document.body.classList.toggle('dark-mode', settings.darkMode);
+      }
+      
+      const languageSelect = document.getElementById('languageSelector');
+      if (languageSelect) {
+        languageSelect.value = settings.language || 'en';
+      }
+      
+      const showRemainingCheckbox = document.getElementById('showRemaining');
+      if (showRemainingCheckbox) {
+        showRemainingCheckbox.checked = settings.showRemaining !== undefined ? 
+          settings.showRemaining : true;
+      }
+      
+      const enableAlertsCheckbox = document.getElementById('enableAlerts');
+      if (enableAlertsCheckbox) {
+        enableAlertsCheckbox.checked = settings.enableAlerts !== undefined ? 
+          settings.enableAlerts : true;
+      }
+      
+      const showDecimalsCheckbox = document.getElementById('showDecimals');
+      if (showDecimalsCheckbox) {
+        showDecimalsCheckbox.checked = settings.showDecimals !== undefined ? 
+          settings.showDecimals : true;
+      }
+    }
+  }
+  
+  /**
+   * Save settings to localStorage
+   */
+  function saveSettings() {
+    // Get values from form
+    const settings = {
+      currencySymbol: document.getElementById('currencySymbol').value || '$',
+      dateFormat: document.getElementById('dateFormat').value || 'MM/DD/YYYY',
+      darkMode: document.getElementById('darkMode').checked || false,
+      showRemaining: document.getElementById('showRemaining').checked || false,
+      enableAlerts: document.getElementById('enableAlerts').checked || false,
+      language: document.getElementById('languageSelector').value || 'en',
+      showDecimals: document.getElementById('showDecimals').checked || false
+    };
+    
+    // Use the SimBudget.Settings object if available
+    if (window.SimBudget && SimBudget.Settings) {
+      // Save settings
+      const success = SimBudget.Settings.saveAll(settings);
+      
+      if (success) {
+        // Save sheet URL if provided
+        const sheetUrl = document.getElementById('budgetSheetUrl').value;
+        if (sheetUrl) {
+          API.setBudgetSheetUrl(sheetUrl, 
+            function() {
+              showStatus('Settings saved successfully', false);
+            },
+            function(error) {
+              showStatus('Settings saved but sheet URL could not be saved: ' + error, true);
+            }
+          );
+        } else {
+          showStatus('Settings saved successfully', false);
+        }
+      } else {
+        showStatus('Error saving settings', true);
+      }
+    } else {
+      // Fallback to direct localStorage if SimBudget.Settings not available
+      try {
+        localStorage.setItem('simbudget_settings', JSON.stringify(settings));
+        showStatus('Settings saved successfully', false);
+      } catch (e) {
+        showStatus('Error saving settings: ' + e.message, true);
+      }
+    }
+  }
+  
+  /**
+   * Reset settings to defaults
+   */
+  function resetSettings() {
+    // Use the SimBudget.Settings object if available
+    if (window.SimBudget && SimBudget.Settings) {
+      const defaults = SimBudget.Settings.defaults;
+      
+      // Reset to defaults
+      if (SimBudget.Settings.saveAll(defaults)) {
+        // Update form values
+        document.getElementById('currencySymbol').value = defaults.currencySymbol || '$';
+        document.getElementById('dateFormat').value = defaults.dateFormat || 'MM/DD/YYYY';
+        document.getElementById('darkMode').checked = defaults.darkMode || false;
+        document.getElementById('showRemaining').checked = defaults.showRemaining !== undefined ? 
+          defaults.showRemaining : true;
+        document.getElementById('enableAlerts').checked = defaults.enableAlerts !== undefined ? 
+          defaults.enableAlerts : true;
+        document.getElementById('languageSelector').value = defaults.language || 'en';
+        document.getElementById('showDecimals').checked = defaults.showDecimals !== undefined ? 
+          defaults.showDecimals : true;
+        
+        // Update dark mode
+        document.body.classList.toggle('dark-mode', defaults.darkMode || false);
+        
+        showStatus('Settings reset to defaults', false);
+      } else {
+        showStatus('Error resetting settings', true);
+      }
+    }
+  }
+  
+  /**
+   * Test connection to sheet
+   */
+  function testConnection() {
+    const sheetUrl = document.getElementById('budgetSheetUrl').value;
+    if (!sheetUrl) {
+      showStatus('Please enter a spreadsheet URL', true);
+      return;
+    }
+    
+    // Show loading state
+    showStatus('Testing connection...', false);
+    
+    API.verifySheetUrl(sheetUrl,
+      function(result) {
+        showStatus('Connection successful!', false);
+      },
+      function(error) {
+        showStatus('Connection failed: ' + error, true);
+      }
+    );
+  }
+  
+  /**
+   * Show a status message
+   * @param {string} message - Message to display
+   * @param {boolean} isError - Whether this is an error message
+   */
+  function showStatus(message, isError) {
+    const statusEl = document.getElementById('settingsStatus');
+    if (!statusEl) return;
+    
+    // Clear existing classes and content
+    statusEl.className = 'status-message';
+    statusEl.textContent = message;
+    
+    // Add appropriate class
+    statusEl.classList.add(isError ? 'error' : 'success');
+    
+    // Show the message
+    statusEl.classList.remove('hidden');
+    
+    // Auto-hide success messages after 5 seconds
+    if (!isError) {
+      setTimeout(function() {
+        statusEl.classList.add('hidden');
+      }, 5000);
+    }
+  }
+  
+  // Public API
+  return {
+    init: init,
+    saveSettings: saveSettings,
+    resetSettings: resetSettings,
+    testConnection: testConnection
+  };
+})();
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize settings page
+  SettingsPage.init();
+});
+
+</script>

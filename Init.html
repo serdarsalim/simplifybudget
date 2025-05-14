@@ -165,15 +165,19 @@ var SimBudget = (function() {
   const Settings = {
     // Default settings
     defaults: {
-      currencySymbol: '€',
+      currencySymbol: '$',
       dateFormat: 'MM/DD/YYYY',
       darkMode: false,
       showRemaining: true,
       enableAlerts: true,
       startingDay: '1',
-      language: 'en'
+      language: 'en',
+      showDecimals: true
     },
     
+
+    
+
     // Get a setting with fallback to default
     getSetting: function(key) {
       const userSettings = Utils.getLocalStorage('simbudget_settings', {});
@@ -210,8 +214,14 @@ var SimBudget = (function() {
     
     isDarkMode: function() {
       return this.getSetting('darkMode');
-    }
+    },
+
+      showDecimals: function() {
+    return this.getSetting('showDecimals');
+  }
   };
+
+  
   
   // View management
   const Views = {
@@ -525,6 +535,12 @@ var SimBudget = (function() {
       if (startingDaySelect) {
         startingDaySelect.value = settings.startingDay;
       }
+
+      // In applySettings function
+        const showDecimalsCheckbox = document.getElementById('showDecimals');
+        if (showDecimalsCheckbox) {
+        showDecimalsCheckbox.checked = settings.showDecimals;
+        }
     },
     
     /**
@@ -560,7 +576,9 @@ var SimBudget = (function() {
         showRemaining: document.getElementById('showRemaining').checked,
         enableAlerts: document.getElementById('enableAlerts').checked,
         startingDay: document.getElementById('startingDay').value,
-        language: document.getElementById('languageSelector').value
+        language: document.getElementById('languageSelector').value,
+         showDecimals: document.getElementById('showDecimals').checked
+
       };
       
       // Save to local storage
@@ -1157,14 +1175,10 @@ loadBudgetData: function() {
       }
     },
 
-    /**
-     * For dashboard.js - Rendering the dashboard
-     * This is a stub for compatibility - the real implementation is in dashboard.js
-     */
-    renderBudgetDashboard: function(data) {
-      console.log("Stub: renderBudgetDashboard should be defined in dashboard.js");
-    }
+
   };
+
+
 })();
 
 // Make debug functions available globally for testing

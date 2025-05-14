@@ -1,146 +1,233 @@
-<!-- Sidebar.html - Navigation component for SimBudget -->
-<div id="sidebar" class="sidebar expanded">
+<!-- Sidebar component for SimBudget -->
+<aside id="sidebar" class="sb-sidebar">
   <!-- Sidebar Header -->
-  <div class="sidebar-header">
-    <div class="logo">
+  <div class="sb-sidebar-header">
+    <div class="sb-logo">
       <i class="material-icons">account_balance</i>
-      <span class="logo-text">SimBudget</span>
+      <span class="sb-logo-text">Simplify</span>
     </div>
-    <button id="toggleSidebar" class="toggle-btn">
+    <button id="toggleSidebar" class="sb-toggle-btn" aria-label="Toggle Sidebar">
       <i class="material-icons">menu</i>
     </button>
   </div>
   
   <!-- Navigation Items -->
-  <nav class="sidebar-nav">
-    <ul>
-      <li class="sidebar-item active" data-view="budget">
-        <a href="#budget">
+  <nav class="sb-sidebar-nav">
+    <ul class="sb-nav-list">
+      <li class="sb-nav-item active" data-view="budget">
+        <a href="#budget" class="sb-nav-link">
           <i class="material-icons">account_balance_wallet</i>
-          <span class="item-text">Budget</span>
+          <span class="sb-nav-text">Budget</span>
         </a>
       </li>
-      <li class="sidebar-item" data-view="expense">
-        <a href="#expense">
+      <li class="sb-nav-item" data-view="expense">
+        <a href="#expense" class="sb-nav-link">
           <i class="material-icons">receipt_long</i>
-          <span class="item-text">Expenses</span>
+          <span class="sb-nav-text">Expenses</span>
         </a>
       </li>
-      <li class="sidebar-item" data-view="income">
-        <a href="#income">
+      <li class="sb-nav-item" data-view="income">
+        <a href="#income" class="sb-nav-link">
           <i class="material-icons">payments</i>
-          <span class="item-text">Income</span>
+          <span class="sb-nav-text">Income</span>
         </a>
       </li>
-      <li class="sidebar-item" data-view="recurring">
-        <a href="#recurring">
+      <li class="sb-nav-item" data-view="recurring">
+        <a href="#recurring" class="sb-nav-link">
           <i class="material-icons">repeat</i>
-          <span class="item-text">Recurring</span>
+          <span class="sb-nav-text">Recurring</span>
         </a>
       </li>
-      <li class="sidebar-item" data-view="netWorth">
-        <a href="#netWorth">
+      <li class="sb-nav-item" data-view="netWorth">
+        <a href="#netWorth" class="sb-nav-link">
           <i class="material-icons">trending_up</i>
-          <span class="item-text">Net Worth</span>
+          <span class="sb-nav-text">Net Worth</span>
         </a>
       </li>
-      <li class="sidebar-item" data-view="reports">
-        <a href="#reports">
+      <li class="sb-nav-item" data-view="reports">
+        <a href="#reports" class="sb-nav-link">
           <i class="material-icons">bar_chart</i>
-          <span class="item-text">Reports</span>
+          <span class="sb-nav-text">Reports</span>
         </a>
       </li>
-      <li class="sidebar-item" data-view="setup">
-        <a href="#setup">
+      <li class="sb-nav-item" data-view="setup">
+        <a href="#setup" class="sb-nav-link">
           <i class="material-icons">category</i>
-          <span class="item-text">Categories</span>
+          <span class="sb-nav-text">Categories</span>
         </a>
       </li>
     </ul>
   </nav>
   
   <!-- Sidebar Footer -->
-  <div class="sidebar-footer">
-    <div class="user-info">
-      <i class="material-icons">account_circle</i>
-      <span id="userEmail" class="item-text">Loading...</span>
+  <div class="sb-sidebar-footer">
+    
+    <div class="sb-settings-link">
+      <li class="sb-nav-item" data-view="settings">
+        <a href="#settings" class="sb-nav-link">
+          <i class="material-icons">settings</i>
+          <span class="sb-nav-text">Settings</span>
+        </a>
+      </li>
     </div>
-    <div class="settings">
-      <a href="#settings" class="sidebar-item" data-view="settings">
-        <i class="material-icons">settings</i>
-        <span class="item-text">Settings</span>
-      </a>
-    </div>
-    <div class="app-info">
-      <span class="version">SimBudget v1.0</span>
-      <span class="disclaimer">For educational purposes only</span>
+    <div class="sb-app-info">
+      <span class="sb-version">SimBudget v1.0</span>
+      <span class="sb-disclaimer">For educational purposes only</span>
     </div>
   </div>
-</div>
+</aside>
+
+<!-- Sidebar Backdrop for Mobile -->
+<div id="sidebarBackdrop" class="sb-backdrop"></div>
+
+<!-- Mobile menu toggle button -->
+<button id="mobileSidebarToggle" class="sb-mobile-toggle" aria-label="Open Menu">
+  <i class="material-icons">menu</i>
+</button>
 
 <script>
-  // This script will be merged with other scripts when included
-  // Functions for sidebar functionality are defined here but will be called from Init.js
+/**
+ * SimBudget Sidebar - Enhanced JavaScript Functionality
+ * Provides responsive sidebar behavior for both mobile and desktop
+ */
+
+// Initialize sidebar functionality
+function initSidebar() {
+  // Get DOM elements
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const contentArea = document.getElementById('contentArea');
+  const toggleBtn = document.getElementById('toggleSidebar');
+  const mobileToggle = document.getElementById('mobileSidebarToggle');
   
-  // Function to toggle sidebar expansion
+  // Prevent ALL sidebar links from navigating away
+  sidebar.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+    });
+  });
+  
+  // Check for mobile viewports
+  const isMobile = () => window.innerWidth < 992;
+  
+  // Set initial state
+  if (!isMobile()) {
+    sidebar.classList.add('sb-open');
+    contentArea.classList.remove('sb-expanded');
+  }
+  
+  // Function to toggle sidebar
   function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const contentArea = document.getElementById('contentArea');
-    
-    if (sidebar.classList.contains('expanded')) {
-      sidebar.classList.remove('expanded');
-      sidebar.classList.add('collapsed');
-      contentArea.classList.add('full-width');
-    } else {
-      sidebar.classList.remove('collapsed');
-      sidebar.classList.add('expanded');
-      contentArea.classList.remove('full-width');
-    }
-  }
-  
-  // Function to handle sidebar item clicks
-  function handleSidebarItemClick(event) {
-    event.preventDefault();
-    
-    // Find the closest sidebar-item parent
-    const sidebarItem = event.target.closest('.sidebar-item');
-    if (!sidebarItem) return;
-    
-    // Get the view name
-    const viewName = sidebarItem.dataset.view;
-    if (!viewName) return;
-    
-    // Update active state in sidebar
-    document.querySelectorAll('.sidebar-item').forEach(item => {
-      item.classList.remove('active');
-    });
-    sidebarItem.classList.add('active');
-    
-    // Switch to the corresponding view
-    switchView(viewName);
-    
-    // On mobile, collapse sidebar after selection
-    if (window.innerWidth < 768) {
-      toggleSidebar();
-    }
-  }
-  
-  // Function to switch views
-  function switchView(viewName) {
-    // Hide all views
-    document.querySelectorAll('.view').forEach(view => {
-      view.classList.remove('active-view');
-    });
-    
-    // Show the selected view
-    const targetView = document.getElementById(viewName + 'View');
-    if (targetView) {
-      targetView.classList.add('active-view');
+    if (isMobile()) {
+      // Mobile behavior - show/hide with backdrop
+      sidebar.classList.toggle('sb-open');
+      backdrop.classList.toggle('sb-visible');
       
-      // Load data for the view if needed
-      if (SimBudget && SimBudget.loadViewData) {
-        SimBudget.loadViewData(viewName);
+      // Update mobile toggle icon
+      if (mobileToggle) {
+        mobileToggle.innerHTML = sidebar.classList.contains('sb-open') ? 
+          '<i class="material-icons">close</i>' : 
+          '<i class="material-icons">menu</i>';
       }
+      
+      // Lock body scroll when sidebar is open
+      document.body.style.overflow = sidebar.classList.contains('sb-open') ? 'hidden' : '';
+    } else {
+      // Desktop behavior - collapse/expand
+      sidebar.classList.toggle('sb-collapsed');
+      sidebar.classList.toggle('sb-open');
+      contentArea.classList.toggle('sb-expanded');
     }
   }
+  
+  // Desktop toggle button
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', toggleSidebar);
+  }
+  
+  // Mobile toggle button
+  if (mobileToggle) {
+    mobileToggle.addEventListener('click', toggleSidebar);
+  }
+  
+  // Close sidebar when clicking backdrop
+  if (backdrop) {
+    backdrop.addEventListener('click', function() {
+      sidebar.classList.remove('sb-open');
+      backdrop.classList.remove('sb-visible');
+      document.body.style.overflow = '';
+      if (mobileToggle) {
+        mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+      }
+    });
+  }
+  
+  // Handle navigation item clicks
+  document.querySelectorAll('.sb-nav-item, [data-view="settings"]').forEach(item => {
+    item.addEventListener('click', function(e) {
+      // Prevent the default link behavior
+      e.preventDefault();
+      
+      // Also prevent any child links from navigating
+      const link = item.querySelector('a');
+      if (link) {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+        });
+      }
+      
+      // Get the view name from data attribute
+      const viewName = this.getAttribute('data-view');
+      if (!viewName) return;
+      
+      // Update active state
+      document.querySelectorAll('.sb-nav-item').forEach(navItem => {
+        navItem.classList.remove('active');
+      });
+      this.classList.add('active');
+      
+      // Switch to the view using SimBudget's existing function
+      if (window.SimBudget && SimBudget.Views) {
+        SimBudget.Views.switchTo(viewName);
+      }
+      
+      // Close sidebar on mobile
+      if (isMobile()) {
+        sidebar.classList.remove('sb-open');
+        backdrop.classList.remove('sb-visible');
+        document.body.style.overflow = '';
+        if (mobileToggle) {
+          mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+        }
+      }
+    });
+  });
+  
+  // Handle window resize
+  window.addEventListener('resize', function() {
+    // Debounce resize for better performance
+    clearTimeout(window.resizeTimer);
+    window.resizeTimer = setTimeout(function() {
+      // Reset sidebar state based on viewport size
+      if (isMobile()) {
+        sidebar.classList.remove('sb-collapsed');
+        sidebar.classList.remove('sb-open');
+        contentArea.classList.remove('sb-expanded');
+        backdrop.classList.remove('sb-visible');
+        document.body.style.overflow = '';
+      } else {
+        sidebar.classList.add('sb-open');
+        sidebar.classList.remove('sb-collapsed');
+        backdrop.classList.remove('sb-visible');
+        document.body.style.overflow = '';
+      }
+    }, 250);
+  });
+}
+
+// Execute when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize the sidebar after a slight delay to ensure other scripts have loaded
+  setTimeout(initSidebar, 10);
+});
 </script>
