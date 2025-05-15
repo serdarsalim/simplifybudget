@@ -46,11 +46,8 @@ const SettingsPage = (function() {
     _initialized = true;
     console.log('Settings page initialized');
   }
-  
-  /**
-   * Initialize event listeners
-   */
-  /**
+
+/**
  * Initialize event listeners with autosave
  */
 function initEventListeners() {
@@ -59,11 +56,23 @@ function initEventListeners() {
     saveSettings(true); // true = silent save (no notification)
   }, 500);
   
-  // Set up form controls with autosave
-  document.querySelectorAll('#currencySelector, #dateFormat, #showDecimals, #showRemaining, #enableAlerts')
+  // Set up form controls with autosave (excluding currency selector)
+  document.querySelectorAll('#dateFormat, #showDecimals, #showRemaining, #enableAlerts')
     .forEach(element => {
       element.addEventListener('change', debounceAutoSave);
     });
+  
+  // Currency selector needs special handling to update spreadsheet
+  const currencySelector = document.getElementById('currencySelector');
+  if (currencySelector) {
+    currencySelector.addEventListener('change', function() {
+      // Update currency in spreadsheet
+      updateCurrencyInSpreadsheet(this.value);
+      // Also save settings locally
+      debounceAutoSave();
+    });
+  }
+  
   
   // Dark mode has additional UI impact
   const darkModeToggle = document.getElementById('darkMode');
@@ -466,5 +475,24 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize settings page
   SettingsPage.init();
 });
+
+
+/**
+ * Update currency in spreadsheet (cell M76 in Dontedit sheet)
+ * @param {string} currencySymbol - Currency symbol to set
+ */
+function updateCurrencyInSpreadsheet(currencySymbol) {
+  API.setCurrencyInSpreadsheet(currencySymbol,
+    function(result) {
+      console.log('Currency updated in spreadsheet:', currencySymbol);
+    },
+    function(error) {
+      console.error('Failed to update currency in spreadsheet:', error);
+      // No visible error to avoid confusing the user
+    }
+  );
+}
+
+
 
 </script>

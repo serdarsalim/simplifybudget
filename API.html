@@ -316,7 +316,19 @@ setUserLanguage: function(languageCode, successCallback, errorCallback) {
       }
     },
     
-    
+  /**
+   * Set currency symbol in spreadsheet
+   * @param {string} currencySymbol - Currency symbol to set
+   * @param {Function} successCallback - Function to call on success
+   * @param {Function} errorCallback - Function to call on error
+   */
+  setCurrencyInSpreadsheet: function(currencySymbol, successCallback, errorCallback) {
+    google.script.run
+      .withSuccessHandler(successCallback)
+      .withFailureHandler(errorCallback)
+      .setCurrencyInSheet(currencySymbol);
+  },
+  
 
 /**
  * Get all dashboard data in a single call

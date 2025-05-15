@@ -693,3 +693,21 @@ function getDashboardData(month, year) {
     return { success: false, error: error.toString() };
   }
 }
+
+/**
+ * Update currency symbol in spreadsheet (cell M76 in Dontedit sheet)
+ * @param {string} currencySymbol - Currency symbol to set
+ * @return {Object} Result object with success status and optional error message
+ */
+function setCurrencyInSheet(currencySymbol) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName("Dontedit");
+    if (!sheet) throw new Error("Sheet 'Dontedit' not found");
+    
+    sheet.getRange("M76").setValue(currencySymbol);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
