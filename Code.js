@@ -729,31 +729,63 @@ function setCurrencyInSheet(currencySymbol) {
       Logger.log("Applied format to recurring sheet range H6:H");
     }
     
-    // 5. Format Net Worth:G37:G sheet
+    // 5. Format Net Worth:G37:G sheet and additional ranges
     const netWorthSheet = getBudgetSheet("Net Worth");
     if (netWorthSheet) {
+      // Original range
       netWorthSheet.getRange("G37:G").setNumberFormat(numberFormat);
-      Logger.log("Applied format to Net Worth sheet range G37:G");
+      
+      // New ranges requested
+      netWorthSheet.getRange("D5:P18").setNumberFormat(numberFormat);
+      netWorthSheet.getRange("I37:I").setNumberFormat(numberFormat);
+      
+      Logger.log("Applied format to Net Worth sheet ranges G37:G, D5:P18, and I37:I");
     }
+
     
-    // 6. Format Budget!J9:K39 sheet (NEW)
+    // 6. Format Budget!J9:K39 sheet 
     const budgetSheet = getBudgetSheet("Budget");
     if (budgetSheet) {
       budgetSheet.getRange("J9:K39").setNumberFormat(numberFormat);
       Logger.log("Applied format to Budget sheet range J9:K39");
       
-      // 7. Also format Budget!C6:E12 (NEW)
+      // 7. Also format Budget!C6:E12 
       budgetSheet.getRange("C6:E12").setNumberFormat(numberFormat);
       Logger.log("Applied format to Budget sheet range C6:E12");
     }
     
-    // 8. Format Dontedit rows 301:340 (NEW)
+    // 8. Format Dontedit rows 301:340 
     if (donteditSheet) {
       // Format columns that contain currency values (C-H based on getDashboardData)
       donteditSheet.getRange("C301:H340").setNumberFormat(numberFormat);
       // Also format columns with subscription amounts (M column)
       donteditSheet.getRange("M301:M340").setNumberFormat(numberFormat);
       Logger.log("Applied format to Dontedit sheet rows 301:340");
+    }
+
+        // 9. Format Quick Log sheet's entire data grid
+    const quickLogSheet = getBudgetSheet("Quick Log");
+    if (quickLogSheet) {
+      // Format the entire data grid from E2 to AL3177
+      quickLogSheet.getRange("E2:AL3177").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Quick Log sheet range E2:AL3177");
+    }
+
+   // 10. Format Setup sheet with specific currency ranges
+    const setupSheet = getBudgetSheet("Reports");
+    if (setupSheet) {
+      // Format specific ranges that contain monetary values
+      setupSheet.getRange("E6:L7").setNumberFormat(numberFormat);
+      setupSheet.getRange("I61:K71").setNumberFormat(numberFormat);
+      setupSheet.getRange("B78:D109").setNumberFormat(numberFormat);
+      setupSheet.getRange("F79:F109").setNumberFormat(numberFormat);
+      setupSheet.getRange("I78:K109").setNumberFormat(numberFormat);
+      setupSheet.getRange("M79:M109").setNumberFormat(numberFormat);
+      setupSheet.getRange("C26:D55").setNumberFormat(numberFormat);
+      setupSheet.getRange("J26:J55").setNumberFormat(numberFormat);
+      setupSheet.getRange("M26:N55").setNumberFormat(numberFormat);
+      
+      Logger.log("Applied format to Setup sheet specific currency ranges");
     }
     
     return { success: true };
