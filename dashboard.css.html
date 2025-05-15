@@ -278,6 +278,36 @@
   background-color: #ffe082;
 }
 
+
+/* Add this to the end of your CSS file */
+
+/* Dark mode progress bar styles - UPDATED FOR VISIBILITY */
+body.dark-mode .progress-bar-container {
+  border: 1px solid rgba(255, 255, 255, 0.3) !important; /* More visible border */
+  overflow: visible !important;
+}
+
+/* Much brighter green with glow effect for standard bars */
+body.dark-mode .progress-bar {
+  background-color: rgb(109, 234, 113)!important; /* Brighter, more saturated green */
+  box-shadow: 0 0 5px rgb(109, 234, 113) !important; /* Add glow effect */
+  visibility: visible !important;
+}
+
+/* Keep the over-budget and near-limit styles with glow effects too */
+body.dark-mode .progress-bar.over-budget {
+  background-color: #f44336 !important; /* Brighter red */
+  box-shadow: 0 0 5px rgba(244, 67, 54, 0.7) !important; /* Red glow */
+}
+
+
+/* Fix percentage text */
+body.dark-mode .progress-percentage {
+  color: rgba(255, 255, 255, 0.9) !important;
+  opacity: 1 !important;
+}
+
+
 /* ======================
    SUBSCRIPTION SECTION
    ====================== */

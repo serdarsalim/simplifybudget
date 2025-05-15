@@ -384,32 +384,39 @@ applyTranslations: function() {
       }
       
       // MONTH SELECTOR - Keep your existing code
-      const monthSelector = document.getElementById('monthSelector');
-      if (monthSelector) {
-        // Clear existing options
-        monthSelector.innerHTML = '';
-        
-        // Array of month names
-        const months = [
-          'January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        
-        // Get current month (0-11)
-        const currentMonth = new Date().getMonth();
-        
-        // Create options for each month
-        months.forEach((month, index) => {
-          const option = document.createElement('option');
-          option.value = month;
-          option.textContent = month;
-          monthSelector.appendChild(option);
-        });
-        
-        // Set current month as selected
-        monthSelector.value = months[currentMonth];
-      }
-    },
+        const monthSelector = document.getElementById('monthSelector');
+  if (monthSelector) {
+    // Clear existing options
+    monthSelector.innerHTML = '';
+    
+    // Month keys for translations
+    const monthKeys = [
+      'january', 'february', 'march', 'april', 'may', 'june',
+      'july', 'august', 'september', 'october', 'november', 'december'
+    ];
+    
+    // English month names (preserve for values)
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    // Get current month (0-11)
+    const currentMonth = new Date().getMonth();
+    
+    // Create options for each month
+    monthKeys.forEach((monthKey, index) => {
+      const option = document.createElement('option');
+      option.value = monthNames[index]; // Keep English values for backend compatibility
+      option.setAttribute('data-translate', monthKey); // Enable translation
+      option.textContent = monthNames[index]; // Default text
+      monthSelector.appendChild(option);
+    });
+    
+    // Set current month as selected
+    monthSelector.value = monthNames[currentMonth];
+  }
+},
     
     /**
      * Update month and year when changed by user

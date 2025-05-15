@@ -110,6 +110,20 @@ function setUserLanguage(languageCode) {
   }
 }
 
+
+/**
+ * Translation hints - alternative source words for better translation results
+ * These are ONLY used for translation, not for English UI display
+ */
+function getTranslationHints() {
+  return {
+    "expenses": "Purchases", // Will be translated as "Purchases" instead of "Expenses"
+    // Add more hints as needed
+  };
+}
+
+
+
 /**
  * Get dictionary of UI strings for translation
  * @return {Object} UI strings dictionary
@@ -124,6 +138,20 @@ function getUIDictionary() {
     "reset": "Reset",
     "test": "Test",
     
+        // Month names
+    "january": "January",
+    "february": "February",
+    "march": "March",
+    "april": "April",
+    "may": "May",
+    "june": "June",
+    "july": "July",
+    "august": "August",
+    "september": "September", 
+    "october": "October",
+    "november": "November",
+    "december": "December",
+
     // Dashboard and loader
     "dashboard_load_test": "Dashboard HTML loaded",
     "dashboard_title": "Budget Dashboard",
@@ -226,6 +254,17 @@ function getTranslatedUI(languageCode, bustCache) {
     userProps.deleteProperty(cacheKey);
   }
   
-  // Translate and return
-  return translateUIStrings(ui, languageCode);
+  // Apply translation hints for better results
+  const translationHints = getTranslationHints();
+  const uiWithHints = Object.assign({}, ui);
+  
+  // Replace original text with hints for translation only
+  Object.keys(translationHints).forEach(key => {
+    if (uiWithHints[key]) {
+      uiWithHints[key] = translationHints[key];
+    }
+  });
+  
+  // Translate with hints and return
+  return translateUIStrings(uiWithHints, languageCode);
 }

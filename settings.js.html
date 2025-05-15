@@ -114,6 +114,7 @@ function applyTranslations(langCode) {
   const statusEl = document.getElementById('settingsStatus');
   if (statusEl) {
     statusEl.className = 'status-message';
+     statusEl.classList.add('success');
     statusEl.textContent = 'Loading translations...';
     statusEl.classList.remove('hidden');
   }
