@@ -466,7 +466,8 @@ if (languageSelector) {
     init: init,
     saveSettings: saveSettings,
     resetSettings: resetSettings,
-    testConnection: testConnection
+    testConnection: testConnection,
+    showStatus: showStatus 
   };
 })();
 
@@ -485,10 +486,13 @@ function updateCurrencyInSpreadsheet(currencySymbol) {
   API.setCurrencyInSpreadsheet(currencySymbol,
     function(result) {
       console.log('Currency updated in spreadsheet:', currencySymbol);
+      // Use the status message box instead of toast
+      SettingsPage.showStatus('Currency updated in app and spreadsheet', false);
     },
     function(error) {
       console.error('Failed to update currency in spreadsheet:', error);
-      // No visible error to avoid confusing the user
+      // Show error in the status box
+      SettingsPage.showStatus('Error updating currency: ' + error, true);
     }
   );
 }

@@ -694,20 +694,104 @@ function getDashboardData(month, year) {
   }
 }
 
-/**
- * Update currency symbol in spreadsheet (cell M76 in Dontedit sheet)
- * @param {string} currencySymbol - Currency symbol to set
- * @return {Object} Result object with success status and optional error message
- */
 function setCurrencyInSheet(currencySymbol) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName("Dontedit");
-    if (!sheet) throw new Error("Sheet 'Dontedit' not found");
+    // 1. Store the currency symbol in Dontedit!M76 using getBudgetSheet
+    const donteditSheet = getBudgetSheet("Dontedit");
+    if (!donteditSheet) throw new Error("Sheet 'Dontedit' not found");
+    donteditSheet.getRange("M76").setValue(currencySymbol);
     
-    sheet.getRange("M76").setValue(currencySymbol);
+    // Get user settings for decimal places
+    const userProps = PropertiesService.getUserProperties();
+    const showDecimals = userProps.getProperty("showDecimals") === "true";
+    
+    // Generate the currency format once
+    const numberFormat = getCurrencyFormat(currencySymbol, showDecimals);
+    
+    // 2. Format Income:E5:E sheet
+    const incomeSheet = getBudgetSheet("Income");
+    if (incomeSheet) {
+      incomeSheet.getRange("E5:E").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Income sheet range E5:E");
+    }
+    
+    // 3. Format Expenses:E5:E sheet
+    const expensesSheet = getBudgetSheet("Expenses");
+    if (expensesSheet) {
+      expensesSheet.getRange("E5:E").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Expenses sheet range E5:E");
+    }
+    
+    // 4. Format recurring:H6:H sheet
+    const recurringSheet = getBudgetSheet("recurring");
+    if (recurringSheet) {
+      recurringSheet.getRange("H6:H").setNumberFormat(numberFormat);
+      Logger.log("Applied format to recurring sheet range H6:H");
+    }
+    
+    // 5. Format Net Worth:G37:G sheet
+    const netWorthSheet = getBudgetSheet("Net Worth");
+    if (netWorthSheet) {
+      netWorthSheet.getRange("G37:G").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Net Worth sheet range G37:G");
+    }
+    
+    // 6. Format Budget!J9:K39 sheet (NEW)
+    const budgetSheet = getBudgetSheet("Budget");
+    if (budgetSheet) {
+      budgetSheet.getRange("J9:K39").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Budget sheet range J9:K39");
+      
+      // 7. Also format Budget!C6:E12 (NEW)
+      budgetSheet.getRange("C6:E12").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Budget sheet range C6:E12");
+    }
+    
+    // 8. Format Dontedit rows 301:340 (NEW)
+    if (donteditSheet) {
+      // Format columns that contain currency values (C-H based on getDashboardData)
+      donteditSheet.getRange("C301:H340").setNumberFormat(numberFormat);
+      // Also format columns with subscription amounts (M column)
+      donteditSheet.getRange("M301:M340").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Dontedit sheet rows 301:340");
+    }
+    
     return { success: true };
   } catch (e) {
+    Logger.log("Error in setCurrencyInSheet: " + e.toString());
     return { success: false, error: e.toString() };
   }
+}
+
+/**
+ * Get the proper Google Sheets number format for a given currency symbol
+ * @param {string} symbol - Currency symbol
+ * @param {boolean} showDecimals - Whether to show decimal places (defaults to false)
+ * @return {string} Google Sheets number format pattern
+ */
+function getCurrencyFormat(symbol, showDecimals = false) {
+  // Base formats with or without decimals
+  const decimalSuffix = showDecimals ? ".00" : "";
+  
+  // Common currency formats
+  const formats = {
+    '$': `"$"#,##0${decimalSuffix};("$"#,##0${decimalSuffix})`,
+    '€': `[$€]#,##0${decimalSuffix};([$€]#,##0${decimalSuffix})`,
+    '£': `"£"#,##0${decimalSuffix};("£"#,##0${decimalSuffix})`,
+    '¥': `"¥"#,##0${decimalSuffix};("¥"#,##0${decimalSuffix})`,
+    '₹': `"₹"#,##0${decimalSuffix};("₹"#,##0${decimalSuffix})`,
+    '₽': `"₽"#,##0${decimalSuffix};("₽"#,##0${decimalSuffix})`,
+    '₺': `"₺"#,##0${decimalSuffix};("₺"#,##0${decimalSuffix})`,
+    'C$': `"C$"#,##0${decimalSuffix};("C$"#,##0${decimalSuffix})`,
+    'A$': `"A$"#,##0${decimalSuffix};("A$"#,##0${decimalSuffix})`,
+    'CHF': `CHF#,##0${decimalSuffix};(CHF#,##0${decimalSuffix})`,
+    'R$': `"R$"#,##0${decimalSuffix};("R$"#,##0${decimalSuffix})`,
+    '₩': `"₩"#,##0${decimalSuffix};("₩"#,##0${decimalSuffix})`,
+    'RM': `"RM"#,##0${decimalSuffix};("RM"#,##0${decimalSuffix})`,
+    '฿': `"฿"#,##0${decimalSuffix};("฿"#,##0${decimalSuffix})`,
+    '₦': `"₦"#,##0${decimalSuffix};("₦"#,##0${decimalSuffix})`
+  };
+  
+  // Return the specific format or default to a generic one with the given symbol
+  return formats[symbol] || `"${symbol}"#,##0${decimalSuffix};("${symbol}"#,##0${decimalSuffix})`;
 }
