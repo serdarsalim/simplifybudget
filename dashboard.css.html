@@ -551,5 +551,157 @@
 }
 
 
+/* COMPLETE REWRITE of mobile ordering with CSS Grid */
+/* Updated mobile ordering CSS Grid - fixes header attachment and subscription order */
+@media (max-width: 768px) {
+  /* Make parent container a grid - updated order */
+  .view-content, 
+  .dashboard-container,
+  .dashboard-content {
+    display: grid !important;
+    grid-template-areas: 
+      "income"
+      "budget"
+      "subscription-text"
+      "subscription-summary"
+      "subscription-list"
+      "net-worth"
+      "chart" !important;
+    grid-gap: 20px !important;
+    padding: 10px !important;
+  }
+  
+  /* Assign grid areas to each component */
+  .income-spent-box,
+  .budget-summary-card,
+  [class*="income"],
+  [class*="budget-summary"] {
+    grid-area: income !important;
+  }
+  
+  .dashboard-card.budget-data-card,
+  [class*="budget-data"] {
+    grid-area: budget !important;
+  }
+  
+  .subscription-header,
+  .subscription-text,
+  [class*="subscription-t"] {
+    grid-area: subscription-text !important;
+  }
+  
+  /* Add subscription summary in correct position */
+  .subscription-summary,
+  [class*="subscription-summary"] {
+    grid-area: subscription-summary !important;
+  }
+  
+  /* Keep header with list by using same grid area */
+  .subscription-list-header,
+  .subscription-list-container,
+  .dashboard-card.subscription-card,
+  [class*="subscription-l"],
+  [class*="subscription-table"] {
+    grid-area: subscription-list !important;
+  }
+  
+  .net-worth-container,
+  .net-worth-card,
+  [class*="net-worth"] {
+    grid-area: net-worth !important;
+    
+  }
+  
+  /* Keep chart header with chart by using same grid area */
+  .donut-chart-header, 
+  .donut-chart-card,
+  .chart-container,
+  .pie-chart-container,
+  .donut-chart-container,
+  [class*="chart"] {
+    grid-area: chart !important;
+  }
+  
+  /* Fix for headers to ensure they stay connected to content */
+  .donut-chart-card, 
+  .subscription-list-card {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+
+}
+
+
+
+/* Add this after your existing mobile ordering CSS */
+@media (max-width: 768px) {
+  /* Force horizontal layout INSIDE income card */
+  .income-spent-box .card-content,
+  .budget-summary-card .card-content,
+  /* Handle potential container variants */
+  .income-spent-box > div,
+  .budget-summary-card > div {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+  }
+  
+  /* Force horizontal layout INSIDE net worth card */
+  .net-worth-container .card-content,
+  .net-worth-card .card-content,
+  /* Handle potential container variants */
+  .net-worth-container > div,
+  .net-worth-card > div {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+
+  }
+  
+  /* Style individual items within the cards */
+  .income-item, 
+  .spent-item, 
+  .leftover-item,
+  .net-worth-item, 
+  .assets-item, 
+  .debt-item {
+    flex: 1 !important;
+    min-width: 0 !important;
+    max-width: 33% !important;
+    text-align: center !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  
+  /* Force labels and amounts to stack vertically */
+  .income-item .label, 
+  .spent-item .label, 
+  .leftover-item .label,
+  .net-worth-item .label, 
+  .assets-item .label, 
+  .debt-item .label {
+    font-size: 9px !important;
+    margin-bottom: 2px !important;
+    font-weight: 500 !important;
+  }
+  
+  .income-item .amount, 
+  .spent-item .amount, 
+  .leftover-item .amount,
+  .net-worth-item .amount, 
+  .assets-item .amount, 
+  .debt-item .amount {
+    font-size: 14px !important;
+    white-space: nowrap !important;
+    font-weight: 600 !important;
+  }
+}
+
+
 
 </style>

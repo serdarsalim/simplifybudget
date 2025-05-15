@@ -262,9 +262,30 @@ label {
 /* ============= SETTINGS FOOTER ============= */
 .settings-footer {
   display: flex;
+  flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  margin-top: var(--spacing-xl);
+  margin-top: var(--spacing-lg);
+}
+
+/* Button group takes 20% width */
+.settings-footer .button-group {
+  flex: 0 0 20%;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+/* Ensure the status message doesn't collapse when hidden */
+.status-message.hidden {
+  visibility: hidden;
+  display: block !important; /* Override any display:none */
+}
+
+/* Status message takes 80% width and maintains height */
+#settingsStatus {
+  flex: 0 0 80%;
+  min-height: 24px; /* Maintains consistent height */
 }
 
 .button-group {
@@ -363,10 +384,11 @@ body.dark-mode .btn.secondary {
   }
   
   .button-group {
-    width: 100%;
-    justify-content: flex-end;
-  }
+  display: flex;
+  justify-content: flex-end; /* Aligns items to the right */
+  gap: var(--spacing-sm);
 }
+
 
 @media (max-width: 480px) {
   .settings-container {

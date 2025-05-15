@@ -1,20 +1,20 @@
 <!-- BudgetDashboardHTML.html - Budget Dashboard Template -->
- <div id="dashboard-load-test" style="display:none;">Dashboard HTML loaded</div>
+<div id="dashboard-load-test" style="display:none;" data-translate="dashboard_load_test">Dashboard HTML loaded</div>
 <div id="budgetView" class="view active-view">
   <div class="view-header">
-            <h1><i class="material-icons">account_balance_wallet</i> Budget Dashboard</h1>
-           <div class="month-year-selector">
-  <select id="monthSelector" class="month-select">
-    <!-- Will be populated dynamically -->
-  </select>
-  <!-- Remove the extra closing tag -->
-  <select id="yearSelector" class="year-select">
-    <!-- Will be populated dynamically -->
-  </select>
-  <button id="refreshBudget" class="btn icon-btn" title="Refresh Budget Data">
-    <i class="material-icons">refresh</i>
-  </button>
-</div>
+    <h1><i class="material-icons">account_balance_wallet</i> <span data-translate="dashboard_title">Budget Dashboard</span></h1>
+    <div class="month-year-selector">
+      <select id="monthSelector" class="month-select">
+        <!-- Will be populated dynamically -->
+      </select>
+      <!-- Remove the extra closing tag -->
+      <select id="yearSelector" class="year-select">
+        <!-- Will be populated dynamically -->
+      </select>
+      <button id="refreshBudget" class="btn icon-btn" title="Refresh Budget Data">
+        <i class="material-icons">refresh</i>
+      </button>
+    </div>
   </div><!-- End of view-header -->
   
   <div id="budgetContent" class="view-content">
@@ -25,15 +25,15 @@
         <div class="dashboard-card budget-summary-card">
           <div class="budget-summary-row">
             <div>
-              <div class="value-label">Income</div>
+              <div class="value-label" data-translate="income">Income</div>
               <div id="income-value" class="value-amount">€0</div>
             </div>
             <div>
-              <div class="value-label">Spent</div>
+              <div class="value-label" data-translate="spent">Spent</div>
               <div id="spent-value" class="value-amount">€0</div>
             </div>
             <div>
-              <div class="value-label">Left to Spend</div>
+              <div class="value-label" data-translate="left_to_spend">Left to Spend</div>
               <div id="left-to-spend-value" class="value-amount">€0</div>
             </div>
           </div>
@@ -43,15 +43,15 @@
         <div class="dashboard-card budget-summary-card">
           <div class="budget-summary-row">
             <div>
-              <div class="value-label">Net Worth</div>
+              <div class="value-label" data-translate="net_worth">Net Worth</div>
               <div id="net-worth-value" class="value-amount">€0</div>
             </div>
             <div>
-              <div class="value-label">Savings</div>
+              <div class="value-label" data-translate="savings">Savings</div>
               <div id="savings-value" class="value-amount">€0</div>
             </div>
             <div>
-              <div class="value-label">Debts</div>
+              <div class="value-label" data-translate="debts">Debts</div>
               <div id="debts-value" class="value-amount">€0</div>
             </div>
           </div>
@@ -59,7 +59,7 @@
         
         <!-- Bottom: Monthly Expense Donut Chart -->
         <div class="dashboard-card donut-chart-card">
-          <h3 class="donut-chart-header">Monthly Expense Breakdown</h3>
+          <h3 class="donut-chart-header" data-translate="expense_breakdown">Monthly Expense Breakdown</h3>
           <div class="donut-chart-container">
             <canvas id="expense-donut-chart"></canvas>
           </div>
@@ -76,10 +76,10 @@
           <table class="budget-table">
             <thead>
               <tr>
-                <th>Category</th>
-                <th>Budgeted</th>
-                <th>Actual</th>
-                <th>Progress</th>
+                <th data-translate="category">Category</th>
+                <th data-translate="budgeted">Budgeted</th>
+                <th data-translate="actual">Actual</th>
+                <th data-translate="progress">Progress</th>
               </tr>
             </thead>
             <tbody id="budget-categories-body">
@@ -93,21 +93,22 @@
       <div class="col-right">
         <!-- Top: Subscription Summary Card -->
         <div class="dashboard-card subscription-summary">
-    <div class="subscription-info">
-    </div>
-</div>
+          <div class="subscription-info">
+            <!-- Will be populated dynamically -->
+          </div>
+        </div>
         
         <!-- Bottom: Subscription List Card -->
         <div class="dashboard-card subscription-list-card">
-          <h3 class="subscription-list-header">Subscriptions</h3>
+          <h3 class="subscription-list-header" data-translate="subscriptions">Subscriptions</h3>
           <div class="subscription-list-container">
             <table class="subscription-table">
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Name</th>
-                  <th class="amount-column">Amount</th>
-                  <th>Next Due</th>
+                  <th data-translate="name">Name</th>
+                  <th class="amount-column" data-translate="amount">Amount</th>
+                  <th data-translate="next_due">Next Due</th>
                 </tr>
               </thead>
               <tbody id="subscription-list-body">

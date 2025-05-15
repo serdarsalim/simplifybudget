@@ -263,11 +263,11 @@ if (data.subscriptions) {
       let percentText = '';
       if (income > 0) {
         const percentage = Math.round((total / income) * 100);
-        percentText = ` | ${percentage}% income`;
+        percentText = ` • ${percentage}% of income`;
       }
       
       // Build a consistent format with our currency formatting function
-      const formattedSummary = `${count} 🔁 | ${Utils.formatCurrency(total)} total${percentText}`;
+      const formattedSummary = `${count} 🔁 • ${Utils.formatCurrency(total)} total${percentText}`;
       
       // Update the element
       subscriptionInfo.innerHTML = formattedSummary;
@@ -297,15 +297,19 @@ if (data.subscriptions) {
 }
     
     // 6. RENDER CHART (After small delay to ensure DOM is ready)
-    setTimeout(function() {
-      try {
-        if (typeof SimBudget.renderExpenseChart === 'function' && data.categories) {
-          SimBudget.renderExpenseChart(data.categories);
-        }
-      } catch (chartError) {
-        console.error("Error rendering expense chart:", chartError);
-      }
-    }, 200);
+setTimeout(function() {
+  try {
+    if (typeof SimBudget.renderExpenseChart === 'function' && data.categories) {
+      SimBudget.renderExpenseChart(data.categories);
+    }
+    
+    // Reorder elements for mobile view
+    SimBudget.reorderDashboardForMobile();
+    
+  } catch (chartError) {
+    console.error("Error rendering expense chart:", chartError);
+  }
+}, 200);
     
     console.log("Budget dashboard rendering completed successfully");
   } catch (error) {
@@ -684,6 +688,105 @@ SimBudget.renderExpenseChart = function(categories) {
     }
   });
 };
+
+
+/**
+ * Reorder dashboard elements on mobile devices to match CSS Grid layout
+ */
+SimBudget.reorderDashboardForMobile = function() {
+  // Only apply on mobile devices
+  if (window.innerWidth <= 768) {
+    console.log("Reordering dashboard for mobile view");
+    const container = document.querySelector('.dashboard-container') || 
+                     document.querySelector('.view-content');
+    
+    if (!container) return;
+    
+    // Get all elements we need to reorder - EXACT MATCH TO CSS GRID AREAS
+    const incomeBox = container.querySelector('.income-spent-box, .budget-summary-card');
+    const budgetCard = container.querySelector('.dashboard-card.budget-data-card');
+    const subscriptionText = container.querySelector('.subscription-header, .subscription-text'); 
+    const subscriptionSummary = container.querySelector('.subscription-summary');
+    
+    // FIXED: Get card elements with their headers
+    const subscriptionCard = container.querySelector('.subscription-list-card') || 
+                            container.querySelector('.dashboard-card.subscription-card');
+    const subscriptionHeader = container.querySelector('.subscription-list-header');
+    
+    const netWorth = container.querySelector('.net-worth-container, .net-worth-card');
+    
+    // FIXED: Get chart elements with header
+    const chartCard = container.querySelector('.donut-chart-card') || 
+                     container.querySelector('.dashboard-card.chart-card');
+    const chartHeader = container.querySelector('.donut-chart-header');
+    const chartContainer = container.querySelector('.chart-container, .pie-chart-container, .donut-chart-container');
+    
+    // Reorder by appending in desired order - MATCHING CSS GRID ORDER
+    if (incomeBox) container.appendChild(incomeBox);
+    if (budgetCard) container.appendChild(budgetCard);
+    if (subscriptionText) container.appendChild(subscriptionText);
+    if (subscriptionSummary) container.appendChild(subscriptionSummary);
+    
+    // FIXED: Handle subscription card & header
+    if (subscriptionCard) {
+      container.appendChild(subscriptionCard);
+    } else {
+      if (subscriptionHeader) container.appendChild(subscriptionHeader);
+      const subscriptionList = container.querySelector('.subscription-list-container');
+      if (subscriptionList) container.appendChild(subscriptionList);
+    }
+    
+    if (netWorth) container.appendChild(netWorth);
+    
+    // FIXED: Handle chart card & header
+    if (chartCard) {
+      container.appendChild(chartCard);
+    } else {
+      if (chartHeader) container.appendChild(chartHeader);
+      if (chartContainer) container.appendChild(chartContainer);
+    }
+
+    
+  }
+
+  SimBudget.fixMobileDisplay();
+};
+
+
+
+
+
+/**
+ * Clean up mobile display - remove decimals and fix layout
+ */
+SimBudget.fixMobileDisplay = function() {
+  if (window.innerWidth <= 768) {
+    console.log("Fixing mobile display");
+    
+    // 1. Remove decimals from ALL amount values - more aggressive approach
+    document.querySelectorAll('.budget-data-card td, .budget-value, .actual-value, [id$="-value"], .amount, .amount-column')
+      .forEach(el => {
+        // Only process text nodes (not child elements)
+        if (el.childNodes && el.childNodes.length) {
+          for (let i = 0; i < el.childNodes.length; i++) {
+            if (el.childNodes[i].nodeType === 3) { // Text node
+              const text = el.childNodes[i].textContent;
+              // Remove everything after decimal point
+              if (text.includes('.') || text.includes(',')) {
+                const parts = text.match(/([^\d]*)([\d,]+)([.,]\d+)?(\D*)/);
+                if (parts) {
+                  el.childNodes[i].textContent = parts[1] + parts[2] + parts[4];
+                }
+              }
+            }
+          }
+        }
+      });
+  }
+};
+
+
+
 
 })();
 

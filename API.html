@@ -38,6 +38,58 @@ var API = (function() {
         errorCallback(_lastError);
       }
     },
+
+/**
+ * Get translations for UI strings
+ * @param {string} languageCode - Target language code
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ * @param {boolean} [bustCache=false] - Whether to bypass cache
+ */
+getTranslations: function(languageCode, successCallback, errorCallback, bustCache) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(translations) {
+        successCallback({ success: true, translations: translations });
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getTranslatedUI(languageCode, bustCache || false);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Set user language preference
+ * @param {string} languageCode - Language code to set
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+setUserLanguage: function(languageCode, successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .setUserLanguage(languageCode);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
     
     /**
      * Set budget sheet URL

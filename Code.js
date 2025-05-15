@@ -29,9 +29,9 @@ function showSimBudgetApp() {
     .evaluate()
     .setWidth(1400)
     .setHeight(900)
-    .setTitle("SimBudget");
+    .setTitle("Simplify Budget");
 
-  SpreadsheetApp.getUi().showModelessDialog(html, "SimBudget");
+  SpreadsheetApp.getUi().showModelessDialog(html, "Simplify Budget");
 }
 
 /**

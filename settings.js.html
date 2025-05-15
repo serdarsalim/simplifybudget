@@ -9,18 +9,40 @@ const SettingsPage = (function() {
   // Private variables
   let _initialized = false;
   
+ const currencyOptions = [
+  { symbol: '$', code: 'USD', name: 'US Dollar' },
+  { symbol: '€', code: 'EUR', name: 'Euro' },
+  { symbol: '£', code: 'GBP', name: 'British Pound' },
+  { symbol: '¥', code: 'JPY', name: 'Japanese Yen' },
+  { symbol: '₹', code: 'INR', name: 'Indian Rupee' },
+  { symbol: '₽', code: 'RUB', name: 'Russian Ruble' },
+  { symbol: '¥', code: 'CNY', name: 'Chinese Yuan' },
+  { symbol: '₺', code: 'TRY', name: 'Turkish Lira' },
+  { symbol: 'C$', code: 'CAD', name: 'Canadian Dollar' },
+  { symbol: 'A$', code: 'AUD', name: 'Australian Dollar' },
+  { symbol: 'CHF', code: 'CHF', name: 'Swiss Franc' },
+  { symbol: 'R$', code: 'BRL', name: 'Brazilian Real' },
+  { symbol: '₩', code: 'KRW', name: 'South Korean Won' },
+  { symbol: 'د.إ', code: 'AED', name: 'UAE Dirham' },
+  { symbol: '₫', code: 'VND', name: 'Vietnamese Dong' },
+  { symbol: 'RM', code: 'MYR', name: 'Malaysian Ringgit' },
+  { symbol: '฿', code: 'THB', name: 'Thai Baht' },
+  { symbol: '₦', code: 'NGN', name: 'Nigerian Naira' },
+  { symbol: '₴', code: 'UAH', name: 'Ukrainian Hryvnia' },
+  { symbol: 'د.ا', code: 'JOD', name: 'Jordanian Dinar' }
+];
+
+
   /**
    * Initialize settings page functionality
    */
   function init() {
     if (_initialized) return;
-    
+      buildCurrencyOptions();
     // Load existing settings values
     loadSavedSettings();
-    
-    // Set up event listeners
     initEventListeners();
-    
+    initGoogleTranslate();
     _initialized = true;
     console.log('Settings page initialized');
   }
@@ -54,21 +76,180 @@ const SettingsPage = (function() {
     if (testConnectionBtn) {
       testConnectionBtn.addEventListener('click', testConnection);
     }
+
+  const languageSelector = document.getElementById('languageSelector');
+  if (languageSelector) {
+    languageSelector.addEventListener('change', function() {
+      const selectedLanguage = this.value;
+      changeLanguage(selectedLanguage);
+    });
+  }
+
   }
   
+
+  /**
+ * Load translations and apply them to the UI
+ * @param {string} langCode - Language code to apply
+ */
+function applyTranslations(langCode) {
+  // Show loading state
+  const statusEl = document.getElementById('settingsStatus');
+  if (statusEl) {
+    statusEl.className = 'status-message';
+    statusEl.textContent = 'Loading translations...';
+    statusEl.classList.remove('hidden');
+  }
+  
+  // Call the server to get translations
+  API.getTranslations(langCode, 
+    function(result) {
+      if (result && result.translations) {
+        // Store translations in global variable for easy access
+        window.SimBudget = window.SimBudget || {};
+        SimBudget.translations = result.translations;
+        
+        // Update all text elements with the class "translatable"
+        document.querySelectorAll('[data-translate]').forEach(el => {
+          const key = el.getAttribute('data-translate');
+          if (key && SimBudget.translations[key]) {
+            el.textContent = SimBudget.translations[key];
+          }
+        });
+        
+        // Update all placeholder attributes
+        document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
+          const key = el.getAttribute('data-translate-placeholder');
+          if (key && SimBudget.translations[key]) {
+            el.setAttribute('placeholder', SimBudget.translations[key]);
+          }
+        });
+        
+        // Update all title attributes
+        document.querySelectorAll('[data-translate-title]').forEach(el => {
+          const key = el.getAttribute('data-translate-title');
+          if (key && SimBudget.translations[key]) {
+            el.setAttribute('title', SimBudget.translations[key]);
+          }
+        });
+        
+        // Hide loading status
+        if (statusEl) {
+          statusEl.classList.add('hidden');
+        }
+        
+        console.log('Translations applied successfully for: ' + langCode);
+      } else {
+        // Show error
+        if (statusEl) {
+          statusEl.textContent = 'Error loading translations';
+          statusEl.className = 'status-message error';
+        }
+      }
+    },
+    function(error) {
+      // Show error
+      if (statusEl) {
+        statusEl.textContent = 'Error loading translations: ' + error;
+        statusEl.className = 'status-message error';
+      }
+    }
+  );
+}
+
+
+/**
+ * Change the language and apply translations
+ * @param {string} langCode - Language code to change to
+ */
+function changeLanguage(langCode) {
+  // Save the language preference
+  API.setUserLanguage(langCode, 
+    function(result) {
+      // Clear client-side cached translations
+      window.SimBudget = window.SimBudget || {};
+      if (SimBudget.translations) {
+        delete SimBudget.translations;
+      }
+      
+      // Get fresh translations with cache busting (true parameter)
+      API.getTranslations(langCode, 
+        function(result) {
+          // Apply fresh translations to UI
+          applyTranslations(langCode);
+          
+          // Update saved settings
+          if (window.SimBudget && SimBudget.Settings) {
+            const settings = SimBudget.Settings.getAll();
+            settings.language = langCode;
+            SimBudget.Settings.saveAll(settings);
+          }
+          
+          console.log('Language changed to', langCode);
+        },
+        function(error) {
+          Utils.showToast('Error changing language: ' + error, 'error');
+        },
+        true  // This is the cache-busting parameter
+      );
+    },
+    function(error) {
+      Utils.showToast('Error saving language preference: ' + error, 'error');
+    }
+  );
+}
+
+
+
+/**
+ * Build currency dropdown options
+ */
+function buildCurrencyOptions() {
+  const currencySelect = document.getElementById('currencySelector');
+  if (!currencySelect) return;
+  
+  // Get defaults from SimBudget if available
+  const defaultCurrency = (window.SimBudget && SimBudget.Settings && SimBudget.Settings.defaults) 
+    ? SimBudget.Settings.defaults.currencySymbol || '$' 
+    : '$';
+  
+  // Clear existing options
+  currencySelect.innerHTML = '';
+  
+  // Add options for each currency
+  currencyOptions.forEach(currency => {
+    const option = document.createElement('option');
+    option.value = currency.symbol;
+    option.textContent = `${currency.symbol} - ${currency.name} (${currency.code})`;
+    currencySelect.appendChild(option);
+  });
+  
+  // Set default value after adding options
+  currencySelect.value = defaultCurrency;
+}
+
   /**
    * Load saved settings from localStorage
    */
-  function loadSavedSettings() {
-    // Use the SimBudget.Settings object if available
-    if (window.SimBudget && SimBudget.Settings) {
-      const settings = SimBudget.Settings.getAll();
-      
-      // Apply settings to form elements
-      const currencyInput = document.getElementById('currencySymbol');
-      if (currencyInput) {
-        currencyInput.value = settings.currencySymbol || '$';
+ function loadSavedSettings() {
+  // Use the SimBudget.Settings object if available
+  if (window.SimBudget && SimBudget.Settings) {
+    const settings = SimBudget.Settings.getAll();
+    
+    // Apply settings to form elements
+    const currencySelect = document.getElementById('currencySelector');
+    if (currencySelect) {
+      currencySelect.value = settings.currencySymbol || '$';
+      // If saved currency isn't in dropdown, add it as an option
+      if (!currencySelect.value) {
+        const option = document.createElement('option');
+        option.value = settings.currencySymbol;
+        option.textContent = settings.currencySymbol;
+        currencySelect.appendChild(option);
+        currencySelect.value = settings.currencySymbol;
       }
+    }
+    
       
       const dateFormatSelect = document.getElementById('dateFormat');
       if (dateFormatSelect) {
@@ -82,10 +263,23 @@ const SettingsPage = (function() {
         document.body.classList.toggle('dark-mode', settings.darkMode);
       }
       
-      const languageSelect = document.getElementById('languageSelector');
-      if (languageSelect) {
-        languageSelect.value = settings.language || 'en';
+      const languageSelector = document.getElementById('languageSelector');
+if (languageSelector) {
+  languageSelector.addEventListener('change', function() {
+    const selectedLanguage = this.value;
+    
+    // Save the language
+    API.setUserLanguage(selectedLanguage, 
+      function(result) {
+        // Load and apply translations
+        applyTranslations(selectedLanguage);
+      },
+      function(error) {
+        Utils.showToast('Error changing language: ' + error, 'error');
       }
+    );
+  });
+}
       
       const showRemainingCheckbox = document.getElementById('showRemaining');
       if (showRemainingCheckbox) {
@@ -113,7 +307,7 @@ const SettingsPage = (function() {
   function saveSettings() {
     // Get values from form
     const settings = {
-      currencySymbol: document.getElementById('currencySymbol').value || '$',
+      currencySymbol: document.getElementById('currencySelector').value || '$',
       dateFormat: document.getElementById('dateFormat').value || 'MM/DD/YYYY',
       darkMode: document.getElementById('darkMode').checked || false,
       showRemaining: document.getElementById('showRemaining').checked || false,
@@ -167,7 +361,7 @@ const SettingsPage = (function() {
       // Reset to defaults
       if (SimBudget.Settings.saveAll(defaults)) {
         // Update form values
-        document.getElementById('currencySymbol').value = defaults.currencySymbol || '$';
+        document.getElementById('currencySelector').value = defaults.currencySymbol || '$';
         document.getElementById('dateFormat').value = defaults.dateFormat || 'MM/DD/YYYY';
         document.getElementById('darkMode').checked = defaults.darkMode || false;
         document.getElementById('showRemaining').checked = defaults.showRemaining !== undefined ? 

@@ -19,7 +19,7 @@
       <?!= include('settings.css'); ?>
     </style>
     
-    <title>Simplify</title>
+    <title data-translate="app_title">Simplify</title>
   </head>
   <body>
     <div class="app-container">
@@ -34,9 +34,9 @@
         <!-- Expense View - Initially Hidden -->
         <div id="expenseView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">receipt_long</i> Expenses</h1>
+            <h1><i class="material-icons">receipt_long</i> <span data-translate="expenses">Expenses</span></h1>
             <div class="view-actions">
-              <button id="addExpense" class="btn primary"><i class="material-icons">add</i> Add Expense</button>
+              <button id="addExpense" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_expense">Add Expense</span></button>
             </div>
           </div>
           <div id="expenseContent" class="view-content">
@@ -47,9 +47,9 @@
         <!-- Income View - Initially Hidden -->
         <div id="incomeView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">payments</i> Income</h1>
+            <h1><i class="material-icons">payments</i> <span data-translate="income_title">Income</span></h1>
             <div class="view-actions">
-              <button id="addIncome" class="btn primary"><i class="material-icons">add</i> Add Income</button>
+              <button id="addIncome" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_income">Add Income</span></button>
             </div>
           </div>
           <div id="incomeContent" class="view-content">
@@ -60,9 +60,9 @@
         <!-- Recurring View - Initially Hidden -->
         <div id="recurringView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">repeat</i> Recurring</h1>
+            <h1><i class="material-icons">repeat</i> <span data-translate="recurring">Recurring</span></h1>
             <div class="view-actions">
-              <button id="addRecurring" class="btn primary"><i class="material-icons">add</i> Add Recurring</button>
+              <button id="addRecurring" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_recurring">Add Recurring</span></button>
             </div>
           </div>
           <div id="recurringContent" class="view-content">
@@ -73,9 +73,9 @@
         <!-- Net Worth View - Initially Hidden -->
         <div id="netWorthView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">trending_up</i> Net Worth</h1>
+            <h1><i class="material-icons">trending_up</i> <span data-translate="net_worth_title">Net Worth</span></h1>
             <div class="view-actions">
-              <button id="refreshNetWorth" class="btn"><i class="material-icons">refresh</i> Refresh</button>
+              <button id="refreshNetWorth" class="btn"><i class="material-icons">refresh</i> <span data-translate="refresh">Refresh</span></button>
             </div>
           </div>
           <div id="netWorthContent" class="view-content">
@@ -86,9 +86,9 @@
         <!-- Reports View - Initially Hidden -->
         <div id="reportsView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">bar_chart</i> Reports</h1>
+            <h1><i class="material-icons">bar_chart</i> <span data-translate="reports">Reports</span></h1>
             <div class="view-actions">
-              <button id="generateReport" class="btn primary"><i class="material-icons">download</i> Generate</button>
+              <button id="generateReport" class="btn primary"><i class="material-icons">download</i> <span data-translate="generate">Generate</span></button>
             </div>
           </div>
           <div id="reportsContent" class="view-content">
@@ -99,9 +99,9 @@
         <!-- Setup View - Initially Hidden -->
         <div id="setupView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">category</i> Categories</h1>
+            <h1><i class="material-icons">category</i> <span data-translate="categories">Categories</span></h1>
             <div class="view-actions">
-              <button id="saveSetup" class="btn primary"><i class="material-icons">save</i> Save</button>
+              <button id="saveSetup" class="btn primary"><i class="material-icons">save</i> <span data-translate="save">Save</span></button>
             </div>
           </div>
           <div id="setupContent" class="view-content">
@@ -112,9 +112,9 @@
         <!-- Settings View - Initially Hidden -->
         <div id="settingsView" class="view">
           <div class="view-header">
-            <h1><i class="material-icons">settings</i> Settings</h1>
+            <h1><i class="material-icons">settings</i> <span data-translate="settings">Settings</span></h1>
             <div class="view-actions">
-              <button id="saveSettings" class="btn primary"><i class="material-icons">save</i> Save</button>
+              <button id="saveSettings" class="btn primary"><i class="material-icons">save</i> <span data-translate="save">Save</span></button>
             </div>
           </div>
           <div id="settingsContent" class="view-content">

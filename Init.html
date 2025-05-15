@@ -291,7 +291,10 @@ var SimBudget = (function() {
       
       // Load user info
       this.loadUserInfo();
-      
+    
+      // Load translations based on saved language preference
+      this.loadTranslations();
+
       // Load initial budget data
       this.loadViewData('budget');
       
@@ -299,6 +302,62 @@ var SimBudget = (function() {
       console.log('SimBudget initialized');
     },
     
+
+
+
+    /**
+ * Load translations based on user preference
+ */
+loadTranslations: function() {
+  const language = this.Settings.getSetting('language') || 'en';
+  
+  API.getTranslations(language,
+    function(result) {
+      if (result && result.translations) {
+        // Store translations globally
+        window.SimBudget = window.SimBudget || {};
+        SimBudget.translations = result.translations;
+        
+        // Apply translations to the UI
+        SimBudget.applyTranslations();
+      }
+    },
+    function(error) {
+      console.error('Error loading translations:', error);
+    }
+  );
+},
+
+/**
+ * Apply translations to UI elements
+ */
+applyTranslations: function() {
+  if (!SimBudget.translations) return;
+  
+  // Update all elements with data-translate attribute
+  document.querySelectorAll('[data-translate]').forEach(el => {
+    const key = el.getAttribute('data-translate');
+    if (key && SimBudget.translations[key]) {
+      el.textContent = SimBudget.translations[key];
+    }
+  });
+  
+  // Update placeholders
+  document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-translate-placeholder');
+    if (key && SimBudget.translations[key]) {
+      el.setAttribute('placeholder', SimBudget.translations[key]);
+    }
+  });
+  
+  // Update titles
+  document.querySelectorAll('[data-translate-title]').forEach(el => {
+    const key = el.getAttribute('data-translate-title');
+    if (key && SimBudget.translations[key]) {
+      el.setAttribute('title', SimBudget.translations[key]);
+    }
+  });
+},
     /**
      * Set up month and year selectors
      */
@@ -390,80 +449,189 @@ var SimBudget = (function() {
     /**
      * Bind all event listeners
      */
-    bindEvents: function() {
-      // Sidebar toggle
-      const toggleBtn = document.getElementById('toggleSidebar');
-      if (toggleBtn) {
-        toggleBtn.addEventListener('click', toggleSidebar);
-      }
+    /**
+ * Bind all event listeners
+ */
+bindEvents: function() {
+  // Sidebar toggle
+  const toggleBtn = document.getElementById('toggleSidebar');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', function() {
+      const sidebar = document.getElementById('sidebar');
+      const contentArea = document.getElementById('contentArea');
       
-      // Sidebar navigation
-      document.querySelectorAll('.sidebar-item').forEach(item => {
-        item.addEventListener('click', handleSidebarItemClick);
-      });
-      
-      // Month and year selectors
-      const monthSelector = document.getElementById('monthSelector');
-      const yearSelector = document.getElementById('yearSelector');
-      
-      if (monthSelector && yearSelector) {
-        // Create handlers and store references
-        _eventManager.handlers.month = function() {
-          SimBudget.updateMonthYear(this.value, yearSelector.value);
-        };
+      if (sidebar) {
+        sidebar.classList.toggle('sb-open');
+        sidebar.classList.toggle('sb-collapsed');
         
-        _eventManager.handlers.year = function() {
-          SimBudget.updateMonthYear(monthSelector.value, this.value);
-        };
-        
-        // Initial attachment
-        monthSelector.addEventListener('change', _eventManager.handlers.month);
-        yearSelector.addEventListener('change', _eventManager.handlers.year);
-      }
-      
-      // Settings panel
-      const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-      if (saveSettingsBtn) {
-        saveSettingsBtn.addEventListener('click', this.saveSettings);
-      }
-      
-      const resetSettingsBtn = document.getElementById('resetSettings');
-      if (resetSettingsBtn) {
-        resetSettingsBtn.addEventListener('click', this.resetSettings);
-      }
-      
-      const testConnectionBtn = document.getElementById('testConnection');
-      if (testConnectionBtn) {
-        testConnectionBtn.addEventListener('click', this.testConnection);
-      }
-      
-      // Responsive design - auto-collapse sidebar on small screens
-      window.addEventListener('resize', Utils.debounce(function() {
-        const sidebar = document.getElementById('sidebar');
-        if (window.innerWidth < 768 && sidebar && sidebar.classList.contains('expanded')) {
-          toggleSidebar();
+        if (contentArea) {
+          contentArea.classList.toggle('sb-expanded');
         }
-      }, 250));
+      }
+    });
+  }
+  
+  // Mobile sidebar toggle
+  const mobileToggle = document.getElementById('mobileSidebarToggle');
+  if (mobileToggle) {
+    mobileToggle.addEventListener('click', function() {
+      const sidebar = document.getElementById('sidebar');
+      const backdrop = document.getElementById('sidebarBackdrop');
       
-      // Set up view-specific buttons
-      const refreshBudgetBtn = document.getElementById('refreshBudget');
-      if (refreshBudgetBtn) {
-        refreshBudgetBtn.addEventListener('click', () => {
-          // Force refresh by invalidating cache
-          _cache.invalidate('budget');
-          this.loadViewData('budget', true);
-        });
+      if (sidebar) {
+        sidebar.classList.toggle('sb-open');
+        
+        if (backdrop) {
+          backdrop.classList.toggle('sb-visible');
+        }
+        
+        // Update toggle icon
+        this.innerHTML = sidebar.classList.contains('sb-open') ? 
+          '<i class="material-icons">close</i>' : 
+          '<i class="material-icons">menu</i>';
+        
+        // Lock/unlock body scroll
+        document.body.style.overflow = sidebar.classList.contains('sb-open') ? 'hidden' : '';
+      }
+    });
+  }
+  
+  // Sidebar navigation - FIXED to use sb-nav-item instead of sidebar-item
+  document.querySelectorAll('.sb-nav-item, [data-view="settings"]').forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      // Get the view name from data attribute
+      const viewName = this.getAttribute('data-view');
+      if (!viewName) return;
+      
+      // Update active state
+      document.querySelectorAll('.sb-nav-item').forEach(navItem => {
+        navItem.classList.remove('active');
+      });
+      this.classList.add('active');
+      
+      // Switch to the view using SimBudget's existing function
+      if (window.SimBudget && SimBudget.Views) {
+        SimBudget.Views.switchTo(viewName);
       }
       
-      const refreshNetWorthBtn = document.getElementById('refreshNetWorth');
-      if (refreshNetWorthBtn) {
-        refreshNetWorthBtn.addEventListener('click', () => {
-          // Force refresh by invalidating cache
-          _cache.invalidate('netWorth');
-          this.loadViewData('netWorth', true);
-        });
+      // Close sidebar on mobile
+      if (window.innerWidth < 992) {
+        const sidebar = document.getElementById('sidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        const mobileToggle = document.getElementById('mobileSidebarToggle');
+        
+        if (sidebar) sidebar.classList.remove('sb-open');
+        if (backdrop) backdrop.classList.remove('sb-visible');
+        document.body.style.overflow = '';
+        if (mobileToggle) mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
       }
-    },
+    });
+    
+    // Also handle link clicks directly
+    const link = item.querySelector('a');
+    if (link) {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Trigger click on parent
+        const navItem = this.closest('.sb-nav-item, [data-view="settings"]');
+        if (navItem) navItem.click();
+      });
+    }
+  });
+  
+  // Month and year selectors
+  const monthSelector = document.getElementById('monthSelector');
+  const yearSelector = document.getElementById('yearSelector');
+  
+  if (monthSelector && yearSelector) {
+    // Create handlers and store references
+    _eventManager.handlers.month = function() {
+      SimBudget.updateMonthYear(this.value, yearSelector.value);
+    };
+    
+    _eventManager.handlers.year = function() {
+      SimBudget.updateMonthYear(monthSelector.value, this.value);
+    };
+    
+    // Initial attachment
+    monthSelector.addEventListener('change', _eventManager.handlers.month);
+    yearSelector.addEventListener('change', _eventManager.handlers.year);
+  }
+  
+  // Settings panel
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener('click', this.saveSettings);
+  }
+  
+  const resetSettingsBtn = document.getElementById('resetSettings');
+  if (resetSettingsBtn) {
+    resetSettingsBtn.addEventListener('click', this.resetSettings);
+  }
+  
+  const testConnectionBtn = document.getElementById('testConnection');
+  if (testConnectionBtn) {
+    testConnectionBtn.addEventListener('click', this.testConnection);
+  }
+  
+  // Responsive design - auto-collapse sidebar on small screens
+  window.addEventListener('resize', Utils.debounce(function() {
+    const sidebar = document.getElementById('sidebar');
+    if (window.innerWidth < 768 && sidebar && sidebar.classList.contains('sb-open')) {
+      // Close sidebar
+      sidebar.classList.remove('sb-open');
+      
+      const backdrop = document.getElementById('sidebarBackdrop');
+      if (backdrop) backdrop.classList.remove('sb-visible');
+      
+      document.body.style.overflow = '';
+      
+      const mobileToggle = document.getElementById('mobileSidebarToggle');
+      if (mobileToggle) mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+    }
+  }, 250));
+
+
+  // Add this to the bindEvents function in your Init.html file
+// Sidebar backdrop click handler
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+if (sidebarBackdrop) {
+  sidebarBackdrop.addEventListener('click', function() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      sidebar.classList.remove('sb-open');
+      this.classList.remove('sb-visible');
+      document.body.style.overflow = '';
+      
+      const mobileToggle = document.getElementById('mobileSidebarToggle');
+      if (mobileToggle) mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+    }
+  });
+}
+  
+  // Set up view-specific buttons
+  const refreshBudgetBtn = document.getElementById('refreshBudget');
+  if (refreshBudgetBtn) {
+    refreshBudgetBtn.addEventListener('click', () => {
+      // Force refresh by invalidating cache
+      _cache.invalidate('budget');
+      this.loadViewData('budget', true);
+    });
+  }
+  
+  const refreshNetWorthBtn = document.getElementById('refreshNetWorth');
+  if (refreshNetWorthBtn) {
+    refreshNetWorthBtn.addEventListener('click', () => {
+      // Force refresh by invalidating cache
+      _cache.invalidate('netWorth');
+      this.loadViewData('netWorth', true);
+    });
+  }
+},
     
     /**
      * Check for existing connection and load if available
