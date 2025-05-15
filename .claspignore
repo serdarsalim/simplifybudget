@@ -1,0 +1,12 @@
+# Ignore .clasp.json itself
+.clasp.json
+
+# Other common files to ignore
+.git/**
+node_modules/**
+.DS_Store
+README.md
+package.json
+package-lock.json
+
+# Add any other files you want to ignore
