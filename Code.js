@@ -12,8 +12,8 @@
 function onOpen() {
   try {
     SpreadsheetApp.getUi()
-      .createMenu("SimBudget")
-      .addItem("Launch SimBudget", "showSimBudgetApp")
+      .createMenu("Simplify Budget")
+      .addItem("Launch Simplify Budget", "showSimBudgetApp")
       .addItem("Settings", "showSettingsDialog")
       .addToUi();
   } catch (error) {
@@ -54,7 +54,7 @@ function showSettingsDialog() {
 function doGet() {
   return HtmlService.createTemplateFromFile("Index")
     .evaluate()
-    .setTitle("SimBudget")
+    .setTitle("Simplify Budget")
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 

@@ -50,33 +50,43 @@ const SettingsPage = (function() {
   /**
    * Initialize event listeners
    */
-  function initEventListeners() {
-    // Set up dark mode toggle
-    const darkModeToggle = document.getElementById('darkMode');
-    if (darkModeToggle) {
-      darkModeToggle.addEventListener('change', function() {
-        document.body.classList.toggle('dark-mode', this.checked);
-      });
-    }
+  /**
+ * Initialize event listeners with autosave
+ */
+function initEventListeners() {
+  // Create a debounce function for autosaving
+  const debounceAutoSave = Utils.debounce(function() {
+    saveSettings(true); // true = silent save (no notification)
+  }, 500);
+  
+  // Set up form controls with autosave
+  document.querySelectorAll('#currencySelector, #dateFormat, #showDecimals, #showRemaining, #enableAlerts')
+    .forEach(element => {
+      element.addEventListener('change', debounceAutoSave);
+    });
+  
+  // Dark mode has additional UI impact
+  const darkModeToggle = document.getElementById('darkMode');
+  if (darkModeToggle) {
+    darkModeToggle.addEventListener('change', function() {
+      document.body.classList.toggle('dark-mode', this.checked);
+      debounceAutoSave();
+    });
+  }
     
-    // Set up save button
-    const saveButton = document.getElementById('saveSettingsBtn');
-    if (saveButton) {
-      saveButton.addEventListener('click', saveSettings);
-    }
-    
-    // Set up reset button
-    const resetButton = document.getElementById('resetSettings');
-    if (resetButton) {
-      resetButton.addEventListener('click', resetSettings);
-    }
-    
-    // Set up test connection button
-    const testConnectionBtn = document.getElementById('testConnection');
-    if (testConnectionBtn) {
-      testConnectionBtn.addEventListener('click', testConnection);
-    }
+  // Keep reset button
+  const resetButton = document.getElementById('resetSettings');
+  if (resetButton) {
+    resetButton.addEventListener('click', resetSettings);
+  }
+  
+  // Test connection button
+  const testConnectionBtn = document.getElementById('testConnection');
+  if (testConnectionBtn) {
+    testConnectionBtn.addEventListener('click', testConnection);
+  }
 
+  // Language selector needs special handling
   const languageSelector = document.getElementById('languageSelector');
   if (languageSelector) {
     languageSelector.addEventListener('change', function() {
@@ -85,7 +95,14 @@ const SettingsPage = (function() {
     });
   }
 
+  // Sheet URL needs special handling - save on blur
+  const sheetUrlInput = document.getElementById('budgetSheetUrl');
+  if (sheetUrlInput) {
+    sheetUrlInput.addEventListener('blur', debounceAutoSave);
   }
+  
+
+}
   
 
   /**
@@ -301,10 +318,11 @@ if (languageSelector) {
     }
   }
   
-  /**
-   * Save settings to localStorage
-   */
-  function saveSettings() {
+    /**
+     * Save settings to localStorage
+     * @param {boolean} silent - Whether to show success message
+     */
+    function saveSettings(silent = false) {
     // Get values from form
     const settings = {
       currencySymbol: document.getElementById('currencySelector').value || '$',
@@ -321,34 +339,35 @@ if (languageSelector) {
       // Save settings
       const success = SimBudget.Settings.saveAll(settings);
       
-      if (success) {
-        // Save sheet URL if provided
-        const sheetUrl = document.getElementById('budgetSheetUrl').value;
-        if (sheetUrl) {
-          API.setBudgetSheetUrl(sheetUrl, 
-            function() {
-              showStatus('Settings saved successfully', false);
-            },
-            function(error) {
-              showStatus('Settings saved but sheet URL could not be saved: ' + error, true);
-            }
-          );
+        // Just update these lines that show status messages
+        if (success) {
+          // Save sheet URL if provided
+          const sheetUrl = document.getElementById('budgetSheetUrl').value;
+          if (sheetUrl) {
+            API.setBudgetSheetUrl(sheetUrl, 
+              function() {
+                if (!silent) showStatus('Settings saved successfully', false);
+              },
+              function(error) {
+                showStatus('Settings saved but sheet URL could not be saved: ' + error, true);
+              }
+            );
+          } else if (!silent) {
+            showStatus('Settings saved automatically', false);
+          }
         } else {
-          showStatus('Settings saved successfully', false);
+          showStatus('Error saving settings', true);
         }
-      } else {
-        showStatus('Error saving settings', true);
-      }
-    } else {
-      // Fallback to direct localStorage if SimBudget.Settings not available
-      try {
-        localStorage.setItem('simbudget_settings', JSON.stringify(settings));
-        showStatus('Settings saved successfully', false);
-      } catch (e) {
-        showStatus('Error saving settings: ' + e.message, true);
-      }
-    }
-  }
+
+        // And the same for the localStorage fallback
+        try {
+          localStorage.setItem('simbudget_settings', JSON.stringify(settings));
+          if (!silent) showStatus('Settings saved successfully', false);
+        } catch (e) {
+          showStatus('Error saving settings: ' + e.message, true);
+          }
+          }
+        }
   
   /**
    * Reset settings to defaults
