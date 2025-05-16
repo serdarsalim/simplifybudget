@@ -96,93 +96,94 @@ var QuickExpenseEntry = (function() {
         console.log("Creating expense modal");
         
         // Create the modal HTML structure with the new 2x2 grid layout
-        const modalHTML = `
-          <div id="quickExpenseModal" class="quick-expense-modal">
-            <div class="quick-expense-backdrop"></div>
-            <div class="quick-expense-card">
-              <div class="quick-expense-header">
-                <h3>Quick Expense</h3>
-                <button class="close-btn" aria-label="Close">
-                  <i class="material-icons">close</i>
-                </button>
-              </div>
-              
-              <div class="quick-expense-content">
-                <!-- Top Grid: 2x2 layout -->
-                <div class="expense-top-grid">
-                  <!-- Row 1: Category | Amount -->
-                  <div class="grid-item category-column">
-                    <select id="expenseCategory" class="form-control category-select">
-                      <!-- Categories will be populated dynamically -->
-                    </select>
-                  </div>
-                  
-                  <div class="grid-item amount-column">
-                    <div class="amount-input-container">
-                      <span class="currency-symbol">$</span>
-                      <input type="number" id="expenseAmount" class="form-control amount-input" 
-                             placeholder="Amount" min="0.01" step="0.01" required>
-                    </div>
-                  </div>
-                  
-                  <!-- Row 2: Date | Save -->
-                  <div class="grid-item date-column">
-                    <div class="date-selector">
-                      <button class="date-nav-btn up-date-btn" aria-label="Previous day">
-                        <i class="material-icons">keyboard_arrow_up</i>
-                      </button>
-                      <div class="date-display">
-                        <div class="date-value" id="currentDateValue">Today</div>
-                        <div class="date-label" id="currentDateLabel">May 15</div>
-                      </div>
-                      <button class="date-nav-btn down-date-btn" aria-label="Next day">
-                        <i class="material-icons">keyboard_arrow_down</i>
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div class="grid-item save-column">
-                    <button id="saveExpenseBtn" class="save-btn">
-                      <span class="save-text">Save</span>
-                      <div class="save-icon-container">
-                        <i class="material-icons save-icon">check</i>
-                        <div class="save-spinner"></div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-                
-                <!-- Success message appears within the modal -->
-                <div id="successMessage" class="success-message">
-                  <i class="material-icons success-icon">check_circle</i>
-                  <span>Expense saved successfully!</span>
-                </div>
-                
-                <!-- Bottom section: Single column layout for additional fields -->
-                <div class="expense-bottom-section">
-                  <!-- Description/Label Field -->
-                  <div class="form-group">
-                    <input type="text" id="expenseLabel" class="form-control" 
-                           placeholder="Description">
-                  </div>
-                  
-                  <!-- Notes Field -->
-                  <div class="form-group">
-                    <textarea id="expenseNotes" class="form-control notes-input" 
-                              placeholder="Notes (Optional)"></textarea>
-                  </div>
-                  
-                  <!-- Account Field -->
-                  <div class="form-group">
-                    <select id="expenseAccount" class="form-control account-select">
-                      <option value="">-- Select Account --</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+        // Create the modal HTML structure with the new 2x2 grid layout
+const modalHTML = `
+  <div id="quickExpenseModal" class="quick-expense-modal">
+    <div class="quick-expense-backdrop"></div>
+    <div class="quick-expense-card">
+      <div class="quick-expense-header">
+        <h3 data-translate="quick_expense">Quick Expense</h3>
+        <button class="close-btn" aria-label="Close">
+          <i class="material-icons">close</i>
+        </button>
+      </div>
+      
+      <div class="quick-expense-content">
+        <!-- Top Grid: 2x2 layout -->
+        <div class="expense-top-grid">
+          <!-- Row 1: Category | Amount -->
+          <div class="grid-item category-column">
+            <select id="expenseCategory" class="form-control category-select">
+              <!-- Categories will be populated dynamically -->
+            </select>
+          </div>
+          
+          <div class="grid-item amount-column">
+            <div class="amount-input-container">
+              <span class="currency-symbol">$</span>
+              <input type="number" id="expenseAmount" class="form-control amount-input" 
+                     data-translate-placeholder="amount" placeholder="Amount" min="0.01" step="0.01" required>
             </div>
           </div>
-        `;
+          
+          <!-- Row 2: Date | Save -->
+          <div class="grid-item date-column">
+            <div class="date-selector">
+              <button class="date-nav-btn up-date-btn" aria-label="Previous day">
+                <i class="material-icons">keyboard_arrow_up</i>
+              </button>
+              <div class="date-display">
+                <div class="date-value" id="currentDateValue">Today</div>
+                <div class="date-label" id="currentDateLabel">May 15</div>
+              </div>
+              <button class="date-nav-btn down-date-btn" aria-label="Next day">
+                <i class="material-icons">keyboard_arrow_down</i>
+              </button>
+            </div>
+          </div>
+          
+          <div class="grid-item save-column">
+            <button id="saveExpenseBtn" class="save-btn">
+              <span class="save-text" data-translate="save">Save</span>
+              <div class="save-icon-container">
+                <i class="material-icons save-icon">check</i>
+                <div class="save-spinner"></div>
+              </div>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Success message appears within the modal -->
+        <div id="successMessage" class="success-message">
+          <i class="material-icons success-icon">check_circle</i>
+          <span data-translate="expense_saved">Expense saved successfully!</span>
+        </div>
+        
+        <!-- Bottom section: Single column layout for additional fields -->
+        <div class="expense-bottom-section">
+          <!-- Description/Label Field -->
+          <div class="form-group">
+            <input type="text" id="expenseLabel" class="form-control" 
+                   data-translate-placeholder="description" placeholder="Description">
+          </div>
+          
+          <!-- Notes Field -->
+          <div class="form-group">
+            <textarea id="expenseNotes" class="form-control notes-input" 
+                      data-translate-placeholder="notes_optional" placeholder="Notes (Optional)"></textarea>
+          </div>
+          
+          <!-- Account Field -->
+          <div class="form-group">
+            <select id="expenseAccount" class="form-control account-select">
+              <option value="" data-translate="select_account">-- Select Account --</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
         
         // Append the modal to the document body
         document.body.insertAdjacentHTML('beforeend', modalHTML);
@@ -403,17 +404,20 @@ var QuickExpenseEntry = (function() {
                        date.getFullYear() === tomorrow.getFullYear();
     
     // Create display text
-    let displayText;
-    if (isToday) {
-      displayText = 'Today';
-    } else if (isYesterday) {
-      displayText = 'Yesterday';
-    } else if (isTomorrow) {
-      displayText = 'Tomorrow';
-    } else {
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      displayText = days[date.getDay()];
-    }
+   let displayText;
+if (isToday) {
+  displayText = window.SimBudget && SimBudget.translations && SimBudget.translations.today 
+    ? SimBudget.translations.today : 'Today';
+} else if (isYesterday) {
+  displayText = window.SimBudget && SimBudget.translations && SimBudget.translations.yesterday 
+    ? SimBudget.translations.yesterday : 'Yesterday';
+} else if (isTomorrow) {
+  displayText = window.SimBudget && SimBudget.translations && SimBudget.translations.tomorrow 
+    ? SimBudget.translations.tomorrow : 'Tomorrow';
+} else {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  displayText = days[date.getDay()];
+}
     
     // Create result object
     const result = {

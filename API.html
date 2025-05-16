@@ -517,7 +517,43 @@ getActiveCategories: function(successCallback, errorCallback) {
   }
 },
 
+/**
+ * Get expense data
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+getExpenseData: function(successCallback, errorCallback) {
+  try {
+    console.log("Calling server-side getExpenseData...");
     
+    google.script.run
+      .withSuccessHandler(function(result) {
+        console.log("getExpenseData response:", result);
+        
+        if (result && result.success) {
+          console.log("Expense data retrieved successfully, items:", 
+                      result.expenses ? result.expenses.length : 0);
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          console.error("Server returned error:", _lastError);
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        console.error("Server function failed:", error);
+        errorCallback(error);
+      })
+      .getExpenseData();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    console.error("Exception calling getExpenseData:", _lastError);
+    errorCallback(_lastError);
+  }
+},
+
+
     /**
      * Gets the last error that occurred in any API call
      * @return {string} Last error message

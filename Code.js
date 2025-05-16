@@ -492,45 +492,70 @@ function updateAccountBalance(accountName, amount) {
 }
 
 /**
- * Get expense data
+ * Get expense data - Updated to match correct ranges
  * @return {Object} Expense data array
  */
 function getExpenseData() {
   try {
+    Logger.log("Getting expense data from sheet...");
     const expenseSheet = getBudgetSheet("Expenses");
+    
     if (!expenseSheet) {
+      Logger.log("Expenses sheet not found");
       return { success: false, error: "Expenses sheet not found" };
     }
     
-    // Get expense data starting from row 4 (after headers)
-    const dataRange = expenseSheet.getRange(4, 1, expenseSheet.getLastRow() - 3, 11);
+    // Safely get the last row 
+    const lastRow = expenseSheet.getLastRow();
+    Logger.log("Sheet last row: " + lastRow);
+    
+    // Handle case where sheet has fewer than 5 rows (data starts at row 5)
+    if (lastRow < 5) {
+      Logger.log("Sheet has insufficient data rows (less than 5)");
+      return { 
+        success: true, 
+        expenses: [],
+        note: "No expense data found in sheet"
+      };
+    }
+    
+    // Get expense data starting from row 5 (after headers)
+    // Columns D-J (4-10 in 0-index): Date (implied), Amount, Category, Name, Label, Notes, Transaction
+    const dataRange = expenseSheet.getRange(5, 4, lastRow - 4, 7);
     const expenseData = dataRange.getValues();
+    Logger.log("Retrieved " + expenseData.length + " rows from sheet");
     
     // Process into expense objects
     const expenses = [];
     for (let i = 0; i < expenseData.length; i++) {
       const row = expenseData[i];
-      // Skip empty rows
-      if (!row[4] && !row[5]) continue;
+      // Skip empty rows - check if amount and category are empty
+      if (!row[1] && !row[2]) continue;
       
       expenses.push({
-        rowIndex: i + 4, // Actual row in sheet
-        date: row[3], // Date in column D
-        amount: row[4], // Amount in column E
-        category: row[5], // Category in column F
-        name: row[6], // Name in column G
-        label: row[7], // Label in column H
-        notes: row[8] // Notes in column I
+        rowIndex: i + 5, // Actual row in sheet (starting at row 5)
+        date: row[0], // Date in column D (index 0 in our range)
+        amount: row[1], // Amount in column E (index 1 in our range)
+        category: row[2], // Category in column F (index 2 in our range)
+        name: row[3], // Name in column G (index 3 in our range)
+        label: row[4], // Label in column H (index 4 in our range)
+        notes: row[5], // Notes in column I (index 5 in our range)
+        transaction: row[6] // Transaction in column J (index 6 in our range)
       });
     }
     
+    Logger.log("Processed " + expenses.length + " valid expense records");
     return {
       success: true,
       expenses: expenses
     };
   } catch (error) {
     Logger.log("Error in getExpenseData: " + error.toString());
-    return { success: false, error: error.toString() };
+    return { 
+      success: false, 
+      error: error.toString(),
+      details: "See server logs for more information"
+    };
   }
 }
 

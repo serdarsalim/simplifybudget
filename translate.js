@@ -6,6 +6,12 @@ const userProps = PropertiesService.getUserProperties();
  * @param {string} targetLanguage - Language code (e.g., 'es', 'fr')
  * @return {Object} Translated strings
  */
+/**
+ * Translate a batch of strings to the target language
+ * @param {Object} strings - Object with string keys to translate
+ * @param {string} targetLanguage - Language code (e.g., 'es', 'fr')
+ * @return {Object} Translated strings
+ */
 function translateUIStrings(strings, targetLanguage) {
   // Return original strings for English
   if (targetLanguage === 'en') {
@@ -14,14 +20,39 @@ function translateUIStrings(strings, targetLanguage) {
   
   // Check cache first
   const cacheKey = 'translations_' + targetLanguage;
-  const cachedTranslations = userProps.getProperty(cacheKey);
   
-  if (cachedTranslations) {
-    const cachedObj = JSON.parse(cachedTranslations);
-    // Use cache if it has all required strings
-    if (Object.keys(strings).every(key => key in cachedObj)) {
-      return cachedObj;
+  try {
+    const cacheMetaStr = userProps.getProperty(`${cacheKey}_meta`);
+    
+    if (cacheMetaStr) {
+      const cacheMeta = JSON.parse(cacheMetaStr);
+      const cachedObj = {};
+      
+      // Retrieve all chunks
+      let cacheComplete = true;
+      for (let i = 0; i < cacheMeta.totalChunks; i++) {
+        const chunkStr = userProps.getProperty(`${cacheKey}_chunk_${i}`);
+        if (chunkStr) {
+          const chunk = JSON.parse(chunkStr);
+          Object.assign(cachedObj, chunk);
+        } else {
+          Logger.log(`Missing chunk ${i} for ${targetLanguage}`);
+          cacheComplete = false;
+          break;
+        }
+      }
+      
+      // Use cache if it's complete and has all required strings
+      if (cacheComplete && Object.keys(strings).every(key => key in cachedObj)) {
+        // Apply any language-specific overrides
+        applyLanguageOverrides(cachedObj, targetLanguage);
+        return cachedObj;
+      } else {
+        Logger.log("Cache incomplete or missing keys, translating all strings");
+      }
     }
+  } catch (e) {
+    Logger.log(`Error retrieving cached translations: ${e.toString()}`);
   }
   
   // Create result object
@@ -32,14 +63,22 @@ function translateUIStrings(strings, targetLanguage) {
     "SimBudget", 
   ];
   
+  // Get translation hints if available
+  const hints = getTranslationHints();
+  
   // Translate each string individually for maximum reliability
   for (const key in strings) {
     try {
-      const originalText = strings[key];
+      let originalText = strings[key];
+      
+      // Apply hint if available (use alternative text for translation)
+      if (hints && hints[key]) {
+        originalText = hints[key];
+      }
       
       // Don't translate if it's in the protected list
       if (doNotTranslate.some(word => originalText === word)) {
-        result[key] = originalText;
+        result[key] = strings[key]; // Use original non-hint value
         continue;
       }
       
@@ -66,6 +105,7 @@ function translateUIStrings(strings, targetLanguage) {
         translatedText = translatedText.replace(new RegExp(token, 'g'), word);
       });
       
+      // Store the result (using original key, not the hint text)
       result[key] = translatedText;
     } catch (e) {
       // Fall back to original text if translation fails
@@ -74,15 +114,48 @@ function translateUIStrings(strings, targetLanguage) {
     }
   }
   
-  // Cache the results
+  // Apply language-specific overrides
+  applyLanguageOverrides(result, targetLanguage);
+  
+  // Cache the results in chunks
   try {
-    userProps.setProperty(cacheKey, JSON.stringify(result));
+    // Break cache into chunks to avoid property size limits
+    const chunkSize = 15; // Adjust this number as needed
+    const keys = Object.keys(result);
+    
+    // Clear existing cache chunks for this language
+    for (let i = 0; i < 20; i++) { // Assuming max 20 chunks
+      userProps.deleteProperty(`${cacheKey}_chunk_${i}`);
+    }
+    
+    // Store metadata
+    userProps.setProperty(`${cacheKey}_meta`, JSON.stringify({
+      totalChunks: Math.ceil(keys.length / chunkSize),
+      totalKeys: keys.length,
+      timestamp: new Date().getTime()
+    }));
+    
+    // Store chunks
+    for (let i = 0; i < keys.length; i += chunkSize) {
+      const chunkObj = {};
+      const chunkKeys = keys.slice(i, i + chunkSize);
+      
+      chunkKeys.forEach(key => {
+        chunkObj[key] = result[key];
+      });
+      
+      userProps.setProperty(`${cacheKey}_chunk_${Math.floor(i / chunkSize)}`, 
+                           JSON.stringify(chunkObj));
+    }
+    
+    Logger.log(`Cached translations in ${Math.ceil(keys.length / chunkSize)} chunks`);
   } catch (e) {
     Logger.log('Failed to cache translations: ' + e.toString());
   }
   
   return result;
 }
+
 
 
 
@@ -118,7 +191,8 @@ function setUserLanguage(languageCode) {
 function getTranslationHints() {
   return {
     "expenses": "Purchases", // Will be translated as "Purchases" instead of "Expenses"
-    // Add more hints as needed
+    "save": "Save it",
+
   };
 }
 
@@ -175,7 +249,14 @@ function getUIDictionary() {
     "Medical 🏥": "Medical 🏥",
     "Savings 💵": "Savings 💵",
 
-
+    // Quick Expense Modal
+    "quick_expense": "Quick Expense",
+    "amount": "Amount",
+    "description": "Description",
+    "notes_optional": "Notes (Optional)",
+    "select_account": "-- Select Account --",
+    "save": "Save",
+    "expense_saved": "Expense saved successfully!",
 
     // Budget alert messages
     "budget_no_income_tip": "You budgeted {0}. Tip: Align it with your income.",
@@ -201,6 +282,18 @@ function getUIDictionary() {
     "october": "October",
     "november": "November",
     "december": "December",
+
+    // days
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "tomorrow": "Tomorrow",
+    "sunday": "Sunday",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
 
     // Dashboard and loader
     "dashboard_load_test": "Dashboard HTML loaded",
@@ -280,6 +373,9 @@ function getUIDictionary() {
     "german": "Deutsch",
     "malay": "Bahasa Melayu",
     "turkish": "Türkçe",
+
+
+    
   };
 }
 
@@ -317,4 +413,32 @@ function getTranslatedUI(languageCode, bustCache) {
   
   // Translate with hints and return
   return translateUIStrings(uiWithHints, languageCode);
+}
+
+/**
+ * Apply manual overrides for specific languages
+ * @param {Object} translations - Translated strings
+ * @param {string} targetLanguage - Language code
+ * @return {Object} Corrected translations
+ */
+function applyLanguageOverrides(translations, targetLanguage) {
+  // Language-specific overrides
+  const overrides = {
+    'de': { // German
+      "Housing 🏡": "Wohnkosten 🏡"
+    },
+    'tr': { // Turkish
+      "save": "Kaydet"
+    }
+    // Add more languages as needed
+  };
+  
+  // Apply overrides if we have them for this language
+  if (overrides[targetLanguage]) {
+    Object.keys(overrides[targetLanguage]).forEach(key => {
+      translations[key] = overrides[targetLanguage][key];
+    });
+  }
+  
+  return translations;
 }

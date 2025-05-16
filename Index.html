@@ -27,17 +27,34 @@
         <?!= include('dashboard.html'); ?>
         
         <!-- Expense View - Initially Hidden -->
-        <!-- Expense View - Initially Hidden -->
+          <!-- Expense View - Using Grid by Default -->
           <div id="expenseView" class="view">
-              <div class="view-header">
-                <h1><i class="material-icons">receipt_long</i> <span data-translate="expenses">Expenses</span></h1>
-                <div class="view-actions">
-                  <button id="addExpense" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_expense">Add Expense</span></button>
+          <div class="view-header">
+            <h1><i class="material-icons">receipt_long</i> <span data-translate="expenses">Expenses</span></h1>
+            <div class="view-actions">
+              <!-- Month/Year Selector - Add this -->
+              <div class="month-selector">
+                <button id="prevMonth" class="month-nav-btn" aria-label="Previous month">
+                  <i class="material-icons">chevron_left</i>
+                </button>
+                <div id="monthYearDisplay" class="month-year-display">
+                  <!-- Will be populated by JS -->
                 </div>
+                <button id="nextMonth" class="month-nav-btn" aria-label="Next month">
+                  <i class="material-icons">chevron_right</i>
+                </button>
               </div>
-              <div id="expenseContent" class="view-content">
-              </div>
+      
+    
+    </div>
+  </div>
+            
+            <!-- The expense content is now directly the grid view -->
+            <div id="expenseContent" class="view-content">
+              <!-- The monthly grid component will load here -->
+      
             </div>
+          </div>
         
         <!-- Income View - Initially Hidden -->
         <div id="incomeView" class="view">
@@ -151,7 +168,7 @@
     <?!= include('settings.js'); ?>
     <?!= include('transactionEntry.js'); ?>
     <?!= include('categories.js'); ?> 
-   
+   <?!= include('monthlyGrid.js'); ?>
    
 
 

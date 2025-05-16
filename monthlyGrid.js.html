@@ -1,0 +1,1513 @@
+<script>
+/**
+ * MonthlyGrid - Monthly spending grid view component for SimBudget
+ * Shows daily transactions across categories in a spreadsheet-like grid
+ */
+var MonthlyGrid = (function() {
+  // Private variables
+  let _initialized = false;
+  let _currentMonth = new Date().getMonth();
+  let _currentYear = new Date().getFullYear();
+  let _categories = [];
+  let _transactions = [];
+  
+  // DOM element cache for performance
+  const _elements = {};
+  
+  /**
+   * Get an element by ID with caching
+   * @param {string} id - Element ID
+   * @return {HTMLElement} Element
+   */
+  function getElement(id) {
+    if (!_elements[id]) {
+      _elements[id] = document.getElementById(id);
+    }
+    return _elements[id];
+  }
+
+  /**
+   * Initialize the Monthly Grid
+   */
+  function init(containerId) {
+    // FIXED: Allow reinitialization when container ID is provided
+    if (_initialized && !containerId) return;
+    
+    console.log('Initializing Monthly Grid View...');
+    
+    // FIXED: Store the container element directly
+    if (containerId) {
+      const container = document.getElementById(containerId);
+      if (container) {
+        _elements['monthly-grid-container'] = container;
+        console.log("Found container, storing for rendering:", containerId);
+      } else {
+        console.error("Container not found:", containerId);
+        return;
+      }
+    }
+    
+    // Load sample data for prototype
+    loadSampleData();
+    
+    // Set up event handlers
+    bindEvents();
+    
+    // Render the grid
+    renderGrid();
+    
+    _initialized = true;
+    console.log('Monthly Grid View initialized');
+  }
+  
+  /**
+   * Load sample data for prototype display
+   */
+  function loadSampleData() {
+    // Sample categories
+    _categories = [
+      { id: 'dining', name: 'Dining out 🍕', active: true },
+      { id: 'groceries', name: 'Groceries 🍎', active: true },
+      { id: 'personal', name: 'Personal care ❤️', active: true },
+      { id: 'transport', name: 'Transport 🚗', active: true },
+      { id: 'shopping', name: 'Shopping 🛍️', active: true },
+      { id: 'utilities', name: 'Utilities 💡', active: true },
+      { id: 'housing', name: 'Housing 🏡', active: true },
+      { id: 'business', name: 'Business 💼', active: true },
+      { id: 'childcare', name: 'Childcare 👶', active: true },
+      { id: 'other', name: 'Other 🧩', active: true },
+      { id: 'donation', name: 'Donation 🎗️', active: false },
+      { id: 'fun', name: 'Fun 🎬', active: true }
+    ];
+    
+    // Generate sample transactions
+    _transactions = generateSampleTransactions();
+  }
+  
+  /**
+   * Generate random sample transactions for the prototype
+   */
+  function generateSampleTransactions() {
+    const transactions = [];
+    const days = new Date(_currentYear, _currentMonth + 1, 0).getDate(); // Days in current month
+    
+    // Generate 1-3 transactions per day for random categories
+    for (let day = 1; day <= days; day++) {
+      const numTransactions = Math.floor(Math.random() * 3) + 1; // 1-3 transactions
+      
+      for (let i = 0; i < numTransactions; i++) {
+        // Get random category
+        const categoryIndex = Math.floor(Math.random() * _categories.length);
+        const category = _categories[categoryIndex];
+        
+        // Random amount between 5 and 100
+        const amount = Math.floor(Math.random() * 95) + 5;
+        
+        // Create transaction
+        transactions.push({
+          id: `tx-${day}-${i}-${Date.now()}`,
+          date: new Date(_currentYear, _currentMonth, day),
+          category: category.id,
+          amount: amount,
+          description: `Sample ${category.name.split(' ')[0]} expense`,
+          account: 'Main Account'
+        });
+      }
+    }
+    
+    return transactions;
+  }
+  
+  /**
+   * Bind event handlers
+   */
+  function bindEvents() {
+    // Month navigation
+    const prevMonth = getElement('prevMonth');
+    const nextMonth = getElement('nextMonth');
+    const monthYearSelector = getElement('monthYearSelector');
+    
+    if (prevMonth) {
+      prevMonth.addEventListener('click', function() {
+        navigateMonth(-1);
+      });
+    }
+    
+    if (nextMonth) {
+      nextMonth.addEventListener('click', function() {
+        navigateMonth(1);
+      });
+    }
+    
+    if (monthYearSelector) {
+      monthYearSelector.addEventListener('change', function() {
+        const [year, month] = this.value.split('-');
+        _currentMonth = parseInt(month) - 1; // 0-based
+        _currentYear = parseInt(year);
+        renderGrid();
+      });
+    }
+    
+    // Cell click handlers (using event delegation)
+    const gridContainer = getElement('monthly-grid-container');
+    if (gridContainer) {
+      gridContainer.addEventListener('click', function(e) {
+        const cell = e.target.closest('.grid-cell[data-day][data-category]');
+        if (cell) {
+          const day = cell.getAttribute('data-day');
+          const category = cell.getAttribute('data-category');
+          openTransactionModal(day, category);
+        }
+      });
+    }
+    
+    // Modal events
+    document.addEventListener('click', function(e) {
+      const modal = getElement('transaction-modal');
+      const closeBtn = getElement('close-modal-btn');
+      
+      if ((e.target === modal) || (closeBtn && e.target === closeBtn)) {
+        closeTransactionModal();
+      }
+      
+      if (e.target.matches('#add-transaction-btn') || e.target.closest('#add-transaction-btn')) {
+        addTransactionRow();
+      }
+    });
+  }
+  
+  /**
+   * Navigate to previous/next month
+   * @param {number} change - Change in months (-1 for previous, 1 for next)
+   */
+  function navigateMonth(change) {
+    // Update current month and year
+    _currentMonth += change;
+    
+    // Handle year change
+    if (_currentMonth > 11) {
+      _currentMonth = 0;
+      _currentYear++;
+    } else if (_currentMonth < 0) {
+      _currentMonth = 11;
+      _currentYear--;
+    }
+    
+    // Update the month selector
+    const monthYearSelector = getElement('monthYearSelector');
+    if (monthYearSelector) {
+      monthYearSelector.value = `${_currentYear}-${(_currentMonth + 1).toString().padStart(2, '0')}`;
+    }
+    
+    // Regenerate sample data and re-render
+    _transactions = generateSampleTransactions();
+    renderGrid();
+  }
+  
+  /**
+   * Render the monthly grid
+   */
+  function renderGrid() {
+    const gridContainer = getElement('monthly-grid-container');
+    if (!gridContainer) {
+      console.error("Grid container not found for rendering");
+      return;
+    }
+    
+    console.log("Rendering grid in container:", gridContainer.id);
+    
+    // Clear existing content
+    gridContainer.innerHTML = '';
+    
+    // Get days in month
+    const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
+    
+    // Get month name
+    const monthName = new Date(_currentYear, _currentMonth, 1).toLocaleString('default', { month: 'long' });
+    
+    // Update month/year display
+    const monthYearDisplay = getElement('monthYearDisplay');
+    if (monthYearDisplay) {
+      monthYearDisplay.textContent = `${monthName} ${_currentYear}`;
+    }
+    
+    // Prepare categories to display - active + any inactive with transactions
+    const categoriesToDisplay = [];
+    const usedCategories = new Set();
+    
+    // First add active categories
+    _categories.filter(cat => cat.active).forEach(cat => {
+      categoriesToDisplay.push(cat);
+      usedCategories.add(cat.id);
+    });
+    
+    // Then find any inactive categories with transactions
+    _transactions.forEach(tx => {
+      if (!usedCategories.has(tx.category)) {
+        const cat = _categories.find(c => c.id === tx.category);
+        if (cat) {
+          categoriesToDisplay.push(cat);
+          usedCategories.add(cat.id);
+        }
+      }
+    });
+    
+    // Create table for grid
+    const table = document.createElement('table');
+    table.className = 'monthly-grid';
+    
+    // Create header row with category totals
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    
+    // Date column header
+    const dateHeader = document.createElement('th');
+    dateHeader.className = 'date-header';
+    dateHeader.textContent = 'Date';
+    headerRow.appendChild(dateHeader);
+    
+    // Category headers with monthly totals
+    categoriesToDisplay.forEach(category => {
+      const categoryHeader = document.createElement('th');
+      categoryHeader.className = 'category-header';
+      categoryHeader.setAttribute('data-category', category.id);
+      
+      // Calculate monthly total for this category
+      const monthlyTotal = _transactions
+        .filter(tx => 
+          tx.category === category.id && 
+          tx.date.getMonth() === _currentMonth &&
+          tx.date.getFullYear() === _currentYear
+        )
+        .reduce((sum, tx) => sum + tx.amount, 0);
+      
+      // Create header content
+      const headerContent = document.createElement('div');
+      headerContent.className = 'category-header-content';
+      
+      const categoryName = document.createElement('div');
+      categoryName.className = 'category-name';
+      categoryName.textContent = category.name;
+      
+      const categoryTotal = document.createElement('div');
+      categoryTotal.className = 'category-total';
+      categoryTotal.textContent = `€${monthlyTotal}`;
+      
+      headerContent.appendChild(categoryName);
+      headerContent.appendChild(categoryTotal);
+      categoryHeader.appendChild(headerContent);
+      
+      headerRow.appendChild(categoryHeader);
+    });
+    
+    // Daily total header
+    const totalHeader = document.createElement('th');
+    totalHeader.className = 'total-header';
+    
+    // Calculate monthly grand total
+    const grandTotal = _transactions
+      .filter(tx => 
+        tx.date.getMonth() === _currentMonth &&
+        tx.date.getFullYear() === _currentYear
+      )
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    
+    const totalHeaderContent = document.createElement('div');
+    totalHeaderContent.className = 'category-header-content';
+    
+    const totalName = document.createElement('div');
+    totalName.className = 'category-name';
+    totalName.textContent = 'Total Daily';
+    
+    const totalValue = document.createElement('div');
+    totalValue.className = 'category-total';
+    totalValue.textContent = `€${grandTotal}`;
+    
+    totalHeaderContent.appendChild(totalName);
+    totalHeaderContent.appendChild(totalValue);
+    totalHeader.appendChild(totalHeaderContent);
+    
+    headerRow.appendChild(totalHeader);
+    
+    // Notes header
+    const notesHeader = document.createElement('th');
+    notesHeader.className = 'notes-header';
+    notesHeader.textContent = 'Notes 📝';
+    headerRow.appendChild(notesHeader);
+    
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    // Create table body
+    const tbody = document.createElement('tbody');
+    
+    // Create a row for each day
+    for (let day = 1; day <= daysInMonth; day++) {
+      const row = document.createElement('tr');
+      row.className = 'day-row';
+      
+      // Date cell
+      const dateCell = document.createElement('td');
+      dateCell.className = 'date-cell';
+      
+      const dateObj = new Date(_currentYear, _currentMonth, day);
+      const dayOfWeek = dateObj.toLocaleString('en-US', { weekday: 'short' });
+      
+      dateCell.innerHTML = `<div class="date-container">
+                              <span class="day-number">${day}</span>
+                              <span class="day-name">${dayOfWeek}</span>
+                            </div>`;
+      row.appendChild(dateCell);
+      
+      // Daily total for calculating at the end
+      let dayTotal = 0;
+      
+      // Category cells
+      categoriesToDisplay.forEach(category => {
+        const cell = document.createElement('td');
+        cell.className = 'grid-cell';
+        cell.setAttribute('data-day', day);
+        cell.setAttribute('data-category', category.id);
+        
+        // Get transactions for this day and category
+        const dayTransactions = _transactions.filter(tx => 
+          tx.date.getDate() === day && 
+          tx.date.getMonth() === _currentMonth &&
+          tx.date.getFullYear() === _currentYear &&
+          tx.category === category.id
+        );
+        
+        // If there are transactions, show amount and count
+        if (dayTransactions.length > 0) {
+          const amount = dayTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+          dayTotal += amount; // Add to daily total
+          
+          // Determine color intensity based on amount
+          const intensity = Math.min(amount / 100 * 0.8, 0.8); // Max 80% intensity
+          
+          cell.innerHTML = `<div class="cell-content" style="background-color: rgba(169, 99, 34, ${intensity})">
+                              <span class="amount">€${amount}</span>
+                              <span class="transaction-count">(${dayTransactions.length})</span>
+                            </div>`;
+        }
+        
+        row.appendChild(cell);
+      });
+      
+      // Daily total cell
+      const totalCell = document.createElement('td');
+      totalCell.className = 'total-cell';
+      
+      if (dayTotal > 0) {
+        totalCell.innerHTML = `<div class="total-amount">€${dayTotal}</div>`;
+      }
+      
+      row.appendChild(totalCell);
+      
+      // Notes cell
+      const notesCell = document.createElement('td');
+      notesCell.className = 'notes-cell';
+      notesCell.innerHTML = `<div class="notes-content" contenteditable="true"></div>`;
+      row.appendChild(notesCell);
+      
+      tbody.appendChild(row);
+    }
+    
+    table.appendChild(tbody);
+    gridContainer.appendChild(table);
+  }
+  
+  /**
+   * Open transaction modal for a specific day and category
+   * @param {string} day - Day of the month
+   * @param {string} categoryId - Category ID
+   */
+  function openTransactionModal(day, categoryId) {
+    const modal = getElement('transaction-modal');
+    if (!modal) return;
+    
+    // Get the category
+    const category = _categories.find(c => c.id === categoryId);
+    if (!category) return;
+    
+    // Get transactions for this day/category
+    const transactions = _transactions.filter(tx => 
+      tx.date.getDate() === parseInt(day) && 
+      tx.date.getMonth() === _currentMonth &&
+      tx.date.getFullYear() === _currentYear &&
+      tx.category === categoryId
+    );
+    
+    // Format the date for display
+    const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
+    const formattedDate = dateObj.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+    
+    // Update modal title
+    const modalTitle = getElement('modal-title');
+    if (modalTitle) {
+      modalTitle.textContent = `${category.name} on ${formattedDate}`;
+    }
+    
+    // Update modal content
+    const transactionsList = getElement('transactions-list');
+    if (transactionsList) {
+      transactionsList.innerHTML = '';
+      
+      if (transactions.length > 0) {
+        // Calculate total
+        const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+        
+        // Add total display
+        const totalElement = document.createElement('div');
+        totalElement.className = 'transactions-total';
+        totalElement.innerHTML = `<span>Total:</span> <span class="total-value">€${total}</span>`;
+        transactionsList.appendChild(totalElement);
+        
+        // Add each transaction
+        transactions.forEach(tx => {
+          const item = document.createElement('div');
+          item.className = 'transaction-item';
+          item.setAttribute('data-id', tx.id);
+          
+          item.innerHTML = `
+            <div class="transaction-row">
+              <input type="number" class="transaction-amount" value="${tx.amount}" min="0" step="0.01">
+              <input type="text" class="transaction-description" value="${tx.description || ''}">
+              <select class="transaction-account">
+                <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
+                <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
+                <option value="Savings" ${tx.account === 'Savings' ? 'selected' : ''}>Savings</option>
+              </select>
+              <div class="transaction-actions">
+                <button class="transaction-delete"><i class="material-icons">delete</i></button>
+              </div>
+            </div>
+          `;
+          
+          transactionsList.appendChild(item);
+        });
+      } else {
+        // No transactions yet, show empty state
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-transactions';
+        emptyState.textContent = 'No transactions for this day/category. Add one below!';
+        transactionsList.appendChild(emptyState);
+      }
+    }
+    
+    // Store current day/category for adding new transactions
+    modal.setAttribute('data-day', day);
+    modal.setAttribute('data-category', categoryId);
+    
+    // Show the modal
+    modal.classList.add('visible');
+  }
+  
+  /**
+   * Close transaction modal
+   */
+  function closeTransactionModal() {
+    const modal = getElement('transaction-modal');
+    if (modal) {
+      modal.classList.remove('visible');
+    }
+  }
+  
+  /**
+   * Add a new transaction row in the modal
+   */
+  function addTransactionRow() {
+    const transactionsList = getElement('transactions-list');
+    const modal = getElement('transaction-modal');
+    
+    if (!transactionsList || !modal) return;
+    
+    const day = modal.getAttribute('data-day');
+    const categoryId = modal.getAttribute('data-category');
+    
+    if (!day || !categoryId) return;
+    
+    // Create a new transaction object
+    const newTx = {
+      id: `tx-new-${Date.now()}`,
+      date: new Date(_currentYear, _currentMonth, parseInt(day)),
+      category: categoryId,
+      amount: 0,
+      description: '',
+      account: 'Main Account'
+    };
+    
+    // Add to our local data
+    _transactions.push(newTx);
+    
+    // Create a new transaction item
+    const item = document.createElement('div');
+    item.className = 'transaction-item new-transaction';
+    item.setAttribute('data-id', newTx.id);
+    
+    item.innerHTML = `
+      <div class="transaction-row">
+        <input type="number" class="transaction-amount" value="" min="0" step="0.01" placeholder="Amount">
+        <input type="text" class="transaction-description" value="" placeholder="Description">
+        <select class="transaction-account">
+          <option value="Main Account">Main Account</option>
+          <option value="Credit Card">Credit Card</option>
+          <option value="Savings">Savings</option>
+        </select>
+        <div class="transaction-actions">
+          <button class="transaction-delete"><i class="material-icons">delete</i></button>
+        </div>
+      </div>
+    `;
+    
+    // Focus the amount field after adding
+    setTimeout(() => {
+      const amountField = item.querySelector('.transaction-amount');
+      if (amountField) {
+        amountField.focus();
+      }
+    }, 100);
+    
+    // Add it to the list
+    if (transactionsList.querySelector('.empty-transactions')) {
+      // Remove empty state if it exists
+      transactionsList.innerHTML = '';
+      
+      // Add total element
+      const totalElement = document.createElement('div');
+      totalElement.className = 'transactions-total';
+      totalElement.innerHTML = `<span>Total:</span> <span class="total-value">€0</span>`;
+      transactionsList.appendChild(totalElement);
+    }
+    
+    transactionsList.appendChild(item);
+    
+    // Update UI to reflect changes
+    updateTransactionTotal();
+  }
+  
+  /**
+   * Update the total in the transaction modal
+   */
+  function updateTransactionTotal() {
+    const transactionsList = getElement('transactions-list');
+    if (!transactionsList) return;
+    
+    // Get all transaction amounts
+    const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
+      .map(input => parseFloat(input.value) || 0);
+    
+    // Calculate total
+    const total = amounts.reduce((sum, amount) => sum + amount, 0);
+    
+    // Update total display
+    const totalElement = transactionsList.querySelector('.total-value');
+    if (totalElement) {
+      totalElement.textContent = `€${total}`;
+    }
+  }
+  
+  /**
+   * Set expense data from external source
+   * @param {Array} expenses - Expense data from API
+   */
+  function setExpenseData(expenses) {
+    if (!expenses || !Array.isArray(expenses)) return;
+    
+    console.log('Setting expense data in MonthlyGrid:', expenses.length, 'transactions');
+    
+    // Convert API expenses to our format
+    _transactions = expenses.map(expense => ({
+      id: expense.rowIndex || `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      date: expense.date instanceof Date ? expense.date : new Date(expense.date),
+      category: expense.category,
+      amount: parseFloat(expense.amount),
+      description: expense.name || expense.description || '',
+      account: expense.account || 'Main Account'
+    }));
+    
+    // Render with the new data
+    renderGrid();
+  }
+  
+  // Public methods
+  return {
+    init: init,
+    renderGrid: renderGrid,
+    setExpenseData: setExpenseData
+  };
+
+
+
+// ==================================================
+// MONTHLYGRID DEBUG UTILITIES - ADD BEFORE CLOSING })();
+// ==================================================
+
+// Add debugging methods to the public API
+// These will be accessible through the MonthlyGrid global object
+MonthlyGrid.debug = function() {
+  return {
+    initialized: _initialized,
+    currentMonth: _currentMonth,
+    currentYear: _currentYear,
+    categories: _categories.map(c => c.id),
+    categoriesCount: _categories.length,
+    transactionsCount: _transactions.length,
+    elements: Object.keys(_elements),
+    containerElement: _elements['monthly-grid-container'],
+    gridElement: document.querySelector('.monthly-grid'),
+    hasGrid: !!document.querySelector('.monthly-grid'),
+    containerDimensions: _elements['monthly-grid-container'] ? {
+      width: _elements['monthly-grid-container'].offsetWidth,
+      height: _elements['monthly-grid-container'].offsetHeight,
+      clientWidth: _elements['monthly-grid-container'].clientWidth,
+      clientHeight: _elements['monthly-grid-container'].clientHeight,
+      scrollWidth: _elements['monthly-grid-container'].scrollWidth,
+      scrollHeight: _elements['monthly-grid-container'].scrollHeight
+    } : 'Container not found'
+  };
+};
+
+// Debug render function - force rendering with sample data
+MonthlyGrid.debugRender = function(containerId, options) {
+  console.group('MONTHLY GRID DEBUG RENDER');
+  console.log('Starting debug render with containerId:', containerId);
+  
+  options = options || {};
+  
+  // First reset state if needed
+  if (options.reset) {
+    console.log('Resetting internal state...');
+    _initialized = false;
+    _elements = {};
+    _transactions = [];
+    _categories = [];
+  }
+  
+  // Find and store container
+  const container = document.getElementById(containerId);
+  if (!container) {
+    console.error('Container not found:', containerId);
+    console.groupEnd();
+    return { success: false, error: 'Container not found' };
+  }
+  
+  console.log('Container found:', container);
+  console.log('Container size:', {
+    offsetWidth: container.offsetWidth,
+    offsetHeight: container.offsetHeight,
+    clientWidth: container.clientWidth,
+    clientHeight: container.clientHeight
+  });
+  
+  // Store container for later use
+  _elements['monthly-grid-container'] = container;
+  
+  // Add visual debug container if requested
+  if (options.visualDebug) {
+    const debugContainer = document.createElement('div');
+    debugContainer.className = 'grid-debug-info';
+    debugContainer.style.padding = '8px';
+    debugContainer.style.background = '#f8f8f8';
+    debugContainer.style.border = '1px solid #ddd';
+    debugContainer.style.margin = '0 0 10px 0';
+    debugContainer.style.fontSize = '12px';
+    debugContainer.style.fontFamily = 'monospace';
+    debugContainer.innerHTML = '<strong>MonthlyGrid Debug:</strong> Rendering...';
+    container.appendChild(debugContainer);
+    _elements['debug-container'] = debugContainer;
+  }
+  
+  // Load sample data
+  try {
+    console.log('Loading sample data...');
+    loadSampleData();
+    console.log('Sample data loaded:', {
+      categoriesCount: _categories.length,
+      categoriesExample: _categories.slice(0, 3),
+      transactionsCount: _transactions.length,
+      transactionsExample: _transactions.slice(0, 3)
+    });
+  } catch (e) {
+    console.error('Error loading sample data:', e);
+    if (_elements['debug-container']) {
+      _elements['debug-container'].innerHTML += '<br>Error loading sample data: ' + e.message;
+    }
+  }
+  
+  // Render the grid
+  try {
+    console.log('Rendering grid...');
+    renderGrid();
+    
+    // Set flag after rendering
+    _initialized = true;
+    
+    // Check if grid was rendered
+    const gridElement = container.querySelector('.monthly-grid');
+    const success = !!gridElement;
+    
+    console.log('Grid rendered successfully:', success);
+    console.log('Grid element:', gridElement);
+    
+    if (_elements['debug-container']) {
+      _elements['debug-container'].innerHTML = 
+        '<strong>MonthlyGrid Debug:</strong> ' + 
+        (success ? 'Rendered successfully' : 'Failed to render') +
+        '<br>Categories: ' + _categories.length +
+        '<br>Transactions: ' + _transactions.length +
+        '<br>Grid element: ' + (success ? 'Found' : 'Not found') +
+        '<br>Container: ' + containerId;
+    }
+    
+    console.groupEnd();
+    return {
+      success: success,
+      gridElement: gridElement,
+      categoriesCount: _categories.length,
+      transactionsCount: _transactions.length
+    };
+  } catch (e) {
+    console.error('Error rendering grid:', e);
+    if (_elements['debug-container']) {
+      _elements['debug-container'].innerHTML += '<br>Error rendering grid: ' + e.message;
+    }
+    console.groupEnd();
+    return { success: false, error: e.message };
+  }
+};
+
+// Force generation of more sample data for better testing
+MonthlyGrid.generateMoreSampleData = function(count) {
+  console.log('Generating more sample data...');
+  const extraTransactions = [];
+  const days = new Date(_currentYear, _currentMonth + 1, 0).getDate(); // Days in current month
+  
+  count = count || 50;
+  
+  for (let i = 0; i < count; i++) {
+    // Random day
+    const day = Math.floor(Math.random() * days) + 1;
+    
+    // Random category
+    const categoryIndex = Math.floor(Math.random() * _categories.length);
+    const category = _categories[categoryIndex];
+    
+    // Random amount between 10 and 500
+    const amount = Math.floor(Math.random() * 490) + 10;
+    
+    // Create transaction
+    extraTransactions.push({
+      id: `tx-extra-${i}-${Date.now()}`,
+      date: new Date(_currentYear, _currentMonth, day),
+      category: category.id,
+      amount: amount,
+      description: `Debug expense #${i+1}`,
+      account: 'Debug Account'
+    });
+  }
+  
+  // Add to existing transactions
+  _transactions = _transactions.concat(extraTransactions);
+  console.log(`Added ${count} more sample transactions, total now: ${_transactions.length}`);
+  
+  // Re-render
+  renderGrid();
+  
+  return {
+    success: true,
+    totalTransactions: _transactions.length,
+    newTransactions: extraTransactions.length
+  };
+};
+
+// Visual debug method - highlight different parts of the grid
+MonthlyGrid.highlightElements = function() {
+  const container = _elements['monthly-grid-container'];
+  if (!container) return { success: false, error: 'Container not found' };
+  
+  // Reset any previous highlights
+  const highlights = container.querySelectorAll('.debug-highlight');
+  highlights.forEach(el => el.remove());
+  
+  // Add highlight to table
+  const table = container.querySelector('.monthly-grid');
+  if (table) {
+    table.style.border = '2px solid red';
+    table.style.position = 'relative';
+    
+    const label = document.createElement('div');
+    label.className = 'debug-highlight';
+    label.style.position = 'absolute';
+    label.style.top = '0';
+    label.style.left = '0';
+    label.style.background = 'rgba(255,0,0,0.7)';
+    label.style.color = 'white';
+    label.style.padding = '2px 5px';
+    label.style.fontSize = '10px';
+    label.style.zIndex = '1000';
+    label.textContent = 'monthly-grid';
+    table.appendChild(label);
+  }
+  
+  // Highlight cells
+  const cells = container.querySelectorAll('.grid-cell');
+  if (cells.length) {
+    cells.forEach(cell => {
+      cell.style.boxShadow = 'inset 0 0 0 1px blue';
+    });
+  }
+  
+  return {
+    success: true,
+    elementsHighlighted: {
+      table: !!table,
+      cells: cells.length
+    }
+  };
+};
+
+// Method to try different rendering styles
+MonthlyGrid.tryAlternativeRendering = function() {
+  const container = _elements['monthly-grid-container'];
+  if (!container) return { success: false, error: 'Container not found' };
+  
+  // Clear the container
+  container.innerHTML = '';
+  
+  // Create basic table structure directly
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
+  
+  // Create simple table
+  let html = `
+    <div style="padding: 10px; background: #f5f5f5; margin-bottom: 10px;">
+      <h3>Month: ${months[_currentMonth]} ${_currentYear}</h3>
+      <p>Alternative rendering - bypassing renderGrid()</p>
+    </div>
+    <table class="monthly-grid" style="width: 100%; border-collapse: collapse; min-width: 800px;">
+      <thead>
+        <tr>
+          <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: left;">Date</th>
+  `;
+  
+  // Add category headers
+  for (let i = 0; i < Math.min(5, _categories.length); i++) {
+    html += `<th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: left;">${_categories[i].name}</th>`;
+  }
+  
+  html += `
+          <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: left;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  // Add day rows
+  for (let day = 1; day <= Math.min(10, daysInMonth); day++) {
+    const date = new Date(_currentYear, _currentMonth, day);
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+    
+    html += `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">
+          ${day} (${dayName})
+        </td>
+    `;
+    
+    // Add category cells
+    for (let i = 0; i < Math.min(5, _categories.length); i++) {
+      html += `<td style="padding: 8px; border-bottom: 1px solid #ddd;">&nbsp;</td>`;
+    }
+    
+    html += `
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">&nbsp;</td>
+      </tr>
+    `;
+  }
+  
+  html += `
+      </tbody>
+    </table>
+    <div style="padding: 10px; margin-top: 10px; color: #666;">
+      Note: This is a simplified rendering for debugging purposes.
+    </div>
+  `;
+  
+  container.innerHTML = html;
+  
+  return {
+    success: true,
+    message: 'Alternative rendering applied'
+  };
+};
+
+// ==================================================
+// END DEBUG UTILITIES - KEEP THE CLOSING BRACKET BELOW
+// ==================================================
+
+
+
+
+})();
+
+// Expose globally without auto-initialization 
+window.MonthlyGrid = MonthlyGrid;
+</script>
+
+<!-- Transaction Modal -->
+<div id="transaction-modal" class="transaction-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modal-title" class="modal-title">Transactions</h3>
+      <button id="close-modal-btn" class="close-btn" aria-label="Close">
+        <i class="material-icons">close</i>
+      </button>
+    </div>
+    
+    <div class="modal-content">
+      <div id="transactions-list" class="transactions-list">
+        <!-- Transactions will be populated here -->
+      </div>
+      
+      <div class="modal-actions">
+        <button id="add-transaction-btn" class="add-transaction-btn">
+          <i class="material-icons">add</i> Add Transaction
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* ======================================================
+   MONTHLY GRID VIEW STYLES
+   ======================================================
+*/
+
+/* ============= MAIN CONTAINER ============= */
+.monthly-grid-view {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ============= GRID HEADER ============= */
+.grid-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 8px 0;
+}
+
+.month-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.month-nav-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.month-nav-btn:hover {
+  background-color: rgba(169, 99, 34, 0.1);
+}
+
+.month-year-display {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.month-year-selector {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--surface);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+/* ============= GRID CONTAINER ============= */
+.monthly-grid-container {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+/* ============= GRID TABLE ============= */
+.monthly-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 800px; /* Ensure minimum width for small screens */
+}
+
+/* Headers */
+.monthly-grid th {
+  background-color: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 12px 8px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border);
+}
+
+.date-header {
+  width: 90px;
+}
+
+.category-header {
+  min-width: 110px;
+}
+
+.total-header {
+  width: 110px;
+}
+
+.notes-header {
+  width: 200px;
+}
+
+.category-header-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.category-name {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.category-total {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* Day rows and cells */
+.day-row:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.day-row:hover {
+  background-color: rgba(169, 99, 34, 0.05);
+}
+
+.monthly-grid td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  height: 50px;
+  vertical-align: middle;
+}
+
+/* Date cell */
+.date-cell {
+  font-weight: 500;
+}
+
+.date-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-number {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.day-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Grid cells */
+.grid-cell {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.grid-cell:hover {
+  background-color: rgba(169, 99, 34, 0.1);
+}
+
+.cell-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 4px;
+  color: white;
+  font-weight: 500;
+}
+
+.amount {
+  font-size: 14px;
+}
+
+.transaction-count {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* Total cells */
+.total-cell {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.total-amount {
+  font-size: 15px;
+}
+
+/* Notes cells */
+.notes-cell {
+  position: relative;
+}
+
+.notes-content {
+  min-height: 20px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: border-color 0.2s;
+  outline: none;
+  font-size: 13px;
+}
+
+.notes-content:hover, .notes-content:focus {
+  border-color: var(--border);
+}
+
+.notes-content:focus {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+/* ============= TRANSACTION MODAL ============= */
+.transaction-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.transaction-modal.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-card {
+  position: relative;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  background-color: var(--surface);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.transaction-modal.visible .modal-card {
+  transform: translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.modal-content {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+/* Transaction list */
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.transactions-total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.transaction-item {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.transaction-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.transaction-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 120px 40px;
+  gap: 12px;
+  align-items: center;
+}
+
+.transaction-amount, .transaction-description, .transaction-account {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.transaction-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.transaction-delete {
+  background: none;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.transaction-delete:hover {
+  opacity: 1;
+}
+
+.new-transaction {
+  animation: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.empty-transactions {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px 0;
+  font-style: italic;
+}
+
+/* Add transaction button */
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.add-transaction-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.add-transaction-btn:hover {
+  background-color: var(--primary-dark);
+}
+
+/* ============= DARK MODE ============= */
+body.dark-mode .monthly-grid th {
+  background-color: var(--dark-surface);
+  color: var(--dark-text-primary);
+  border-color: var(--dark-border);
+}
+
+body.dark-mode .monthly-grid td {
+  border-color: var(--dark-border);
+}
+
+body.dark-mode .day-row:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+body.dark-mode .day-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .grid-cell:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .modal-card {
+  background-color: var(--dark-surface);
+  color: var(--dark-text-primary);
+}
+
+body.dark-mode .modal-header {
+  border-color: var(--dark-border);
+}
+
+body.dark-mode .transactions-total {
+  border-color: var(--dark-border);
+}
+
+body.dark-mode .transaction-item {
+  background-color: var(--dark-surface);
+  border-color: var(--dark-border);
+}
+
+body.dark-mode .transaction-amount,
+body.dark-mode .transaction-description,
+body.dark-mode .transaction-account {
+  background-color: var(--dark-surface);
+  color: var(--dark-text-primary);
+  border-color: var(--dark-border);
+}
+
+/* ============= RESPONSIVE DESIGN ============= */
+@media (max-width: 768px) {
+  .date-header {
+    width: 70px;
+  }
+  
+  .category-header {
+    min-width: 100px;
+  }
+  
+  .notes-header {
+    width: 150px;
+  }
+  
+  .transaction-row {
+    grid-template-columns: 70px 1fr 100px 40px;
+    gap: 8px;
+  }
+  
+  .monthly-grid td {
+    padding: 6px;
+    height: 45px;
+  }
+  
+  .day-number {
+    font-size: 14px;
+  }
+  
+  .day-name {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .grid-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .month-selector {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .month-year-selector {
+    width: 100%;
+  }
+  
+  .transaction-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .transaction-actions {
+    justify-content: flex-end;
+  }
+}
+</style>
+
+
+</script>

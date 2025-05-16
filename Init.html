@@ -504,6 +504,13 @@
             const sidebar = document.getElementById("sidebar");
             const contentArea = document.getElementById("contentArea");
 
+             const expensesBtn = document.getElementById("expenses-btn");
+  if (expensesBtn) {
+    expensesBtn.addEventListener("click", function() {
+      SimBudget.Views.activate("expense");
+    });
+  }
+
             if (sidebar) {
               sidebar.classList.toggle("sb-open");
               sidebar.classList.toggle("sb-collapsed");
@@ -1474,164 +1481,85 @@ updateInfoMessage: function(force = false) {
 
 
 
+ 
       /**
        * Load expense data
        */
-      loadExpenseData: function () {
-        const contentArea = document.getElementById("expenseContent");
+    /**
+ * Load expense data
+ */
+// Debug version of loadExpenseData function - add these logging statements
+loadExpenseData: function() {
+  console.group("EXPENSE GRID RENDERING TEST");
+  console.log("1. Starting loadExpenseData - SAMPLE DATA MODE");
+  
+  const contentArea = document.getElementById("expenseContent");
+  console.log("2. Content area found:", !!contentArea, contentArea);
+  
+  if (!contentArea) {
+    console.error("Expense content area not found");
+    console.groupEnd();
+    _loadingView = null;
+    return;
+  }
 
-        // Show loading state
-        contentArea.innerHTML = '<div class="loading-spinner"></div>';
+  // Clear existing content
+  contentArea.innerHTML = '';
+  
+  // Create a clean container with unique ID and clear dimensions
+  const containerId = "expense-grid-" + Date.now();
+  console.log("3. Creating container with ID:", containerId);
+  
+  // Create container with explicit dimensions
+  const containerDiv = document.createElement('div');
+  containerDiv.id = containerId;
+  containerDiv.className = "monthly-grid-container";
+  containerDiv.style.width = "100%";
+  containerDiv.style.minHeight = "400px";
+  containerDiv.style.border = "1px solid #eee"; // Visual debugging - remove later
+  
+  // Add container to DOM
+  contentArea.appendChild(containerDiv);
+  console.log("4. Container added to DOM");
+  
+  // Check if MonthlyGrid exists
+  if (window.MonthlyGrid) {
+    console.log("5. MonthlyGrid component found");
+    
+    try {
+      // First reset any initialization
+      if (typeof MonthlyGrid.debug === 'function') {
+        console.log("6. MonthlyGrid state before:", MonthlyGrid.debug());
+      }
+      
+      // Initialize with our container
+      console.log("7. Initializing MonthlyGrid with container:", containerId);
+      MonthlyGrid.init(containerId);
+      
+      // Log state after initialization
+      if (typeof MonthlyGrid.debug === 'function') {
+        console.log("8. MonthlyGrid state after init:", MonthlyGrid.debug());
+      }
+      
+      console.log("9. Grid initialization complete - should be visible now");
+    } catch (e) {
+      console.error("Error initializing MonthlyGrid:", e);
+      contentArea.innerHTML = '<div class="error-message">Error initializing grid: ' + e.message + '</div>';
+    }
+  } else {
+    console.error("MonthlyGrid component not found");
+    contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
+  }
+  
+  // Clear loading flag
+  _loadingView = null;
+  console.groupEnd();
+}
 
-        API.getExpenseData(
-          function (result) {
-            // Cache the result
-            _cache.set("expense", result.expenses);
 
-            // Clear loading flag
-            _loadingView = null;
 
-            // Render the expenses
-            SimBudget.renderExpenseView(result.expenses);
-          },
-          function (error) {
-            // Clear loading flag on error
-            _loadingView = null;
 
-            contentArea.innerHTML = `
-            <div class="error-message">
-              <i class="material-icons">error</i>
-              <span>Error loading expense data: ${error}</span>
-            </div>
-          `;
-          }
-        );
-      },
-
-      /**
-       * Render expense view with provided data
-       * @param {Array} expenses - Expense data to render
-       */
-      renderExpenseView: function (expenses) {
-        const contentArea = document.getElementById("expenseContent");
-
-        // Create expense list
-        let html = `
-        <div class="expense-controls">
-          <div class="search-container">
-            <input type="text" id="expenseSearch" placeholder="Search expenses...">
-            <i class="material-icons">search</i>
-          </div>
-          <div class="filter-container">
-            <select id="categoryFilter">
-              <option value="">All Categories</option>
-              <!-- Categories will be added dynamically -->
-            </select>
-            <select id="dateFilter">
-              <option value="">All Dates</option>
-              <option value="current-month">Current Month</option>
-              <option value="last-month">Last Month</option>
-              <option value="last-3-months">Last 3 Months</option>
-              <option value="current-year">Current Year</option>
-            </select>
-          </div>
-        </div>
-        
-        <div class="expense-list">
-          <table class="expense-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Amount</th>
-                <th>Category</th>
-                <th>Description</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-      `;
-
-        // Add rows for each expense
-        if (expenses.length === 0) {
-          html += `
-          <tr>
-            <td colspan="5" class="no-data">No expenses found</td>
-          </tr>
-        `;
-        } else {
-          expenses.forEach(function (expense) {
-            html += `
-            <tr data-row-index="${expense.rowIndex}">
-              <td>${Utils.formatDate(expense.date)}</td>
-              <td>${Utils.formatCurrency(expense.amount)}</td>
-              <td>${expense.category}</td>
-              <td>${expense.name}</td>
-              <td>
-                <button class="btn icon-btn edit-expense" data-id="${
-                  expense.rowIndex
-                }">
-                  <i class="material-icons">edit</i>
-                </button>
-                <button class="btn icon-btn delete-expense" data-id="${
-                  expense.rowIndex
-                }">
-                  <i class="material-icons">delete</i>
-                </button>
-              </td>
-            </tr>
-          `;
-          });
-        }
-
-        html += `
-            </tbody>
-          </table>
-        </div>
-      `;
-
-        // Update the expense content
-        contentArea.innerHTML = html;
-
-        // Set up the edit and delete buttons
-        document.querySelectorAll(".edit-expense").forEach((button) => {
-          button.addEventListener("click", function () {
-            const rowIndex = this.getAttribute("data-id");
-            // TODO: Add edit expense functionality
-            alert("Edit expense " + rowIndex);
-          });
-        });
-
-        document.querySelectorAll(".delete-expense").forEach((button) => {
-          button.addEventListener("click", function () {
-            const rowIndex = this.getAttribute("data-id");
-            // TODO: Add delete expense functionality
-            alert("Delete expense " + rowIndex);
-          });
-        });
-
-        // Set up search functionality
-        const searchInput = document.getElementById("expenseSearch");
-        if (searchInput) {
-          searchInput.addEventListener(
-            "input",
-            Utils.debounce(function () {
-              const searchValue = this.value.toLowerCase();
-              document
-                .querySelectorAll(".expense-table tbody tr")
-                .forEach((row) => {
-                  if (row.classList.contains("no-data")) return;
-
-                  const text = row.textContent.toLowerCase();
-                  if (text.includes(searchValue)) {
-                    row.style.display = "";
-                  } else {
-                    row.style.display = "none";
-                  }
-                });
-            }, 300)
-          );
-        }
-      },
+  
     };
   })();
 
