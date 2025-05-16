@@ -218,8 +218,12 @@ var MonthlyGrid = (function() {
         }
       }
       
-      // Handle add transaction button
-      if (e.target.matches('#add-transaction-btn') || e.target.closest('#add-transaction-btn')) {
+      // Handle add transaction button - prevent multiple triggers
+      if ((e.target.id === 'add-transaction-btn' || e.target.closest('#add-transaction-btn'))) {
+        // Prevent any potential event bubbling or duplicate handling
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Add transaction button clicked');
         addTransactionRow();
       }
     });
@@ -724,19 +728,30 @@ var MonthlyGrid = (function() {
    * Add a new transaction row in the modal
    */
   function addTransactionRow() {
+    console.log('Adding new transaction row');
+    
     const transactionsList = getElement('transactions-list');
     const modal = getElement('transaction-modal');
     
-    if (!transactionsList || !modal) return;
+    if (!transactionsList || !modal) {
+      console.error('Required elements not found');
+      return;
+    }
     
     const day = modal.getAttribute('data-day');
     const categoryId = modal.getAttribute('data-category');
     
-    if (!day || !categoryId) return;
+    if (!day || !categoryId) {
+      console.error('Missing day or category information');
+      return;
+    }
     
     // Create a new transaction object
+    const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    console.log('Creating transaction with ID:', newId);
+    
     const newTx = {
-      id: `tx-new-${Date.now()}`,
+      id: newId,
       date: new Date(_currentYear, _currentMonth, parseInt(day)),
       category: categoryId,
       amount: 0,
@@ -766,6 +781,27 @@ var MonthlyGrid = (function() {
         </div>
       </div>
     `;
+    
+    // Add handlers to the delete button
+    const deleteBtn = item.querySelector('.transaction-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function(e) {
+        // Prevent event bubbling
+        e.stopPropagation();
+        
+        // Remove from UI
+        item.remove();
+        
+        // Remove from data
+        const index = _transactions.findIndex(tx => tx.id === newTx.id);
+        if (index !== -1) {
+          _transactions.splice(index, 1);
+        }
+        
+        // Update totals
+        updateTransactionTotal();
+      });
+    }
     
     // Focus the amount field after adding
     setTimeout(() => {
