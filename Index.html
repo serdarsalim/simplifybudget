@@ -91,18 +91,32 @@
           </div>
         </div>
         
-        <!-- Setup View - Initially Hidden -->
-        <div id="setupView" class="view">
-          <div class="view-header">
-            <h1><i class="material-icons">category</i> <span data-translate="categories">Categories</span></h1>
-            <div class="view-actions">
-              <button id="saveSetup" class="btn primary"><i class="material-icons">save</i> <span data-translate="save">Save</span></button>
-            </div>
-          </div>
-          <div id="setupContent" class="view-content">
-            <!-- Setup data will be loaded here -->
-          </div>
-        </div>
+      <!-- Categories  -->
+      <div id="categoriesView" class="view">
+  <div class="view-header">
+    <h1><i class="material-icons">category</i> <span data-translate="categories">Categories</span></h1>
+    <div class="view-actions">
+      <button id="refreshCategories" class="btn primary">
+        <i class="material-icons">refresh</i> 
+        <span data-translate="refresh">Refresh</span>
+      </button>
+    </div>
+  </div>
+  <div id="categoriesContent" class="view-content">
+    <div class="categories-header">
+      <div id="category-counts" class="category-counts">
+        Loading categories...
+      </div>
+    </div>
+    <div id="categories-container" class="categories-container">
+      <!-- Categories will be loaded here -->
+      <div class="categories-loading">
+        <div class="loading-spinner"></div>
+        <p>Loading categories...</p>
+      </div>
+    </div>
+  </div>
+</div>
         
         <!-- Settings View - Initially Hidden -->
         <div id="settingsView" class="view">
@@ -136,7 +150,16 @@
     <?!= include('dashboard.js'); ?>
     <?!= include('settings.js'); ?>
     <?!= include('transactionEntry.js'); ?>
-    <script>
+    <?!= include('categories.js'); ?> 
+   
+   
+
+
+
+    
+   
+   
+   <script>
       // Main entry point - Initialize the application
       document.addEventListener('DOMContentLoaded', function() {
         SimBudget.initialize();
@@ -145,5 +168,6 @@
 
         
     </script>
+
   </body>
 </html>

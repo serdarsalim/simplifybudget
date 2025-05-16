@@ -244,6 +244,29 @@ var QuickExpenseEntry = (function() {
         });
       }
       
+
+      // Set up categories view
+       document.addEventListener('view-activated', function(e) {
+  if (e.detail && e.detail.view === 'categories') {
+    const categoriesContent = document.getElementById('categoriesContent');
+    if (categoriesContent) {
+      // Only create the container if it doesn't exist
+      let categoriesContainer = document.getElementById('categories-container');
+      if (!categoriesContainer) {
+        categoriesContainer = document.createElement('div');
+        categoriesContainer.id = 'categories-container';
+        categoriesContainer.className = 'categories-container';
+        categoriesContent.appendChild(categoriesContainer);
+      }
+      
+      // Initialize manager
+      if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
+        CategoriesManager.init();
+      }
+    }
+  }
+});
+
       // Category select
       const categorySelect = getElement('expenseCategory');
       if (categorySelect) {

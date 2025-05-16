@@ -1,0 +1,621 @@
+<!-- categories.js.html - ENHANCED VERSION WITH SPREADSHEET UPDATES -->
+<script>
+/**
+ * CategoriesManager - Enhanced category management for SimBudget
+ * Features:
+ * - Uses UserProperties for caching
+ * - Writes changes back to spreadsheet
+ * - Optimized 3-column grid layout
+ * - Syncs with quick-expense dropdown
+ */
+
+// CategoriesManager module - Using IIFE pattern to match existing architecture
+var CategoriesManager = (function() {
+  // Private variables
+  let _initialized = false;
+  let _categories = [];
+  let _isLoading = false;
+  let _isSaving = false;
+  
+  // DOM element cache for performance
+  const _elements = {};
+  
+  /**
+   * Get an element by ID with caching
+   * @param {string} id - Element ID
+   * @return {HTMLElement} Element
+   */
+  function getElement(id) {
+    if (!_elements[id]) {
+      _elements[id] = document.getElementById(id);
+    }
+    return _elements[id];
+  }
+  
+  /**
+   * Initialize the Categories Manager
+   * @param {Array} categories - Categories data from API
+   * @param {Array} activeCategories - Active categories array from API
+   */
+  function init(categories, activeCategories) {
+    console.log('Initializing Categories Manager...');
+    
+    // Initialize only once
+    if (_initialized) {
+      console.log('Categories Manager already initialized');
+      return;
+    }
+    
+    // If categories data is provided directly, use it
+    if (categories && Array.isArray(categories)) {
+      console.log('Using provided categories data:', categories);
+      _categories = processCategories(categories, activeCategories || []);
+      renderCategories();
+    } else {
+      // Otherwise load from API
+      loadCategories();
+    }
+    
+    // Set initialized flag
+    _initialized = true;
+  }
+  
+  /**
+   * Load categories from server with caching
+   * @param {boolean} forceRefresh - Whether to bypass cache and get fresh data
+   */
+  function loadCategories(forceRefresh = false) {
+    console.log('Loading categories from server...');
+    _isLoading = true;
+    
+    // Show loading indicator
+    showLoadingIndicator();
+    
+    // Call server to get categories
+    if (window.API && typeof API.getCategories === 'function') {
+      API.getCategories(
+        function(result) {
+          console.log('Categories loaded successfully:', result);
+          
+          if (result && result.success && result.categories) {
+            // Process and store categories
+            _categories = processCategories(result.categories, result.activeCategories || []);
+            
+            // Cache categories in local storage
+            localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
+            
+            // Update quick expense dropdown if it exists
+            updateQuickExpenseDropdown();
+            
+            // Render categories
+            renderCategories();
+          } else {
+            // Handle error
+            console.error('Error loading categories:', result ? result.error : 'Unknown error');
+            showError(result ? result.error : 'Failed to load categories');
+          }
+          
+          // Hide loading indicator
+          hideLoadingIndicator();
+          _isLoading = false;
+        },
+        function(error) {
+          console.error('API error loading categories:', error);
+          showError('Error loading categories: ' + error);
+          hideLoadingIndicator();
+          _isLoading = false;
+        },
+        forceRefresh // Pass forceRefresh to API to bypass cache if needed
+      );
+    } else {
+      // API not available, check for cached categories
+      const cachedCategories = localStorage.getItem('simbudget_categories');
+      if (cachedCategories) {
+        try {
+          _categories = JSON.parse(cachedCategories);
+          console.log('Loaded categories from cache:', _categories);
+          renderCategories();
+          updateQuickExpenseDropdown();
+        } catch (e) {
+          console.error('Error parsing cached categories:', e);
+          showError('Could not load categories');
+        }
+      } else {
+        console.error('API.getCategories not available and no cached data');
+        showError('Categories cannot be loaded - API unavailable');
+      }
+      
+      hideLoadingIndicator();
+      _isLoading = false;
+    }
+  }
+  
+  /**
+   * Process raw categories data
+   * @param {Array} categories - Categories array from API
+   * @param {Array} activeCategories - Active categories array 
+   * @return {Array} Processed categories
+   */
+  function processCategories(categories, activeCategories) {
+    console.log('Processing categories data:', categories);
+    console.log('Active categories data:', activeCategories);
+    
+    // Map raw data to category objects
+    return categories
+      .filter(cat => typeof cat === 'string' && cat.trim() !== '') // Filter out empty categories
+      .map(cat => {
+        return {
+          name: cat,
+          active: Array.isArray(activeCategories) && activeCategories.includes(cat),
+          original: cat // Keep original data for reference
+        };
+      });
+  }
+  
+  /**
+   * Render categories to the UI
+   */
+  function renderCategories() {
+    console.log('Rendering categories:', _categories);
+    
+    const container = getElement('categories-container');
+    if (!container) {
+      console.error('Categories container not found');
+      return;
+    }
+    
+    // Clear existing content
+    container.innerHTML = '';
+    
+    // If no categories to render, show message
+    if (!_categories || _categories.length === 0) {
+      container.innerHTML = '<div class="categories-message">No categories found</div>';
+      return;
+    }
+    
+    // Create grid container
+    const grid = document.createElement('div');
+    grid.className = 'categories-grid';
+    
+    // Create cards for each category
+    _categories.forEach((category, index) => {
+      const card = createCategoryCard(category, index);
+      grid.appendChild(card);
+    });
+    
+    // Add grid to container
+    container.appendChild(grid);
+  }
+  
+  /**
+   * Create a category card element
+   * @param {Object} category - Category data
+   * @param {number} index - Index in the array
+   * @return {HTMLElement} Card element
+   */
+  function createCategoryCard(category, index) {
+    const card = document.createElement('div');
+    card.className = 'category-card';
+    card.dataset.index = index;
+    
+    // Set active class if category is active
+    if (category.active) {
+      card.classList.add('active');
+    }
+    
+    // Create checkbox for active toggle
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'category-toggle';
+    checkbox.checked = category.active;
+    checkbox.id = `category-toggle-${index}`;
+    
+    // Add saving indicator
+    const savingIndicator = document.createElement('div');
+    savingIndicator.className = 'saving-indicator';
+    savingIndicator.innerHTML = '<div class="spinner"></div>';
+    savingIndicator.style.display = 'none';
+    
+    // Add change listener with spreadsheet update
+    checkbox.addEventListener('change', function() {
+      // Show saving indicator
+      savingIndicator.style.display = 'inline-block';
+      this.disabled = true;
+      
+      // Toggle the category
+      toggleCategory(index, this.checked, function() {
+        // On success, hide indicator and re-enable checkbox
+        savingIndicator.style.display = 'none';
+        checkbox.disabled = false;
+      }, function() {
+        // On error, revert the checkbox and show error
+        checkbox.checked = !checkbox.checked;
+        savingIndicator.style.display = 'none';
+        checkbox.disabled = false;
+        
+        // Flash the card red to indicate error
+        card.classList.add('save-error');
+        setTimeout(function() {
+          card.classList.remove('save-error');
+        }, 1000);
+      });
+    });
+    
+    // Create label with category name
+    const label = document.createElement('label');
+    label.htmlFor = `category-toggle-${index}`;
+    label.className = 'category-name';
+    label.textContent = category.name;
+    
+    // Append elements to card
+    card.appendChild(checkbox);
+    card.appendChild(savingIndicator);
+    card.appendChild(label);
+    
+    return card;
+  }
+  
+  /**
+   * Toggle a category's active status and update spreadsheet
+   * @param {number} index - Index of the category
+   * @param {boolean} active - New active status
+   * @param {Function} successCallback - Called on success
+   * @param {Function} errorCallback - Called on error
+   */
+  function toggleCategory(index, active, successCallback, errorCallback) {
+    console.log(`Toggling category at index ${index} to ${active}`);
+    
+    if (_isSaving) {
+      console.log('Already saving, please wait...');
+      if (errorCallback) errorCallback('Already saving');
+      return;
+    }
+    
+    // Update _categories array
+    if (_categories[index]) {
+      const categoryName = _categories[index].name;
+      _categories[index].active = active;
+      
+      // Update UI
+      const card = document.querySelector(`.category-card[data-index="${index}"]`);
+      if (card) {
+        if (active) {
+          card.classList.add('active');
+        } else {
+          card.classList.remove('active');
+        }
+      }
+      
+      // Set saving flag
+      _isSaving = true;
+      
+      // Save to spreadsheet via API
+      API.updateCategoryStatus(
+        categoryName, 
+        active,
+        function(result) {
+          console.log('Category status updated in spreadsheet:', result);
+          
+          // Update local storage with latest data
+          localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
+          
+          // Update quick expense dropdown to show only active categories
+          updateQuickExpenseDropdown();
+          
+          // Clear saving flag
+          _isSaving = false;
+          
+          // Call success callback if provided
+          if (successCallback) successCallback(result);
+        },
+        function(error) {
+          console.error('Error updating category in spreadsheet:', error);
+          
+          // Revert the change in memory
+          _categories[index].active = !active;
+          
+          // Clear saving flag
+          _isSaving = false;
+          
+          // Call error callback if provided
+          if (errorCallback) errorCallback(error);
+        }
+      );
+    }
+  }
+  
+  /**
+   * Update the quick expense dropdown to show only active categories
+   */
+  function updateQuickExpenseDropdown() {
+    // Find the expense category dropdown
+    const expenseCategoryDropdown = document.getElementById('expenseCategory');
+    if (!expenseCategoryDropdown) return;
+    
+    // Get only active categories
+    const activeCategories = _categories
+      .filter(cat => cat.active)
+      .map(cat => cat.name)
+      .sort(); // Sort alphabetically
+    
+    // Save current selection if any
+    const currentSelection = expenseCategoryDropdown.value;
+    
+    // Clear existing options
+    expenseCategoryDropdown.innerHTML = '';
+    
+    // Add active categories as options
+    activeCategories.forEach(category => {
+      const option = document.createElement('option');
+      option.value = category;
+      option.textContent = category;
+      expenseCategoryDropdown.appendChild(option);
+    });
+    
+    // Restore selection if it exists and is still active
+    if (currentSelection && activeCategories.includes(currentSelection)) {
+      expenseCategoryDropdown.value = currentSelection;
+    } else if (activeCategories.length > 0) {
+      // Otherwise select first option
+      expenseCategoryDropdown.value = activeCategories[0];
+    }
+    
+    console.log('Updated quick expense dropdown with active categories:', activeCategories);
+  }
+  
+  /**
+   * Show loading indicator
+   */
+  function showLoadingIndicator() {
+    const container = getElement('categories-container');
+    if (container) {
+      container.innerHTML = '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
+    }
+  }
+  
+  /**
+   * Hide loading indicator
+   */
+  function hideLoadingIndicator() {
+    const loadingEl = document.querySelector('.categories-loading');
+    if (loadingEl) {
+      loadingEl.remove();
+    }
+  }
+  
+  /**
+   * Show error message
+   * @param {string} message - Error message to display
+   */
+  function showError(message) {
+    const container = getElement('categories-container');
+    if (container) {
+      container.innerHTML = `<div class="categories-error"><i class="material-icons">error</i><p>${message}</p></div>`;
+    }
+  }
+  
+  /**
+   * Refresh categories from server - bypass cache
+   */
+  function refreshCategories() {
+    if (_isLoading || _isSaving) return;
+    
+    console.log('Refreshing categories with forceRefresh=true');
+    loadCategories(true); // Force refresh from spreadsheet
+  }
+  
+  // Public API
+  return {
+    init: init,
+    refreshCategories: refreshCategories,
+    updateQuickExpenseDropdown: updateQuickExpenseDropdown
+  };
+})();
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // We'll let the view system trigger initialization
+  // CategoriesManager.init();
+});
+
+// Expose globally
+window.CategoriesManager = CategoriesManager;
+</script>
+
+<!-- categories.css.html - ENHANCED VERSION WITH SAVING INDICATORS -->
+<style>
+/* ======================================================
+   CATEGORIES MANAGEMENT STYLES - ENHANCED VERSION
+   ======================================================
+   3-column grid layout with saving indicators
+*/
+
+/* Container for categories */
+.categories-container {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* Categories grid layout - CONSISTENT 3 COLUMNS */
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* Always 3 columns as requested */
+  gap: 8px;
+  width: 100%;
+}
+
+/* Individual category card */
+.category-card {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background-color: #f0f0f0;
+  border-radius: 6px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Active category style */
+.category-card.active {
+  background-color: #fff9e0;
+  border-left: 3px solid #ffc107;
+}
+
+/* Error state - flash red briefly */
+.category-card.save-error {
+  background-color: #ffebee;
+  border-color: #f44336;
+}
+
+/* Category toggle checkbox */
+.category-toggle {
+  margin-right: 6px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Saving indicator */
+.saving-indicator {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  position: relative;
+}
+
+.saving-indicator .spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(169, 99, 34, 0.3);
+  border-top-color: #a96322;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Category name label */
+.category-name {
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Loading indicator */
+.categories-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  width: 100%;
+}
+
+.categories-loading p {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+/* Error display */
+.categories-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background-color: #ffebee;
+  border-radius: 6px;
+  color: #c62828;
+  margin: 8px 0;
+}
+
+.categories-error i {
+  margin-right: 6px;
+  font-size: 20px;
+}
+
+/* Hide category counts element completely */
+.category-counts {
+  display: none !important;
+}
+
+/* Container for category-counts (parent element) should also not take up space */
+.categories-header {
+  display: none !important;
+}
+
+/* No categories message */
+.categories-message {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Dark mode styles */
+body.dark-mode .category-card {
+  background-color: #333333;
+  color: #f1f1f1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .category-card.active {
+  background-color: #423d24;
+  border-left: 3px solid #ffd866;
+}
+
+body.dark-mode .category-card.save-error {
+  background-color: #4a1f1f;
+  border-color: #e57373;
+}
+
+body.dark-mode .category-name {
+  color: #ffffff;
+}
+
+body.dark-mode .categories-loading p {
+  color: #aaaaaa;
+}
+
+body.dark-mode .categories-message {
+  color: #aaaaaa;
+}
+
+body.dark-mode .saving-indicator .spinner {
+  border-color: rgba(255, 209, 102, 0.3);
+  border-top-color: #ffd166;
+}
+
+/* Responsive design for very small screens only */
+@media (max-width: 480px) {
+  .categories-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2 columns only on very small screens */
+  }
+  
+  .category-card {
+    padding: 6px;
+  }
+  
+  .category-name {
+    font-size: 12px;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 320px) {
+  .categories-grid {
+    grid-template-columns: 1fr; /* 1 column on tiny screens */
+  }
+}
+</style>

@@ -224,36 +224,43 @@
     // View management
     const Views = {
       // Switch to a view
-      switchTo: function (viewName) {
-        if (!viewName) return;
+      // Switch to a view
+switchTo: function (viewName) {
+  if (!viewName) return;
 
-        // Hide all views
-        document.querySelectorAll(".view").forEach((view) => {
-          view.classList.remove("active-view");
-        });
+  // Hide all views
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.remove("active-view");
+  });
 
-        // Show the selected view
-        const targetView = document.getElementById(viewName + "View");
-        if (targetView) {
-          targetView.classList.add("active-view");
-          _currentView = viewName;
+  // Show the selected view
+  const targetView = document.getElementById(viewName + "View");
+  if (targetView) {
+    targetView.classList.add("active-view");
+    _currentView = viewName;
 
-          // Update sidebar active state
-          document.querySelectorAll(".sidebar-item").forEach((item) => {
-            item.classList.remove("active");
-          });
+    // Update sidebar active state
+    document.querySelectorAll(".sidebar-item").forEach((item) => {
+      item.classList.remove("active");
+    });
 
-          const activeItem = document.querySelector(
-            `.sidebar-item[data-view="${viewName}"]`
-          );
-          if (activeItem) {
-            activeItem.classList.add("active");
-          }
+    const activeItem = document.querySelector(
+      `.sidebar-item[data-view="${viewName}"]`
+    );
+    if (activeItem) {
+      activeItem.classList.add("active");
+    }
 
-          // Load data for the view
-          SimBudget.loadViewData(viewName);
-        }
-      },
+    // Dispatch event when view is activated
+    const event = new CustomEvent('view-activated', {
+      detail: { view: viewName }
+    });
+    document.dispatchEvent(event);
+
+    // Load data for the view
+    SimBudget.loadViewData(viewName);
+  }
+},
 
       // Get current view
       getCurrent: function () {
@@ -932,68 +939,119 @@ initialize: function() {
        * @param {string} viewName - Name of the view to load
        * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
        */
-      loadViewData: function (viewName, forceRefresh = false) {
-        console.log(
-          `Loading data for ${viewName} view, force refresh: ${forceRefresh}`
-        );
+      loadViewData: function(viewName, forceRefresh = false) {
+  console.log(`Loading data for ${viewName} view, force refresh: ${forceRefresh}`);
 
-        // Skip if already loading the same view
-        if (_loadingView === viewName && !forceRefresh) {
-          console.log(
-            `Already loading ${viewName}, skipping duplicate request`
-          );
-          return;
-        }
+  // Skip if already loading the same view
+  if (_loadingView === viewName && !forceRefresh) {
+    console.log(`Already loading ${viewName}, skipping duplicate request`);
+    return;
+  }
 
-        // Set loading flag
-        _loadingView = viewName;
+  // Set loading flag
+  _loadingView = viewName;
 
-        // Check cache first unless force refresh is requested
-        if (!forceRefresh && _cache.isValid(viewName)) {
-          console.log(`Using cached data for ${viewName} view`);
-          this.renderViewFromCache(viewName);
-          // Clear loading flag
-          _loadingView = null;
-          return;
-        }
+  // Check cache first unless force refresh is requested
+  if (!forceRefresh && _cache.isValid(viewName)) {
+    console.log(`Using cached data for ${viewName} view`);
+    this.renderViewFromCache(viewName);
+    // Clear loading flag
+    _loadingView = null;
+    return;
+  }
 
-        // Otherwise load from server
-        switch (viewName) {
-          case "budget":
-            this.loadBudgetData();
-            break;
-          case "expense":
-            this.loadExpenseData();
-            break;
-          case "income":
-            // TODO: Add income data loading
-            _loadingView = null; // Clear flag since not implemented
-            break;
-          case "recurring":
-            // TODO: Add recurring data loading
-            _loadingView = null; // Clear flag since not implemented
-            break;
-          case "netWorth":
-            // TODO: Add net worth data loading
-            _loadingView = null; // Clear flag since not implemented
-            break;
-          case "reports":
-            // TODO: Add reports data loading
-            _loadingView = null; // Clear flag since not implemented
-            break;
-          case "setup":
-            // TODO: Add setup data loading
-            _loadingView = null; // Clear flag since not implemented
-            break;
-          case "settings":
-            // Settings data is loaded inline
-            _loadingView = null; // Clear flag since settings are not loaded via API
-            break;
-          default:
-            console.error(`Unknown view name: ${viewName}`);
-            _loadingView = null; // Clear flag on error
-        }
-      },
+  // Otherwise load from server
+  switch (viewName) {
+    case "budget":
+      this.loadBudgetData();
+      break;
+    case "expense":
+      this.loadExpenseData();
+      break;
+    case "income":
+      // TODO: Add income data loading
+      _loadingView = null; // Clear flag since not implemented
+      break;
+    case "recurring":
+      // TODO: Add recurring data loading
+      _loadingView = null; // Clear flag since not implemented
+      break;
+    case "netWorth":
+      // TODO: Add net worth data loading
+      _loadingView = null; // Clear flag since not implemented
+      break;
+    case "reports":
+      // TODO: Add reports data loading
+      _loadingView = null; // Clear flag since not implemented
+      break;
+    case "categories":
+      // Call your categories loading function
+      this.loadCategoriesData();
+      break;
+    case "settings":
+      // Settings data is loaded inline
+      _loadingView = null; // Clear flag since settings are not loaded via API
+      break;
+    default:
+      console.error(`Unknown view name: ${viewName}`);
+      _loadingView = null; // Clear flag on error
+  }
+},
+
+      // Add as a new function in SimBudget
+// In Init.html - modify the loadCategoriesData function
+loadCategoriesData: function() {
+  // Get content container
+  const contentArea = document.getElementById("categoriesContent");
+  if (!contentArea) {
+    console.error("Categories content area not found");
+    _loadingView = null;
+    return;
+  }
+  
+  // Get or create categories container
+  let categoriesContainer = document.getElementById("categories-container");
+  if (!categoriesContainer) {
+    // Only create container if it doesn't exist
+    categoriesContainer = document.createElement("div");
+    categoriesContainer.id = "categories-container";
+    categoriesContainer.className = "categories-container";
+    contentArea.appendChild(categoriesContainer);
+  }
+  
+  // Show loading state INSIDE the container (not replacing it)
+  categoriesContainer.innerHTML = '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
+  
+  // Call API to get categories
+  API.getCategories(
+    function(result) {
+      console.log("Categories data loaded successfully", result);
+      
+      // Cache the result
+      _cache.set("categories", result.categories);
+      
+      // Clear loading flag
+      _loadingView = null;
+      
+      // Initialize CategoriesManager with data
+      if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
+        CategoriesManager.init(result.categories, result.activeCategories);
+      } else {
+        categoriesContainer.innerHTML = '<div class="categories-error"><i class="material-icons">error</i><p>CategoriesManager not available</p></div>';
+      }
+    },
+    function(error) {
+      console.error("Error loading categories:", error);
+      _loadingView = null;
+      
+      // Show error INSIDE container
+      categoriesContainer.innerHTML = `<div class="categories-error">
+        <i class="material-icons">error</i>
+        <span>Error loading categories: ${error}</span>
+      </div>`;
+    }
+  );
+},
 
       /**
        * Render view using cached data

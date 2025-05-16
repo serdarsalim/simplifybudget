@@ -397,11 +397,66 @@ openQuickExpenseModal: function(successCallback, errorCallback) {
 },
 
 
+// API FUNCTIONS: Add these to API.html
 
+/**
+ * Update a category's active status in the spreadsheet and user properties
+ * @param {string} categoryName - The name of the category
+ * @param {boolean} active - The new active status
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+updateCategoryStatus: function(categoryName, active, successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .updateCategoryStatus(categoryName, active);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
 
-
-
-
+/**
+ * Get categories with option to force refresh
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ * @param {boolean} forceRefresh - Whether to bypass cache
+ */
+getCategories: function(successCallback, errorCallback, forceRefresh) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          // Store the last result for potential future use
+          API._lastCategoriesResponse = result;
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getCategories(!forceRefresh); // Pass opposite of forceRefresh as useCache
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
 
 
 
