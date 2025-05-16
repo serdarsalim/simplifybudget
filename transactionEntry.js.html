@@ -571,7 +571,8 @@ var QuickExpenseEntry = (function() {
   /**
    * Update the categories dropdown with available categories
    */
- function updateCategoriesDropdown() {
+// In transactionEntry.js.html - Find the updateCategoriesDropdown function
+function updateCategoriesDropdown() {
   const categorySelect = getElement('expenseCategory');
   if (!categorySelect) return;
   
@@ -586,32 +587,33 @@ var QuickExpenseEntry = (function() {
     activeCategories = _categories
       .filter(cat => cat.active)
       .map(cat => cat.name)
+      .sort(); // Sort alphabetically
   } else {
     // Otherwise, try to get from localStorage
     const storedActiveCategories = localStorage.getItem('simbudget_active_categories');
     if (storedActiveCategories) {
       try {
         activeCategories = JSON.parse(storedActiveCategories);
-        activeCategories
+        activeCategories.sort(); // Sort alphabetically
       } catch (e) {
         console.error('Error parsing stored active categories:', e);
         // Fall back to all categories
-        activeCategories = [..._categories]
+        activeCategories = [..._categories].sort();
       }
     } else {
       // No active categories found, so use all categories
-      activeCategories = [..._categories]
+      activeCategories = [..._categories].sort();
     }
   }
   
   // Save current selection if any
   const currentSelection = categorySelect.value;
   
-  // Add active categories as options
+  // Add active categories as options WITH TRANSLATION
   activeCategories.forEach(function(category) {
     const option = document.createElement('option');
-    option.value = category;
-    option.textContent = category;
+    option.value = category; // Original value for data operations
+    option.textContent = Utils.translateCategory(category); // Translated text for display
     categorySelect.appendChild(option);
   });
   
@@ -622,9 +624,6 @@ var QuickExpenseEntry = (function() {
     categorySelect.value = activeCategories[0];
     _selectedCategory = activeCategories[0];
   }
-
-
-  
 }
 
 

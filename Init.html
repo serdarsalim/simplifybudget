@@ -225,9 +225,9 @@
     const Views = {
       // Switch to a view
       // Switch to a view
-// Switch to a view
-switchTo: function (viewName) {
-  if (!viewName) return;
+    // Switch to a view
+    switchTo: function (viewName) {
+      if (!viewName) return;
 
   // Hide all views
   document.querySelectorAll(".view").forEach((view) => {
@@ -255,13 +255,13 @@ switchTo: function (viewName) {
     // Dispatch event when view is activated
     const event = new CustomEvent('view-activated', {
       detail: { view: viewName }
-    });
-    document.dispatchEvent(event);
+        });
+        document.dispatchEvent(event);
 
-    // Load data for the view
-    SimBudget.loadViewData(viewName);
-  }
-},
+        // Load data for the view
+        SimBudget.loadViewData(viewName);
+      }
+    },
 
       // Get current view
       getCurrent: function () {
@@ -277,11 +277,11 @@ switchTo: function (viewName) {
       // Views module reference
       Views: Views,
 
-  /**
- * Initialize the application
- */
-initialize: function() {
-  if (_initialized) return;
+      /**
+     * Initialize the application
+     */
+    initialize: function() {
+      if (_initialized) return;
 
   console.log("Initializing SimBudget...");
 
@@ -1418,123 +1418,61 @@ loadCategoriesData: function() {
         );
       },
 
-      /**
-       * This function remains in init.html even though it's referenced from dashboard.js
-       * to maintain original scope access to _currentBudgetData
-       */
-      updateInfoMessage: function (force = false) {
-        if (!this._currentBudgetData) {
-          console.log("No budget data available");
-          return;
-        }
-
-        const budget = this._currentBudgetData;
-
-        // Find the message element
-        let infoMessageElement = document.getElementById("budget-info-message");
-
-        // If not found, try the other possible ID
-        if (!infoMessageElement) {
-          infoMessageElement = document.getElementById("budget-alert");
-          console.log("Using alternate element ID: budget-alert");
-        }
-
-        // Last resort: find by class
-        if (!infoMessageElement) {
-          infoMessageElement = document.querySelector(
-            ".budget-alert, .info-message"
-          );
-          console.log("Using element found by class selector");
-        }
-
-        // If still not found, exit but log error
-        if (!infoMessageElement) {
-          console.error(
-            "ALERT: Could not find budget message element with any known ID or class"
-          );
-          return;
-        }
-
-        // Calculate total budgeted amount from final values only
-        let totalBudgeted = 0;
-        budget.categories.forEach((cat) => {
-          // Only use budgeted values that are numbers, not in-progress edits
-          if (typeof cat.budgeted === "number") {
-            totalBudgeted += cat.budgeted || 0;
-          }
-        });
-
-        // Store the current message for comparison
-        const currentMessage = infoMessageElement.textContent;
-
-        // Calculate the new message
-        let message = "";
-        let messageType = "info"; // Default styling
-
-        // Helper function for comparing floating point numbers with a small tolerance
-        const isApproximatelyEqual = (a, b) => Math.abs(a - b) < 0.01;
-
-            if (budget.income === 0 || budget.income === "") {
-        const formattedBudget = Utils.formatCurrency(totalBudgeted);
-        message = Utils.formatTranslation(SimBudget.translations.budget_no_income_tip || 
-          "You budgeted {0}. Tip: Align it with your income.", [formattedBudget]);
-      } else if (isApproximatelyEqual(budget.income, totalBudgeted)) {
-        const formattedBudget = Utils.formatCurrency(totalBudgeted);
-        message = Utils.formatTranslation(SimBudget.translations.budget_perfect_match || 
-          "Your budget of {0} perfectly matches your income!", [formattedBudget]);
-        messageType = "success";
-      } else if (budget.income > totalBudgeted) {
-        const formattedBudget = Utils.formatCurrency(totalBudgeted);
-        const formattedRemaining = Utils.formatCurrency(Math.max(0, budget.income - totalBudgeted));
-        message = Utils.formatTranslation(SimBudget.translations.budget_under_income || 
-          "You've budgeted {0} with {1} left to allocate.", [formattedBudget, formattedRemaining]);
-        messageType = "info";
-      } else if (totalBudgeted > budget.income) {
-        const formattedBudget = Utils.formatCurrency(totalBudgeted);
-        const formattedExcess = Utils.formatCurrency(totalBudgeted - budget.income);
-        message = Utils.formatTranslation(SimBudget.translations.budget_over_income || 
-          "You've budgeted {0}, exceeding income by {1}.", [formattedBudget, formattedExcess]);
-        messageType = "warning";
-      }
-
-      // ADD THE RETRY LOGIC RIGHT HERE, before the textChanged line
-if (message && (!SimBudget.translations || !SimBudget.translations.budget_no_income_tip)) {
-  // If translations aren't loaded yet, set a flag to retry later
-  if (!this._pendingTranslationUpdate) {
-    this._pendingTranslationUpdate = true;
-    console.log("Translations not loaded yet, will retry message translation later");
-    
-    // Wait for translations to load and then update again
-    setTimeout(() => {
-      console.log("Retrying message translation");
-      this._pendingTranslationUpdate = false;
-      this.updateInfoMessage(true);
-    }, 1000);
+     /**
+ * This function remains in init.html even though it's referenced from dashboard.js
+ * to maintain original scope access to _currentBudgetData
+ */
+updateInfoMessage: function(force = false) {
+  if (!this._currentBudgetData) return;
+  
+  const el = document.getElementById("budget-alert") || 
+             document.getElementById("budget-info-message") || 
+             document.querySelector(".budget-alert");
+  if (!el) return;
+  
+  const budget = this._currentBudgetData;
+  const totalBudgeted = budget.categories.reduce((sum, cat) => 
+    sum + (typeof cat.budgeted === "number" ? cat.budgeted : 0), 0);
+  
+  // Determine message type and parameters
+  let key, msgClass = "info";
+  const formatted = Utils.formatCurrency(totalBudgeted);
+  
+  if (!budget.income) {
+    key = 'budget_no_income_tip';
+    el.setAttribute("data-param1", formatted);
+  } else if (Math.abs(budget.income - totalBudgeted) < 0.01) {
+    key = 'budget_perfect_match';
+    el.setAttribute("data-param1", formatted);
+    msgClass = "success";
+  } else if (budget.income > totalBudgeted) {
+    key = 'budget_under_income';
+    el.setAttribute("data-param1", formatted);
+    el.setAttribute("data-param2", Utils.formatCurrency(budget.income - totalBudgeted));
+  } else {
+    key = 'budget_over_income';
+    el.setAttribute("data-param1", formatted);
+    el.setAttribute("data-param2", Utils.formatCurrency(totalBudgeted - budget.income));
+    msgClass = "warning";
   }
-}
+  
+  // Set translation attributes
+  el.setAttribute("data-translate", key);
+  
+  // Set initial text content using current translations if available
+  if (SimBudget.translations && SimBudget.translations[key]) {
+    const params = [el.getAttribute("data-param1"), el.getAttribute("data-param2")].filter(Boolean);
+    el.textContent = Utils.formatTranslation(SimBudget.translations[key], params);
+  }
+  
+  // Update class and ensure visibility
+  el.className = (el.classList.contains("budget-alert") ? "budget-alert" : "info-message") + " " + msgClass;
+  el.style.display = "block";
+},
 
 
-        // Only update if the message changed or force is true
-        const textChanged = currentMessage !== message;
-        if (force || textChanged) {
-          // Update the content with direct method
-          infoMessageElement.textContent = message;
 
-          // Update classes
-          infoMessageElement.className = infoMessageElement.classList.contains(
-            "budget-alert"
-          )
-            ? "budget-alert"
-            : "info-message";
-          infoMessageElement.classList.add(messageType);
 
-          // Ensure visibility
-          infoMessageElement.style.display = message ? "block" : "none";
-        }
-
-        // Return the message for potential further use
-        return message;
-      },
 
       /**
        * Load expense data
@@ -1762,7 +1700,31 @@ if (message && (!SimBudget.translations || !SimBudget.translations.budget_no_inc
   window._dataCache = _cache;
 
 
+// In Init.html - Add this to your initialization function
+document.addEventListener('language-changed', function() {
+  // Refresh category displays
+  if (window.CategoriesManager && typeof CategoriesManager.renderCategories === 'function') {
+    CategoriesManager.renderCategories();
+  }
+  
+  // Refresh quick expense dropdown
+  if (window.QuickExpenseEntry && typeof QuickExpenseEntry.updateCategoriesDropdown === 'function') {
+    QuickExpenseEntry.updateCategoriesDropdown();
+  }
+  
+  // Refresh budget table if visible
+  if (SimBudget._currentView === 'budget' && typeof SimBudget.renderBudgetDashboard === 'function') {
+    SimBudget.loadViewData('budget', true);
+  }
+});
 
+// In settings.js.html - Dispatch event when language changes
+function changeLanguage(langCode) {
+  // Existing code...
+  
+  // Dispatch language change event
+  document.dispatchEvent(new CustomEvent('language-changed'));
+}
   
 
   

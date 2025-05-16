@@ -291,8 +291,10 @@ function init(categories, activeCategories) {
     // Create label with category name
     const label = document.createElement('label');
     label.htmlFor = `category-toggle-${index}`;
-    label.className = 'category-name';
-    label.textContent = category.name;
+     label.className = 'category-name';
+     label.textContent = Utils.translateCategory(category.name);
+   
+
     
     // Append elements to card
     card.appendChild(checkbox);
@@ -302,6 +304,9 @@ function init(categories, activeCategories) {
     return card;
   }
   
+
+
+
   /**
    * Toggle a category's active status and update spreadsheet
    * @param {number} index - Index of the category

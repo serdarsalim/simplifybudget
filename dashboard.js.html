@@ -177,25 +177,18 @@ const SaveQueue = (function() {
     if (leftToSpendElement) leftToSpendElement.textContent = Utils.formatCurrency(data.summary.leftToSpend || 0);
       
       // Update budget alert
-      const budgetAlert = document.getElementById('budget-alert');
-      if (budgetAlert) {
-        budgetAlert.textContent = data.summary.infoMessage || '';
-        
-        // Clear existing alert classes
-        budgetAlert.className = 'budget-alert';
-        
-        // Add appropriate class based on message content
-        if (data.summary.infoMessage) {
-          if (data.summary.infoMessage.includes('exceeding income')) {
-            budgetAlert.classList.add('warning');
-          } else if (data.summary.infoMessage.includes('perfectly matches')) {
-            budgetAlert.classList.add('success');
-          } else if (data.summary.infoMessage.includes('left to allocate')) {
-            budgetAlert.classList.add('info');
+     const budgetAlert = document.getElementById('budget-alert');
+if (budgetAlert) {
+  // Don't set textContent directly - let updateInfoMessage handle it
+  // Just call updateInfoMessage which will properly set data-translate
+  if (typeof SimBudget.updateInfoMessage === 'function') {
+    SimBudget.updateInfoMessage(true);
+  }
+}
+
+
+
           }
-        }
-      }
-    }
     
     // 3. RENDER NET WORTH
     if (data.netWorth) {
@@ -215,25 +208,25 @@ const SaveQueue = (function() {
         categoriesBody.innerHTML = '';
         
         data.categories.forEach(category => {
-          const percentSpent = category.budgeted > 0 ? (category.actual / category.budgeted) * 100 : 0;
-          const progressClass = percentSpent > 100 ? 'over-budget' : (percentSpent > 80 ? 'near-limit' : '');
-          
-          // Create row
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td class="category-name">${category.name}</td>
-            <td class="budget-value" data-category="${category.name}" data-value="${category.budgeted}">${Utils.formatCurrency(category.budgeted)}</td>
-            <td class="actual-value">${Utils.formatCurrency(category.actual)}</td>
-            <td class="progress-cell">
-              <div class="progress-bar-container">
-                <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
-              </div>
-              <div class="progress-percentage">${Math.round(percentSpent)}%</div>
-            </td>
-          `;
-      
-          categoriesBody.appendChild(row);
-        });
+        const percentSpent = category.budgeted > 0 ? (category.actual / category.budgeted) * 100 : 0;
+        const progressClass = percentSpent > 100 ? 'over-budget' : (percentSpent > 80 ? 'near-limit' : '');
+        
+        // Create row
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="category-name">${Utils.translateCategory(category.name)}</td>
+          <td class="budget-value" data-category="${category.name}" data-value="${category.budgeted}">${Utils.formatCurrency(category.budgeted)}</td>
+          <td class="actual-value">${Utils.formatCurrency(category.actual)}</td>
+          <td class="progress-cell">
+            <div class="progress-bar-container">
+              <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentSpent, 100)}%"></div>
+            </div>
+            <div class="progress-percentage">${Math.round(percentSpent)}%</div>
+          </td>
+        `;
+  
+  categoriesBody.appendChild(row);
+});
         
         // Make budget values editable in the next animation frame
         window.requestAnimationFrame(function() {

@@ -362,6 +362,16 @@ formatCurrencyNoDecimals: function(amount) {
     }
   };
 
+
+
+
+
+
+
+
+
+})();
+
   // Add this function to your Utils object
 Utils.getTranslatedQuote = function() {
   // Use translated quote if available, otherwise use a random quote
@@ -369,12 +379,14 @@ Utils.getTranslatedQuote = function() {
     return SimBudget.translations.budget_quote;
   }
   
-  // Fallback to random quote if translations aren't available
-  return this.getRandomQuote();
 };
 
-
-})();
+// NOW add methods to the Utils object OUTSIDE the IIFE
+Utils.translateCategory = function(categoryName) {
+  return (window.SimBudget && SimBudget.translations && 
+          SimBudget.translations[categoryName]) ? 
+          SimBudget.translations[categoryName] : categoryName;
+};
 
 /**
  * Format a translation string with parameters

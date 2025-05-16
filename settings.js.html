@@ -161,11 +161,11 @@ function applyTranslations(langCode) {
         });
 
         // Update budget info message if we're on the budget view
-          if (window.SimBudget && typeof SimBudget.updateInfoMessage === 'function') {
-            // Force update budget messages with new translations
-            SimBudget.updateInfoMessage(true);
-            console.log('Budget messages updated with new translations');
-          }
+        if (window.SimBudget && typeof SimBudget.updateInfoMessage === 'function') {
+          // Force update budget messages with new translations
+          SimBudget.updateInfoMessage(true);
+          console.log('Budget messages updated with new translations');
+        }
         
         // Hide loading status
         if (statusEl) {
