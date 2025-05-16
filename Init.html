@@ -1489,71 +1489,94 @@ updateInfoMessage: function(force = false) {
  * Load expense data
  */
 // Debug version of loadExpenseData function - add these logging statements
+/**
+ * Load expense data with reliable grid rendering
+ * Always shows the grid with sample data first, then updates with real data if available
+ */
 loadExpenseData: function() {
-  console.group("EXPENSE GRID RENDERING TEST");
-  console.log("1. Starting loadExpenseData - SAMPLE DATA MODE");
+  console.log("Loading expense view...");
   
   const contentArea = document.getElementById("expenseContent");
-  console.log("2. Content area found:", !!contentArea, contentArea);
-  
   if (!contentArea) {
     console.error("Expense content area not found");
-    console.groupEnd();
     _loadingView = null;
     return;
   }
 
-  // Clear existing content
-  contentArea.innerHTML = '';
-  
-  // Create a clean container with unique ID and clear dimensions
+  // 1. FIRST create a clean container with unique ID and proper dimensions
   const containerId = "expense-grid-" + Date.now();
-  console.log("3. Creating container with ID:", containerId);
+  contentArea.innerHTML = `
+    <div id="${containerId}" class="monthly-grid-container" 
+         style="width:100%; min-height:500px; position:relative; overflow:auto;">
+    </div>
+  `;
   
-  // Create container with explicit dimensions
-  const containerDiv = document.createElement('div');
-  containerDiv.id = containerId;
-  containerDiv.className = "monthly-grid-container";
-  containerDiv.style.width = "100%";
-  containerDiv.style.minHeight = "400px";
-  containerDiv.style.border = "1px solid #eee"; // Visual debugging - remove later
-  
-  // Add container to DOM
-  contentArea.appendChild(containerDiv);
-  console.log("4. Container added to DOM");
-  
-  // Check if MonthlyGrid exists
+  // 2. THEN initialize MonthlyGrid with the container
+  //    This will show the grid with sample data immediately
   if (window.MonthlyGrid) {
-    console.log("5. MonthlyGrid component found");
+    console.log("Initializing MonthlyGrid with container:", containerId);
+    MonthlyGrid.init(containerId);
     
-    try {
-      // First reset any initialization
-      if (typeof MonthlyGrid.debug === 'function') {
-        console.log("6. MonthlyGrid state before:", MonthlyGrid.debug());
-      }
+    // 3. FINALLY (optionally) fetch real data
+    //    Grid is already visible, so this is non-blocking
+    if (window.API && typeof API.getExpenseData === 'function') {
+      console.log("Fetching real expense data...");
       
-      // Initialize with our container
-      console.log("7. Initializing MonthlyGrid with container:", containerId);
-      MonthlyGrid.init(containerId);
+      // Show subtle loading indicator
+      const loadingIndicator = document.createElement('div');
+      loadingIndicator.style.position = 'absolute';
+      loadingIndicator.style.top = '10px';
+      loadingIndicator.style.right = '10px';
+      loadingIndicator.style.background = 'rgba(255,255,255,0.8)';
+      loadingIndicator.style.padding = '5px 10px';
+      loadingIndicator.style.borderRadius = '4px';
+      loadingIndicator.style.fontSize = '12px';
+      loadingIndicator.innerHTML = 'Loading data...';
+      document.getElementById(containerId).appendChild(loadingIndicator);
       
-      // Log state after initialization
-      if (typeof MonthlyGrid.debug === 'function') {
-        console.log("8. MonthlyGrid state after init:", MonthlyGrid.debug());
-      }
-      
-      console.log("9. Grid initialization complete - should be visible now");
-    } catch (e) {
-      console.error("Error initializing MonthlyGrid:", e);
-      contentArea.innerHTML = '<div class="error-message">Error initializing grid: ' + e.message + '</div>';
+      API.getExpenseData(
+        function(result) {
+          console.log("Real expense data loaded successfully");
+          
+          // Update grid with real data if available
+          if (result && result.success && result.expenses) {
+            MonthlyGrid.setExpenseData(result.expenses);
+          }
+          
+          // Cache the result
+          _cache.set("expense", result.expenses || []);
+          
+          // Remove loading indicator
+          loadingIndicator.remove();
+        },
+        function(error) {
+          console.log("Using sample data - couldn't load real data:", error);
+          
+          // Update loading indicator to show info message
+          loadingIndicator.style.background = 'rgba(255, 248, 225, 0.9)';
+          loadingIndicator.style.border = '1px solid #FFE082';
+          loadingIndicator.innerHTML = 'Using sample data';
+          
+          // Make indicator disappear after 3 seconds
+          setTimeout(function() {
+            loadingIndicator.style.opacity = '0';
+            loadingIndicator.style.transition = 'opacity 0.5s';
+            
+            // Remove from DOM after fade out
+            setTimeout(function() {
+              loadingIndicator.remove();
+            }, 500);
+          }, 3000);
+        }
+      );
     }
   } else {
-    console.error("MonthlyGrid component not found");
     contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
+    console.error("MonthlyGrid component not found");
   }
   
   // Clear loading flag
   _loadingView = null;
-  console.groupEnd();
 }
 
 

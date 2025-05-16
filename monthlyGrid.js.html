@@ -28,14 +28,17 @@ var MonthlyGrid = (function() {
 
   /**
    * Initialize the Monthly Grid
+   * @param {string} containerId - Optional ID of container element
    */
   function init(containerId) {
-    // FIXED: Allow reinitialization when container ID is provided
-    if (_initialized && !containerId) return;
+    // Allow initialization when container ID is provided
+    if (_initialized && !containerId) {
+      return;
+    }
     
     console.log('Initializing Monthly Grid View...');
     
-    // FIXED: Store the container element directly
+    // Find and store container element
     if (containerId) {
       const container = document.getElementById(containerId);
       if (container) {
@@ -45,9 +48,17 @@ var MonthlyGrid = (function() {
         console.error("Container not found:", containerId);
         return;
       }
+    } else {
+      // Try to find the default container
+      const defaultContainer = document.getElementById("monthly-grid-container");
+      if (!defaultContainer) {
+        console.error("Default grid container not found");
+        return;
+      }
+      _elements['monthly-grid-container'] = defaultContainer;
     }
     
-    // Load sample data for prototype
+    // Load sample data for display
     loadSampleData();
     
     // Set up event handlers
@@ -64,20 +75,20 @@ var MonthlyGrid = (function() {
    * Load sample data for prototype display
    */
   function loadSampleData() {
-    // Sample categories
+    // Sample categories with emojis
     _categories = [
-      { id: 'dining', name: 'Dining out 🍕', active: true },
-      { id: 'groceries', name: 'Groceries 🍎', active: true },
-      { id: 'personal', name: 'Personal care ❤️', active: true },
-      { id: 'transport', name: 'Transport 🚗', active: true },
-      { id: 'shopping', name: 'Shopping 🛍️', active: true },
-      { id: 'utilities', name: 'Utilities 💡', active: true },
-      { id: 'housing', name: 'Housing 🏡', active: true },
-      { id: 'business', name: 'Business 💼', active: true },
-      { id: 'childcare', name: 'Childcare 👶', active: true },
-      { id: 'other', name: 'Other 🧩', active: true },
-      { id: 'donation', name: 'Donation 🎗️', active: false },
-      { id: 'fun', name: 'Fun 🎬', active: true }
+      { id: 'dining', name: 'Dining out', emoji: '🍕', active: true },
+      { id: 'groceries', name: 'Groceries', emoji: '🍎', active: true },
+      { id: 'personal', name: 'Personal care', emoji: '❤️', active: true },
+      { id: 'transport', name: 'Transport', emoji: '🚗', active: true },
+      { id: 'shopping', name: 'Shopping', emoji: '🛍️', active: true },
+      { id: 'utilities', name: 'Utilities', emoji: '💡', active: true },
+      { id: 'housing', name: 'Housing', emoji: '🏡', active: true },
+      { id: 'business', name: 'Business', emoji: '💼', active: true },
+      { id: 'childcare', name: 'Childcare', emoji: '👶', active: true },
+      { id: 'other', name: 'Other', emoji: '🧩', active: true },
+      { id: 'donation', name: 'Donation', emoji: '🎗️', active: false },
+      { id: 'fun', name: 'Fun', emoji: '🎬', active: true }
     ];
     
     // Generate sample transactions
@@ -100,8 +111,20 @@ var MonthlyGrid = (function() {
         const categoryIndex = Math.floor(Math.random() * _categories.length);
         const category = _categories[categoryIndex];
         
-        // Random amount between 5 and 100
-        const amount = Math.floor(Math.random() * 95) + 5;
+        // Random amount between 1 and 50 with more small amounts
+        const randomFactor = Math.random();
+        let amount;
+        
+        if (randomFactor < 0.3) {
+          // 30% chance for very small amount (1-9)
+          amount = Math.floor(Math.random() * 9) + 1;
+        } else if (randomFactor < 0.7) {
+          // 40% chance for medium amount (10-20)
+          amount = Math.floor(Math.random() * 11) + 10;
+        } else {
+          // 30% chance for larger amount (21-50)
+          amount = Math.floor(Math.random() * 30) + 21;
+        }
         
         // Create transaction
         transactions.push({
@@ -109,7 +132,7 @@ var MonthlyGrid = (function() {
           date: new Date(_currentYear, _currentMonth, day),
           category: category.id,
           amount: amount,
-          description: `Sample ${category.name.split(' ')[0]} expense`,
+          description: `Sample ${category.name} expense`,
           account: 'Main Account'
         });
       }
@@ -118,6 +141,9 @@ var MonthlyGrid = (function() {
     return transactions;
   }
   
+  // Track if modal is being opened to prevent immediate close
+  let _isOpeningModal = false;
+  
   /**
    * Bind event handlers
    */
@@ -125,7 +151,7 @@ var MonthlyGrid = (function() {
     // Month navigation
     const prevMonth = getElement('prevMonth');
     const nextMonth = getElement('nextMonth');
-    const monthYearSelector = getElement('monthYearSelector');
+    const monthYearDisplay = getElement('monthYearDisplay');
     
     if (prevMonth) {
       prevMonth.addEventListener('click', function() {
@@ -139,39 +165,76 @@ var MonthlyGrid = (function() {
       });
     }
     
-    if (monthYearSelector) {
-      monthYearSelector.addEventListener('change', function() {
-        const [year, month] = this.value.split('-');
-        _currentMonth = parseInt(month) - 1; // 0-based
-        _currentYear = parseInt(year);
-        renderGrid();
-      });
-    }
-    
     // Cell click handlers (using event delegation)
     const gridContainer = getElement('monthly-grid-container');
     if (gridContainer) {
       gridContainer.addEventListener('click', function(e) {
         const cell = e.target.closest('.grid-cell[data-day][data-category]');
         if (cell) {
+          // Prevent event from bubbling up to document
+          e.stopPropagation();
+          
           const day = cell.getAttribute('data-day');
           const category = cell.getAttribute('data-category');
+          
+          // Set flag that we're opening modal
+          _isOpeningModal = true;
+          
+          // Open the modal
           openTransactionModal(day, category);
+          
+          // Reset flag after a short delay
+          setTimeout(() => {
+            _isOpeningModal = false;
+          }, 300);
         }
       });
     }
     
-    // Modal events
+    // Modal events - improved for better reliability
     document.addEventListener('click', function(e) {
-      const modal = getElement('transaction-modal');
-      const closeBtn = getElement('close-modal-btn');
+      // Don't process document clicks when opening modal
+      if (_isOpeningModal) return;
       
-      if ((e.target === modal) || (closeBtn && e.target === closeBtn)) {
+      const modal = getElement('transaction-modal');
+      if (!modal) return;
+      
+      const closeBtn = getElement('close-modal-btn');
+      const modalCard = modal.querySelector('.modal-card');
+      
+      // Close when clicking on the X button
+      if (closeBtn && (e.target === closeBtn || closeBtn.contains(e.target))) {
         closeTransactionModal();
+        return;
       }
       
+      // Only check for outside clicks if the modal is already visible
+      if (modal.classList.contains('visible')) {
+        // If clicking directly on backdrop or outside modal card
+        if (e.target === modal || 
+            (e.target !== modalCard && !modalCard.contains(e.target))) {
+          closeTransactionModal();
+          return;
+        }
+      }
+      
+      // Handle add transaction button
       if (e.target.matches('#add-transaction-btn') || e.target.closest('#add-transaction-btn')) {
         addTransactionRow();
+      }
+    });
+    
+    // Add touch event handling for mobile
+    document.addEventListener('touchend', function(e) {
+      // Don't process touch events when opening modal
+      if (_isOpeningModal) return;
+      
+      const modal = getElement('transaction-modal');
+      if (!modal || !modal.classList.contains('visible')) return;
+      
+      const modalCard = modal.querySelector('.modal-card');
+      if (modalCard && !modalCard.contains(e.target) && e.target !== modalCard) {
+        closeTransactionModal();
       }
     });
   }
@@ -193,11 +256,8 @@ var MonthlyGrid = (function() {
       _currentYear--;
     }
     
-    // Update the month selector
-    const monthYearSelector = getElement('monthYearSelector');
-    if (monthYearSelector) {
-      monthYearSelector.value = `${_currentYear}-${(_currentMonth + 1).toString().padStart(2, '0')}`;
-    }
+    // Update display
+    updateMonthYearDisplay();
     
     // Regenerate sample data and re-render
     _transactions = generateSampleTransactions();
@@ -205,33 +265,67 @@ var MonthlyGrid = (function() {
   }
   
   /**
-   * Render the monthly grid
+   * Update the month/year display
+   */
+  function updateMonthYearDisplay() {
+    const monthYearDisplay = getElement('monthYearDisplay');
+    if (monthYearDisplay) {
+      const monthName = new Date(_currentYear, _currentMonth, 1)
+        .toLocaleString('default', { month: 'long' });
+      monthYearDisplay.textContent = `${monthName} ${_currentYear}`;
+    }
+  }
+  
+  /**
+   * Render the monthly grid - Incorporated from the successful debug approach
    */
   function renderGrid() {
-    const gridContainer = getElement('monthly-grid-container');
-    if (!gridContainer) {
+    const container = getElement('monthly-grid-container');
+    if (!container) {
       console.error("Grid container not found for rendering");
       return;
     }
     
-    console.log("Rendering grid in container:", gridContainer.id);
-    
     // Clear existing content
-    gridContainer.innerHTML = '';
+    container.innerHTML = '';
     
-    // Get days in month
-    const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
-    
-    // Get month name
-    const monthName = new Date(_currentYear, _currentMonth, 1).toLocaleString('default', { month: 'long' });
-    
-    // Update month/year display
-    const monthYearDisplay = getElement('monthYearDisplay');
-    if (monthYearDisplay) {
-      monthYearDisplay.textContent = `${monthName} ${_currentYear}`;
+    try {
+      // Get days in month
+      const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
+      
+      // Update month/year display
+      updateMonthYearDisplay();
+      
+      // Prepare categories to display - active + any inactive with transactions
+      const categoriesToDisplay = prepareCategories();
+      
+      // Create table for grid
+      const table = document.createElement('table');
+      table.className = 'monthly-grid';
+      
+      // Add header with categories
+      const thead = createTableHeader(categoriesToDisplay, daysInMonth);
+      table.appendChild(thead);
+      
+      // Create rows for each day
+      const tbody = createTableBody(categoriesToDisplay, daysInMonth);
+      table.appendChild(tbody);
+      
+      // Add table to container
+      container.appendChild(table);
+    } catch (e) {
+      console.error("Error rendering grid:", e);
+      container.innerHTML = `<div class="grid-error">
+        <p>Error rendering grid: ${e.message}</p>
+        <button class="retry-btn" onclick="MonthlyGrid.renderGrid()">Retry</button>
+      </div>`;
     }
-    
-    // Prepare categories to display - active + any inactive with transactions
+  }
+  
+  /**
+   * Prepare categories to display
+   */
+  function prepareCategories() {
     const categoriesToDisplay = [];
     const usedCategories = new Set();
     
@@ -252,11 +346,13 @@ var MonthlyGrid = (function() {
       }
     });
     
-    // Create table for grid
-    const table = document.createElement('table');
-    table.className = 'monthly-grid';
-    
-    // Create header row with category totals
+    return categoriesToDisplay;
+  }
+  
+  /**
+   * Create table header with categories
+   */
+  function createTableHeader(categories, daysInMonth) {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     
@@ -267,23 +363,21 @@ var MonthlyGrid = (function() {
     headerRow.appendChild(dateHeader);
     
     // Category headers with monthly totals
-    categoriesToDisplay.forEach(category => {
+    categories.forEach(category => {
       const categoryHeader = document.createElement('th');
       categoryHeader.className = 'category-header';
       categoryHeader.setAttribute('data-category', category.id);
       
       // Calculate monthly total for this category
-      const monthlyTotal = _transactions
-        .filter(tx => 
-          tx.category === category.id && 
-          tx.date.getMonth() === _currentMonth &&
-          tx.date.getFullYear() === _currentYear
-        )
-        .reduce((sum, tx) => sum + tx.amount, 0);
+      const monthlyTotal = getMonthTotalForCategory(category.id);
       
-      // Create header content
+      // Create header content with emoji on top line, name on bottom
       const headerContent = document.createElement('div');
       headerContent.className = 'category-header-content';
+      
+      const categoryEmoji = document.createElement('div');
+      categoryEmoji.className = 'category-emoji';
+      categoryEmoji.textContent = category.emoji;
       
       const categoryName = document.createElement('div');
       categoryName.className = 'category-name';
@@ -293,6 +387,7 @@ var MonthlyGrid = (function() {
       categoryTotal.className = 'category-total';
       categoryTotal.textContent = `€${monthlyTotal}`;
       
+      headerContent.appendChild(categoryEmoji);
       headerContent.appendChild(categoryName);
       headerContent.appendChild(categoryTotal);
       categoryHeader.appendChild(headerContent);
@@ -305,24 +400,24 @@ var MonthlyGrid = (function() {
     totalHeader.className = 'total-header';
     
     // Calculate monthly grand total
-    const grandTotal = _transactions
-      .filter(tx => 
-        tx.date.getMonth() === _currentMonth &&
-        tx.date.getFullYear() === _currentYear
-      )
-      .reduce((sum, tx) => sum + tx.amount, 0);
+    const grandTotal = getMonthGrandTotal();
     
     const totalHeaderContent = document.createElement('div');
     totalHeaderContent.className = 'category-header-content';
     
+    const totalEmoji = document.createElement('div');
+    totalEmoji.className = 'category-emoji';
+    totalEmoji.textContent = '💰';
+    
     const totalName = document.createElement('div');
-    totalName.className = 'category-name';
-    totalName.textContent = 'Total Daily';
+    totalName.className = 'category-name total-label';
+    totalName.textContent = 'Total';
     
     const totalValue = document.createElement('div');
     totalValue.className = 'category-total';
     totalValue.textContent = `€${grandTotal}`;
     
+    totalHeaderContent.appendChild(totalEmoji);
     totalHeaderContent.appendChild(totalName);
     totalHeaderContent.appendChild(totalValue);
     totalHeader.appendChild(totalHeaderContent);
@@ -332,30 +427,68 @@ var MonthlyGrid = (function() {
     // Notes header
     const notesHeader = document.createElement('th');
     notesHeader.className = 'notes-header';
-    notesHeader.textContent = 'Notes 📝';
+    
+    const notesHeaderContent = document.createElement('div');
+    notesHeaderContent.className = 'category-header-content';
+    
+    const notesEmoji = document.createElement('div');
+    notesEmoji.className = 'category-emoji';
+    notesEmoji.textContent = '📝';
+    
+    const notesName = document.createElement('div');
+    notesName.className = 'category-name';
+    notesName.textContent = 'Notes';
+    
+    notesHeaderContent.appendChild(notesEmoji);
+    notesHeaderContent.appendChild(notesName);
+    notesHeader.appendChild(notesHeaderContent);
+    
     headerRow.appendChild(notesHeader);
     
     thead.appendChild(headerRow);
-    table.appendChild(thead);
-    
-    // Create table body
+    return thead;
+  }
+  
+  /**
+   * Create table body with daily rows
+   */
+  function createTableBody(categories, daysInMonth) {
     const tbody = document.createElement('tbody');
+    
+    // Get today's date for highlighting
+    const today = new Date();
+    const isCurrentMonth = today.getMonth() === _currentMonth && today.getFullYear() === _currentYear;
+    const currentDay = today.getDate();
     
     // Create a row for each day
     for (let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(_currentYear, _currentMonth, day);
+      const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      const isToday = isCurrentMonth && day === currentDay;
+      
       const row = document.createElement('tr');
       row.className = 'day-row';
+      
+      if (isWeekend) {
+        row.classList.add('weekend-row');
+      }
+      
+      if (isToday) {
+        row.classList.add('today-row');
+      }
       
       // Date cell
       const dateCell = document.createElement('td');
       dateCell.className = 'date-cell';
+      if (isWeekend) dateCell.classList.add('weekend-cell');
+      if (isToday) dateCell.classList.add('today-cell');
       
-      const dateObj = new Date(_currentYear, _currentMonth, day);
-      const dayOfWeek = dateObj.toLocaleString('en-US', { weekday: 'short' });
+      const dayName = dateObj.toLocaleString('en-US', { weekday: 'short' });
       
       dateCell.innerHTML = `<div class="date-container">
                               <span class="day-number">${day}</span>
-                              <span class="day-name">${dayOfWeek}</span>
+                              <span class="day-name">${dayName}</span>
                             </div>`;
       row.appendChild(dateCell);
       
@@ -363,29 +496,31 @@ var MonthlyGrid = (function() {
       let dayTotal = 0;
       
       // Category cells
-      categoriesToDisplay.forEach(category => {
+      categories.forEach(category => {
         const cell = document.createElement('td');
         cell.className = 'grid-cell';
+        if (isWeekend) cell.classList.add('weekend-cell');
+        if (isToday) cell.classList.add('today-cell');
         cell.setAttribute('data-day', day);
         cell.setAttribute('data-category', category.id);
         
         // Get transactions for this day and category
-        const dayTransactions = _transactions.filter(tx => 
-          tx.date.getDate() === day && 
-          tx.date.getMonth() === _currentMonth &&
-          tx.date.getFullYear() === _currentYear &&
-          tx.category === category.id
-        );
+        const dayTransactions = getTransactionsForDayAndCategory(day, category.id);
         
         // If there are transactions, show amount and count
         if (dayTransactions.length > 0) {
           const amount = dayTransactions.reduce((sum, tx) => sum + tx.amount, 0);
           dayTotal += amount; // Add to daily total
           
-          // Determine color intensity based on amount
-          const intensity = Math.min(amount / 100 * 0.8, 0.8); // Max 80% intensity
+          // Determine color based on amount
+          let colorClass = 'amount-large';
+          if (amount < 10) {
+            colorClass = 'amount-small';
+          } else if (amount < 20) {
+            colorClass = 'amount-medium';
+          }
           
-          cell.innerHTML = `<div class="cell-content" style="background-color: rgba(169, 99, 34, ${intensity})">
+          cell.innerHTML = `<div class="cell-content ${colorClass}">
                               <span class="amount">€${amount}</span>
                               <span class="transaction-count">(${dayTransactions.length})</span>
                             </div>`;
@@ -397,6 +532,8 @@ var MonthlyGrid = (function() {
       // Daily total cell
       const totalCell = document.createElement('td');
       totalCell.className = 'total-cell';
+      if (isWeekend) totalCell.classList.add('weekend-cell');
+      if (isToday) totalCell.classList.add('today-cell');
       
       if (dayTotal > 0) {
         totalCell.innerHTML = `<div class="total-amount">€${dayTotal}</div>`;
@@ -407,14 +544,53 @@ var MonthlyGrid = (function() {
       // Notes cell
       const notesCell = document.createElement('td');
       notesCell.className = 'notes-cell';
+      if (isWeekend) notesCell.classList.add('weekend-cell');
+      if (isToday) notesCell.classList.add('today-cell');
+      
       notesCell.innerHTML = `<div class="notes-content" contenteditable="true"></div>`;
       row.appendChild(notesCell);
       
       tbody.appendChild(row);
     }
     
-    table.appendChild(tbody);
-    gridContainer.appendChild(table);
+    return tbody;
+  }
+  
+  /**
+   * Get all transactions for a specific day and category
+   */
+  function getTransactionsForDayAndCategory(day, categoryId) {
+    return _transactions.filter(tx => 
+      tx.date.getDate() === day && 
+      tx.date.getMonth() === _currentMonth &&
+      tx.date.getFullYear() === _currentYear &&
+      tx.category === categoryId
+    );
+  }
+  
+  /**
+   * Get total spent in a category for the current month
+   */
+  function getMonthTotalForCategory(categoryId) {
+    return _transactions
+      .filter(tx => 
+        tx.category === categoryId && 
+        tx.date.getMonth() === _currentMonth &&
+        tx.date.getFullYear() === _currentYear
+      )
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }
+  
+  /**
+   * Get grand total for the current month
+   */
+  function getMonthGrandTotal() {
+    return _transactions
+      .filter(tx => 
+        tx.date.getMonth() === _currentMonth &&
+        tx.date.getFullYear() === _currentYear
+      )
+      .reduce((sum, tx) => sum + tx.amount, 0);
   }
   
   /**
@@ -423,20 +599,26 @@ var MonthlyGrid = (function() {
    * @param {string} categoryId - Category ID
    */
   function openTransactionModal(day, categoryId) {
+    // Debug log
+    console.log('Opening modal for day:', day, 'category:', categoryId);
+    
+    // Get modal and check it exists - FIXED: Using getElement instead of $
     const modal = getElement('transaction-modal');
-    if (!modal) return;
+    if (!modal) {
+      console.error('Modal element not found in DOM');
+      return;
+    }
     
     // Get the category
     const category = _categories.find(c => c.id === categoryId);
-    if (!category) return;
+    if (!category) {
+      console.error('Category not found:', categoryId);
+      return;
+    }
     
     // Get transactions for this day/category
-    const transactions = _transactions.filter(tx => 
-      tx.date.getDate() === parseInt(day) && 
-      tx.date.getMonth() === _currentMonth &&
-      tx.date.getFullYear() === _currentYear &&
-      tx.category === categoryId
-    );
+    const transactions = getTransactionsForDayAndCategory(parseInt(day), categoryId);
+    console.log('Transactions found:', transactions.length);
     
     // Format the date for display
     const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
@@ -450,7 +632,7 @@ var MonthlyGrid = (function() {
     // Update modal title
     const modalTitle = getElement('modal-title');
     if (modalTitle) {
-      modalTitle.textContent = `${category.name} on ${formattedDate}`;
+      modalTitle.textContent = `${category.emoji} ${category.name} on ${formattedDate}`;
     }
     
     // Update modal content
@@ -504,17 +686,37 @@ var MonthlyGrid = (function() {
     modal.setAttribute('data-day', day);
     modal.setAttribute('data-category', categoryId);
     
-    // Show the modal
-    modal.classList.add('visible');
+    // Add ESC key closing
+    document.addEventListener('keydown', handleEscKey);
+    
+    // Show the modal with a small delay to prevent immediate closing
+    setTimeout(() => {
+      modal.classList.add('visible');
+      console.log('Modal should now be visible');
+    }, 10);
+  }
+  
+  /**
+   * Handle ESC key to close modal
+   */
+  function handleEscKey(e) {
+    if (e.key === 'Escape') {
+      closeTransactionModal();
+    }
   }
   
   /**
    * Close transaction modal
    */
   function closeTransactionModal() {
+    console.log('Closing transaction modal');
     const modal = getElement('transaction-modal');
     if (modal) {
       modal.classList.remove('visible');
+      console.log('Modal visibility class removed');
+      
+      // Remove ESC key handler when modal is closed
+      document.removeEventListener('keydown', handleEscKey);
     }
   }
   
@@ -639,322 +841,9 @@ var MonthlyGrid = (function() {
   return {
     init: init,
     renderGrid: renderGrid,
-    setExpenseData: setExpenseData
+    setExpenseData: setExpenseData,
+    openTransactionModal: openTransactionModal // Making this accessible for debugging
   };
-
-
-
-// ==================================================
-// MONTHLYGRID DEBUG UTILITIES - ADD BEFORE CLOSING })();
-// ==================================================
-
-// Add debugging methods to the public API
-// These will be accessible through the MonthlyGrid global object
-MonthlyGrid.debug = function() {
-  return {
-    initialized: _initialized,
-    currentMonth: _currentMonth,
-    currentYear: _currentYear,
-    categories: _categories.map(c => c.id),
-    categoriesCount: _categories.length,
-    transactionsCount: _transactions.length,
-    elements: Object.keys(_elements),
-    containerElement: _elements['monthly-grid-container'],
-    gridElement: document.querySelector('.monthly-grid'),
-    hasGrid: !!document.querySelector('.monthly-grid'),
-    containerDimensions: _elements['monthly-grid-container'] ? {
-      width: _elements['monthly-grid-container'].offsetWidth,
-      height: _elements['monthly-grid-container'].offsetHeight,
-      clientWidth: _elements['monthly-grid-container'].clientWidth,
-      clientHeight: _elements['monthly-grid-container'].clientHeight,
-      scrollWidth: _elements['monthly-grid-container'].scrollWidth,
-      scrollHeight: _elements['monthly-grid-container'].scrollHeight
-    } : 'Container not found'
-  };
-};
-
-// Debug render function - force rendering with sample data
-MonthlyGrid.debugRender = function(containerId, options) {
-  console.group('MONTHLY GRID DEBUG RENDER');
-  console.log('Starting debug render with containerId:', containerId);
-  
-  options = options || {};
-  
-  // First reset state if needed
-  if (options.reset) {
-    console.log('Resetting internal state...');
-    _initialized = false;
-    _elements = {};
-    _transactions = [];
-    _categories = [];
-  }
-  
-  // Find and store container
-  const container = document.getElementById(containerId);
-  if (!container) {
-    console.error('Container not found:', containerId);
-    console.groupEnd();
-    return { success: false, error: 'Container not found' };
-  }
-  
-  console.log('Container found:', container);
-  console.log('Container size:', {
-    offsetWidth: container.offsetWidth,
-    offsetHeight: container.offsetHeight,
-    clientWidth: container.clientWidth,
-    clientHeight: container.clientHeight
-  });
-  
-  // Store container for later use
-  _elements['monthly-grid-container'] = container;
-  
-  // Add visual debug container if requested
-  if (options.visualDebug) {
-    const debugContainer = document.createElement('div');
-    debugContainer.className = 'grid-debug-info';
-    debugContainer.style.padding = '8px';
-    debugContainer.style.background = '#f8f8f8';
-    debugContainer.style.border = '1px solid #ddd';
-    debugContainer.style.margin = '0 0 10px 0';
-    debugContainer.style.fontSize = '12px';
-    debugContainer.style.fontFamily = 'monospace';
-    debugContainer.innerHTML = '<strong>MonthlyGrid Debug:</strong> Rendering...';
-    container.appendChild(debugContainer);
-    _elements['debug-container'] = debugContainer;
-  }
-  
-  // Load sample data
-  try {
-    console.log('Loading sample data...');
-    loadSampleData();
-    console.log('Sample data loaded:', {
-      categoriesCount: _categories.length,
-      categoriesExample: _categories.slice(0, 3),
-      transactionsCount: _transactions.length,
-      transactionsExample: _transactions.slice(0, 3)
-    });
-  } catch (e) {
-    console.error('Error loading sample data:', e);
-    if (_elements['debug-container']) {
-      _elements['debug-container'].innerHTML += '<br>Error loading sample data: ' + e.message;
-    }
-  }
-  
-  // Render the grid
-  try {
-    console.log('Rendering grid...');
-    renderGrid();
-    
-    // Set flag after rendering
-    _initialized = true;
-    
-    // Check if grid was rendered
-    const gridElement = container.querySelector('.monthly-grid');
-    const success = !!gridElement;
-    
-    console.log('Grid rendered successfully:', success);
-    console.log('Grid element:', gridElement);
-    
-    if (_elements['debug-container']) {
-      _elements['debug-container'].innerHTML = 
-        '<strong>MonthlyGrid Debug:</strong> ' + 
-        (success ? 'Rendered successfully' : 'Failed to render') +
-        '<br>Categories: ' + _categories.length +
-        '<br>Transactions: ' + _transactions.length +
-        '<br>Grid element: ' + (success ? 'Found' : 'Not found') +
-        '<br>Container: ' + containerId;
-    }
-    
-    console.groupEnd();
-    return {
-      success: success,
-      gridElement: gridElement,
-      categoriesCount: _categories.length,
-      transactionsCount: _transactions.length
-    };
-  } catch (e) {
-    console.error('Error rendering grid:', e);
-    if (_elements['debug-container']) {
-      _elements['debug-container'].innerHTML += '<br>Error rendering grid: ' + e.message;
-    }
-    console.groupEnd();
-    return { success: false, error: e.message };
-  }
-};
-
-// Force generation of more sample data for better testing
-MonthlyGrid.generateMoreSampleData = function(count) {
-  console.log('Generating more sample data...');
-  const extraTransactions = [];
-  const days = new Date(_currentYear, _currentMonth + 1, 0).getDate(); // Days in current month
-  
-  count = count || 50;
-  
-  for (let i = 0; i < count; i++) {
-    // Random day
-    const day = Math.floor(Math.random() * days) + 1;
-    
-    // Random category
-    const categoryIndex = Math.floor(Math.random() * _categories.length);
-    const category = _categories[categoryIndex];
-    
-    // Random amount between 10 and 500
-    const amount = Math.floor(Math.random() * 490) + 10;
-    
-    // Create transaction
-    extraTransactions.push({
-      id: `tx-extra-${i}-${Date.now()}`,
-      date: new Date(_currentYear, _currentMonth, day),
-      category: category.id,
-      amount: amount,
-      description: `Debug expense #${i+1}`,
-      account: 'Debug Account'
-    });
-  }
-  
-  // Add to existing transactions
-  _transactions = _transactions.concat(extraTransactions);
-  console.log(`Added ${count} more sample transactions, total now: ${_transactions.length}`);
-  
-  // Re-render
-  renderGrid();
-  
-  return {
-    success: true,
-    totalTransactions: _transactions.length,
-    newTransactions: extraTransactions.length
-  };
-};
-
-// Visual debug method - highlight different parts of the grid
-MonthlyGrid.highlightElements = function() {
-  const container = _elements['monthly-grid-container'];
-  if (!container) return { success: false, error: 'Container not found' };
-  
-  // Reset any previous highlights
-  const highlights = container.querySelectorAll('.debug-highlight');
-  highlights.forEach(el => el.remove());
-  
-  // Add highlight to table
-  const table = container.querySelector('.monthly-grid');
-  if (table) {
-    table.style.border = '2px solid red';
-    table.style.position = 'relative';
-    
-    const label = document.createElement('div');
-    label.className = 'debug-highlight';
-    label.style.position = 'absolute';
-    label.style.top = '0';
-    label.style.left = '0';
-    label.style.background = 'rgba(255,0,0,0.7)';
-    label.style.color = 'white';
-    label.style.padding = '2px 5px';
-    label.style.fontSize = '10px';
-    label.style.zIndex = '1000';
-    label.textContent = 'monthly-grid';
-    table.appendChild(label);
-  }
-  
-  // Highlight cells
-  const cells = container.querySelectorAll('.grid-cell');
-  if (cells.length) {
-    cells.forEach(cell => {
-      cell.style.boxShadow = 'inset 0 0 0 1px blue';
-    });
-  }
-  
-  return {
-    success: true,
-    elementsHighlighted: {
-      table: !!table,
-      cells: cells.length
-    }
-  };
-};
-
-// Method to try different rendering styles
-MonthlyGrid.tryAlternativeRendering = function() {
-  const container = _elements['monthly-grid-container'];
-  if (!container) return { success: false, error: 'Container not found' };
-  
-  // Clear the container
-  container.innerHTML = '';
-  
-  // Create basic table structure directly
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                  'July', 'August', 'September', 'October', 'November', 'December'];
-  const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
-  
-  // Create simple table
-  let html = `
-    <div style="padding: 10px; background: #f5f5f5; margin-bottom: 10px;">
-      <h3>Month: ${months[_currentMonth]} ${_currentYear}</h3>
-      <p>Alternative rendering - bypassing renderGrid()</p>
-    </div>
-    <table class="monthly-grid" style="width: 100%; border-collapse: collapse; min-width: 800px;">
-      <thead>
-        <tr>
-          <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: left;">Date</th>
-  `;
-  
-  // Add category headers
-  for (let i = 0; i < Math.min(5, _categories.length); i++) {
-    html += `<th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: left;">${_categories[i].name}</th>`;
-  }
-  
-  html += `
-          <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: left;">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-  
-  // Add day rows
-  for (let day = 1; day <= Math.min(10, daysInMonth); day++) {
-    const date = new Date(_currentYear, _currentMonth, day);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-    
-    html += `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">
-          ${day} (${dayName})
-        </td>
-    `;
-    
-    // Add category cells
-    for (let i = 0; i < Math.min(5, _categories.length); i++) {
-      html += `<td style="padding: 8px; border-bottom: 1px solid #ddd;">&nbsp;</td>`;
-    }
-    
-    html += `
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">&nbsp;</td>
-      </tr>
-    `;
-  }
-  
-  html += `
-      </tbody>
-    </table>
-    <div style="padding: 10px; margin-top: 10px; color: #666;">
-      Note: This is a simplified rendering for debugging purposes.
-    </div>
-  `;
-  
-  container.innerHTML = html;
-  
-  return {
-    success: true,
-    message: 'Alternative rendering applied'
-  };
-};
-
-// ==================================================
-// END DEBUG UTILITIES - KEEP THE CLOSING BRACKET BELOW
-// ==================================================
-
-
-
-
 })();
 
 // Expose globally without auto-initialization 
@@ -1097,15 +986,25 @@ window.MonthlyGrid = MonthlyGrid;
 .category-header-content {
   display: flex;
   flex-direction: column;
+  align-items: center;
+}
+
+.category-emoji {
+  font-size: 16px;
+  margin-bottom: 2px;
 }
 
 .category-name {
-  font-size: 13px;
+  font-size: 11px;
+  text-align: center;
   margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .category-total {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--primary);
 }
@@ -1119,10 +1018,35 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(169, 99, 34, 0.05);
 }
 
+/* Weekend highlighting */
+.weekend-row {
+  background-color: rgba(255, 249, 219, 0.3) !important;
+}
+
+.weekend-row:hover {
+  background-color: rgba(255, 249, 219, 0.5) !important;
+}
+
+/* Today highlighting */
+.today-row {
+  background-color: rgba(255, 235, 156, 0.3) !important;
+}
+
+.today-row:hover {
+  background-color: rgba(255, 235, 156, 0.5) !important;
+}
+
+.today-cell {
+  font-weight: 500;
+  border-left: 2px solid rgba(255, 193, 7, 0.5);
+  border-right: 2px solid rgba(255, 193, 7, 0.5);
+}
+
+/* Cell padding reduced to 4px */
 .monthly-grid td {
-  padding: 8px;
+  padding: 4px;
   border-bottom: 1px solid var(--border);
-  height: 50px;
+  height: 45px;
   vertical-align: middle;
 }
 
@@ -1156,6 +1080,7 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(169, 99, 34, 0.1);
 }
 
+/* Enhanced cell content with color coding by amount */
 .cell-content {
   display: flex;
   align-items: center;
@@ -1167,13 +1092,30 @@ window.MonthlyGrid = MonthlyGrid;
   font-weight: 500;
 }
 
+/* Color coding by amount - now more matte with black text */
+.amount-small {
+  background-color: rgba(76, 175, 80, 0.3); /* Light matte green for small amounts < 10 */
+  color: black;
+}
+
+.amount-medium {
+  background-color: rgba(255, 152, 0, 0.3); /* Light matte orange/yellow for medium amounts 10-20 */
+  color: black;
+}
+
+.amount-large {
+  background-color: rgba(244, 67, 54, 0.3); /* Light matte red for large amounts > 20 */
+  color: black;
+}
+
 .amount {
   font-size: 14px;
+  font-weight: 500;
 }
 
 .transaction-count {
   font-size: 12px;
-  opacity: 0.9;
+  color: rgba(0, 0, 0, 0.7);
 }
 
 /* Total cells */
@@ -1199,14 +1141,41 @@ window.MonthlyGrid = MonthlyGrid;
   transition: border-color 0.2s;
   outline: none;
   font-size: 13px;
+  background-color: rgba(241, 241, 241, 0.5); /* Light gray background */
 }
 
 .notes-content:hover, .notes-content:focus {
   border-color: var(--border);
+  background-color: rgba(241, 241, 241, 0.8);
 }
 
 .notes-content:focus {
   background-color: rgba(255, 255, 255, 0.9);
+}
+
+/* Error message */
+.grid-error {
+  padding: 20px;
+  text-align: center;
+  color: #d32f2f;
+  background-color: #ffebee;
+  border-radius: 4px;
+  margin: 20px 0;
+}
+
+.retry-btn {
+  margin-top: 10px;
+  padding: 8px 16px;
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.retry-btn:hover {
+  background-color: #b71c1c;
 }
 
 /* ============= TRANSACTION MODAL ============= */
@@ -1217,17 +1186,16 @@ window.MonthlyGrid = MonthlyGrid;
   width: 100%;
   height: 100%;
   z-index: 1000;
-  display: flex;
+  display: none; /* Changed to display: none initially */
+  opacity: 0;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
+  transition: opacity 0.3s;
 }
 
 .transaction-modal.visible {
+  display: flex; /* Show with flex when visible */
   opacity: 1;
-  visibility: visible;
 }
 
 .modal-backdrop {
@@ -1419,8 +1387,43 @@ body.dark-mode .day-row:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
+body.dark-mode .weekend-row {
+  background-color: rgba(255, 249, 219, 0.1) !important;
+}
+
+body.dark-mode .weekend-row:hover {
+  background-color: rgba(255, 249, 219, 0.15) !important;
+}
+
+body.dark-mode .today-row {
+  background-color: rgba(255, 235, 156, 0.1) !important;
+}
+
+body.dark-mode .today-row:hover {
+  background-color: rgba(255, 235, 156, 0.15) !important;
+}
+
+body.dark-mode .today-cell {
+  border-left: 2px solid rgba(255, 193, 7, 0.3);
+  border-right: 2px solid rgba(255, 193, 7, 0.3);
+}
+
 body.dark-mode .grid-cell:hover {
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .notes-content {
+  background-color: rgba(58, 58, 58, 0.5);
+}
+
+body.dark-mode .notes-content:hover,
+body.dark-mode .notes-content:focus {
+  background-color: rgba(58, 58, 58, 0.8);
+  border-color: var(--dark-border);
+}
+
+body.dark-mode .notes-content:focus {
+  background-color: rgba(40, 40, 40, 0.9);
 }
 
 body.dark-mode .modal-card {
@@ -1469,8 +1472,8 @@ body.dark-mode .transaction-account {
   }
   
   .monthly-grid td {
-    padding: 6px;
-    height: 45px;
+    padding: 4px;
+    height: 40px;
   }
   
   .day-number {
@@ -1508,6 +1511,3 @@ body.dark-mode .transaction-account {
   }
 }
 </style>
-
-
-</script>

@@ -453,26 +453,36 @@ if (isToday) {
     }
   }
   
+  
   /**
-   * Open the quick expense modal
-   */
-  function openModal() {
-    console.log("openModal called");
-    
-    // Make sure modal is created 
-    if (!document.getElementById('quickExpenseModal')) {
-      console.log("Modal not found, creating it");
-      includeTransactionEntryHTML();
+ * Open the quick expense modal
+ */
+function openModal() {
+  console.log("openModal called");
+  
+  // Make sure modal is created 
+  if (!document.getElementById('quickExpenseModal')) {
+    console.log("Modal not found, creating it");
+    includeTransactionEntryHTML();
+  }
+  
+  const modal = document.getElementById('quickExpenseModal');
+  console.log("Modal element found:", !!modal);
+  
+  if (modal) {
+    // IMPORTANT: Add this code to ensure close button works every time modal is opened
+    const closeBtn = modal.querySelector('.close-btn');
+    if (closeBtn) {
+      // Remove any existing event listeners first to prevent duplicates
+      closeBtn.removeEventListener('click', closeModal);
+      // Add fresh event listener
+      closeBtn.addEventListener('click', closeModal);
     }
     
-    const modal = document.getElementById('quickExpenseModal');
-    console.log("Modal element found:", !!modal);
-    
-    if (modal) {
-      // Force display styling
-      modal.style.opacity = '0';
-      modal.style.visibility = 'visible';
-      modal.style.display = 'flex';
+    // Force display styling
+    modal.style.opacity = '0';
+    modal.style.visibility = 'visible';
+    modal.style.display = 'flex';
       
       // Force reflow
       void modal.offsetWidth;
