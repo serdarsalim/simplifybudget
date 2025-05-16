@@ -361,5 +361,34 @@ formatCurrencyNoDecimals: function(amount) {
       }
     }
   };
+
+  // Add this function to your Utils object
+Utils.getTranslatedQuote = function() {
+  // Use translated quote if available, otherwise use a random quote
+  if (window.SimBudget && SimBudget.translations && SimBudget.translations.budget_quote) {
+    return SimBudget.translations.budget_quote;
+  }
+  
+  // Fallback to random quote if translations aren't available
+  return this.getRandomQuote();
+};
+
+
 })();
+
+/**
+ * Format a translation string with parameters
+ * @param {string} str - The translation string with placeholders {0}, {1}, etc.
+ * @param {Array} params - The parameters to insert into the placeholders
+ * @return {string} The formatted string
+ */
+Utils.formatTranslation = function(str, params) {
+  if (!str) return '';
+  if (!params || !params.length) return str;
+  
+  return str.replace(/\{(\d+)\}/g, function(match, index) {
+    return typeof params[index] !== 'undefined' ? params[index] : match;
+  });
+};
+
 </script>

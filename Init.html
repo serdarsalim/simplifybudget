@@ -1,967 +1,1093 @@
 <script>
+  /**
+   * Init.html - Initialization script for SimBudget
+   * Handles application startup, event binding, and view management
+   */
 
-/**
- * Init.html - Initialization script for SimBudget
- * Handles application startup, event binding, and view management
- */
+  // Main SimBudget namespace
+  var SimBudget = (function () {
+    // Private variables
+    let _initialized = false;
+    let _currentView = "budget";
+    let _isRendering = false;
+    let _loadingView = null;
 
-// Main SimBudget namespace
-var SimBudget = (function() {
-  // Private variables
-  let _initialized = false;
-  let _currentView = 'budget';
-  let _isRendering = false;
-  let _loadingView = null;
-  
-  // Cache system for data
-  const _cache = {
-    // Cache storage with data and metadata
-    data: {
-      budget: { content: null, timestamp: null },
-      expense: { content: null, timestamp: null },
-      income: { content: null, timestamp: null },
-      recurring: { content: null, timestamp: null },
-      netWorth: { content: null, timestamp: null },
-      reports: { content: null, timestamp: null }
-    },
-    
-    // Cache configuration
-    config: {
-      // Default cache expiry time in milliseconds (5 minutes)
-      expiryTime: 5 * 60 * 1000,
-      
-      // Flags to determine if certain actions should invalidate cache
-      invalidateOnMonthYearChange: true
-    },
-    
-    // Store data in cache
-    set: function(key, data) {
-      if (!this.data[key]) return false;
-      
-      this.data[key].content = data;
-      this.data[key].timestamp = new Date().getTime();
-      console.log(`Cache set for ${key}:`, data);
-      return true;
-    },
-    
-    // Get data from cache if valid
-    get: function(key) {
-      const cacheEntry = this.data[key];
-      if (!cacheEntry || !cacheEntry.content) return null;
-      
-      const now = new Date().getTime();
-      if ((now - cacheEntry.timestamp) > this.config.expiryTime) {
-        // Cache expired
-        console.log(`Cache expired for ${key}`);
-        return null;
-      }
-      
-      console.log(`Cache hit for ${key}`);
-      return cacheEntry.content;
-    },
-    
-    // Check if cache for key is valid
-    isValid: function(key) {
-      return this.get(key) !== null;
-    },
-    
-    // Invalidate specific cache entries
-    invalidate: function(key) {
-      if (_isRendering) {
-        console.log(`Skipping cache invalidation for ${key} during rendering`);
-        return;
-      }
-      
-      if (key && this.data[key]) {
-        console.log(`Invalidating cache for ${key}`);
-        this.data[key].content = null;
-        this.data[key].timestamp = null;
-      }
-    },
-    
-    // Invalidate all cache entries
-    invalidateAll: function() {
-      if (_isRendering) {
-        console.log("Skipping invalidateAll during rendering");
-        return;
-      }
-      
-      console.log("Invalidating all cache entries");
-      Object.keys(this.data).forEach(key => {
+    // Cache system for data
+    const _cache = {
+      // Cache storage with data and metadata
+      data: {
+        budget: { content: null, timestamp: null },
+        expense: { content: null, timestamp: null },
+        income: { content: null, timestamp: null },
+        recurring: { content: null, timestamp: null },
+        netWorth: { content: null, timestamp: null },
+        reports: { content: null, timestamp: null },
+      },
+
+      // Cache configuration
+      config: {
+        // Default cache expiry time in milliseconds (5 minutes)
+        expiryTime: 5 * 60 * 1000,
+
+        // Flags to determine if certain actions should invalidate cache
+        invalidateOnMonthYearChange: true,
+      },
+
+      // Store data in cache
+      set: function (key, data) {
+        if (!this.data[key]) return false;
+
+        this.data[key].content = data;
+        this.data[key].timestamp = new Date().getTime();
+        console.log(`Cache set for ${key}:`, data);
+        return true;
+      },
+
+      // Get data from cache if valid
+      get: function (key) {
+        const cacheEntry = this.data[key];
+        if (!cacheEntry || !cacheEntry.content) return null;
+
+        const now = new Date().getTime();
+        if (now - cacheEntry.timestamp > this.config.expiryTime) {
+          // Cache expired
+          console.log(`Cache expired for ${key}`);
+          return null;
+        }
+
+        console.log(`Cache hit for ${key}`);
+        return cacheEntry.content;
+      },
+
+      // Check if cache for key is valid
+      isValid: function (key) {
+        return this.get(key) !== null;
+      },
+
+      // Invalidate specific cache entries
+      invalidate: function (key) {
+        if (_isRendering) {
+          console.log(
+            `Skipping cache invalidation for ${key} during rendering`
+          );
+          return;
+        }
+
+        if (key && this.data[key]) {
+          console.log(`Invalidating cache for ${key}`);
+          this.data[key].content = null;
+          this.data[key].timestamp = null;
+        }
+      },
+
+      // Invalidate all cache entries
+      invalidateAll: function () {
+        if (_isRendering) {
+          console.log("Skipping invalidateAll during rendering");
+          return;
+        }
+
+        console.log("Invalidating all cache entries");
+        Object.keys(this.data).forEach((key) => {
+          this.invalidate(key);
+        });
+      },
+
+      // Invalidate related caches when a type of data is modified
+      invalidateRelated: function (key) {
+        if (_isRendering) {
+          console.log(`Skipping invalidateRelated for ${key} during rendering`);
+          return;
+        }
+
+        // Define relationships between data types
+        const relationships = {
+          budget: ["reports"],
+          expense: ["budget", "reports"],
+          income: ["budget", "reports"],
+          recurring: ["reports"],
+          netWorth: ["reports"],
+        };
+
+        // Invalidate the primary key
         this.invalidate(key);
-      });
-    },
-    
-    // Invalidate related caches when a type of data is modified
-    invalidateRelated: function(key) {
-      if (_isRendering) {
-        console.log(`Skipping invalidateRelated for ${key} during rendering`);
-        return;
-      }
-      
-      // Define relationships between data types
-      const relationships = {
-        budget: ['reports'],
-        expense: ['budget', 'reports'],
-        income: ['budget', 'reports'],
-        recurring: ['reports'],
-        netWorth: ['reports']
-      };
-      
-      // Invalidate the primary key
-      this.invalidate(key);
-      
-      // Invalidate related keys
-      if (relationships[key]) {
-        relationships[key].forEach(relatedKey => {
-          this.invalidate(relatedKey);
-        });
-      }
-    }
-  };
-  
-  // Event management for month/year selectors
-  const _eventManager = {
-    // Event handler references
-    handlers: {
-      month: null,
-      year: null
-    },
-    
-    // Detach event listeners
-    detach: function() {
-      const monthSelector = document.getElementById('monthSelector');
-      const yearSelector = document.getElementById('yearSelector');
-      
-      if (monthSelector && this.handlers.month) {
-        monthSelector.removeEventListener('change', this.handlers.month);
-        console.log("Month change event detached");
-      }
-      
-      if (yearSelector && this.handlers.year) {
-        yearSelector.removeEventListener('change', this.handlers.year);
-        console.log("Year change event detached");
-      }
-    },
-    
-    // Attach event listeners
-    attach: function() {
-      const monthSelector = document.getElementById('monthSelector');
-      const yearSelector = document.getElementById('yearSelector');
-      
-      if (monthSelector && this.handlers.month) {
-        monthSelector.addEventListener('change', this.handlers.month);
-        console.log("Month change event attached");
-      }
-      
-      if (yearSelector && this.handlers.year) {
-        yearSelector.addEventListener('change', this.handlers.year);
-        console.log("Year change event attached");
-      }
-    }
-  };
-  
-  // Settings module
-  const Settings = {
-    // Default settings
-    defaults: {
-      currencySymbol: '$',
-      dateFormat: 'MM/DD/YYYY',
-      darkMode: false,
-      showRemaining: true,
-      enableAlerts: true,
-      startingDay: '1',
-      language: 'en',
-      showDecimals: true
-    },
-    
 
-    
-
-    // Get a setting with fallback to default
-    getSetting: function(key) {
-      const userSettings = Utils.getLocalStorage('simbudget_settings', {});
-      return userSettings[key] !== undefined ? userSettings[key] : this.defaults[key];
-    },
-    
-    // Set a setting
-    setSetting: function(key, value) {
-      const userSettings = Utils.getLocalStorage('simbudget_settings', {});
-      userSettings[key] = value;
-      return Utils.setLocalStorage('simbudget_settings', userSettings);
-    },
-    
-    // Save all settings
-    saveAll: function(settings) {
-      return Utils.setLocalStorage('simbudget_settings', settings);
-    },
-    
-    // Get all settings
-    getAll: function() {
-      const userSettings = Utils.getLocalStorage('simbudget_settings', {});
-      // Merge with defaults for any missing settings
-      return { ...this.defaults, ...userSettings };
-    },
-    
-    // Convenience methods for common settings
-    getCurrencySymbol: function() {
-      return this.getSetting('currencySymbol');
-    },
-    
-    getDateFormat: function() {
-      return this.getSetting('dateFormat');
-    },
-    
-    isDarkMode: function() {
-      return this.getSetting('darkMode');
-    },
-
-      showDecimals: function() {
-    return this.getSetting('showDecimals');
-  }
-  };
-
-  
-  
-  // View management
-  const Views = {
-    // Switch to a view
-    switchTo: function(viewName) {
-      if (!viewName) return;
-      
-      // Hide all views
-      document.querySelectorAll('.view').forEach(view => {
-        view.classList.remove('active-view');
-      });
-      
-      // Show the selected view
-      const targetView = document.getElementById(viewName + 'View');
-      if (targetView) {
-        targetView.classList.add('active-view');
-        _currentView = viewName;
-        
-        // Update sidebar active state
-        document.querySelectorAll('.sidebar-item').forEach(item => {
-          item.classList.remove('active');
-        });
-        
-        const activeItem = document.querySelector(`.sidebar-item[data-view="${viewName}"]`);
-        if (activeItem) {
-          activeItem.classList.add('active');
+        // Invalidate related keys
+        if (relationships[key]) {
+          relationships[key].forEach((relatedKey) => {
+            this.invalidate(relatedKey);
+          });
         }
-        
-        // Load data for the view
-        SimBudget.loadViewData(viewName);
-      }
-    },
-    
-    // Get current view
-    getCurrent: function() {
-      return _currentView;
-    }
-  };
-  
-  // Public methods
-  return {
-    // Settings module reference
-    Settings: Settings,
-    
-    // Views module reference
-    Views: Views,
-    
-    /**
-     * Initialize the application
-     */
-    initialize: function() {
-      if (_initialized) return;
-      
-      console.log('Initializing SimBudget...');
-      
-      // Set up event listeners
-      this.bindEvents();
-      
-      // Set up month and year selectors
-      this.setupMonthYearSelectors();
-      
-      // Check for existing sheet URL
-      this.checkExistingConnection();
-      
-      // Apply settings
-      this.applySettings();
-      
-      // Load user info
-      this.loadUserInfo();
-    
-      // Load translations based on saved language preference
-      this.loadTranslations();
+      },
+    };
 
-      // Load initial budget data
-      this.loadViewData('budget');
-      
-      _initialized = true;
-      console.log('SimBudget initialized');
-    },
-    
+    // Event management for month/year selectors
+    const _eventManager = {
+      // Event handler references
+      handlers: {
+        month: null,
+        year: null,
+      },
 
+      // Detach event listeners
+      detach: function () {
+        const monthSelector = document.getElementById("monthSelector");
+        const yearSelector = document.getElementById("yearSelector");
 
-
-    /**
- * Load translations based on user preference
- */
-loadTranslations: function() {
-  const language = this.Settings.getSetting('language') || 'en';
-  
-  API.getTranslations(language,
-    function(result) {
-      if (result && result.translations) {
-        // Store translations globally
-        window.SimBudget = window.SimBudget || {};
-        SimBudget.translations = result.translations;
-        
-        // Apply translations to the UI
-        SimBudget.applyTranslations();
-      }
-    },
-    function(error) {
-      console.error('Error loading translations:', error);
-    }
-  );
-},
-
-/**
- * Apply translations to UI elements
- */
-applyTranslations: function() {
-  if (!SimBudget.translations) return;
-  
-  // Update all elements with data-translate attribute
-  document.querySelectorAll('[data-translate]').forEach(el => {
-    const key = el.getAttribute('data-translate');
-    if (key && SimBudget.translations[key]) {
-      el.textContent = SimBudget.translations[key];
-    }
-  });
-  
-  // Update placeholders
-  document.querySelectorAll('[data-translate-placeholder]').forEach(el => {
-    const key = el.getAttribute('data-translate-placeholder');
-    if (key && SimBudget.translations[key]) {
-      el.setAttribute('placeholder', SimBudget.translations[key]);
-    }
-  });
-  
-  // Update titles
-  document.querySelectorAll('[data-translate-title]').forEach(el => {
-    const key = el.getAttribute('data-translate-title');
-    if (key && SimBudget.translations[key]) {
-      el.setAttribute('title', SimBudget.translations[key]);
-    }
-  });
-},
-    /**
-     * Set up month and year selectors
-     */
-    setupMonthYearSelectors: function() {
-      // YEAR SELECTOR - Add this first
-      const yearSelector = document.getElementById('yearSelector');
-      if (yearSelector) {
-        // Clear existing options
-        yearSelector.innerHTML = '';
-        
-        // Get current year
-        const currentYear = new Date().getFullYear();
-        
-        // Create options for a range of years (current year ± 2)
-        for (let year = currentYear - 2; year <= currentYear + 2; year++) {
-          const option = document.createElement('option');
-          option.value = year;
-          option.textContent = year;
-          yearSelector.appendChild(option);
+        if (monthSelector && this.handlers.month) {
+          monthSelector.removeEventListener("change", this.handlers.month);
+          console.log("Month change event detached");
         }
-        
-        // Set current year as selected
-        yearSelector.value = currentYear.toString();
-      }
-      
-      // MONTH SELECTOR - Keep your existing code
-        const monthSelector = document.getElementById('monthSelector');
-  if (monthSelector) {
-    // Clear existing options
-    monthSelector.innerHTML = '';
-    
-    // Month keys for translations
-    const monthKeys = [
-      'january', 'february', 'march', 'april', 'may', 'june',
-      'july', 'august', 'september', 'october', 'november', 'december'
-    ];
-    
-    // English month names (preserve for values)
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    
-    // Get current month (0-11)
-    const currentMonth = new Date().getMonth();
-    
-    // Create options for each month
-    monthKeys.forEach((monthKey, index) => {
-      const option = document.createElement('option');
-      option.value = monthNames[index]; // Keep English values for backend compatibility
-      option.setAttribute('data-translate', monthKey); // Enable translation
-      option.textContent = monthNames[index]; // Default text
-      monthSelector.appendChild(option);
-    });
-    
-    // Set current month as selected
-    monthSelector.value = monthNames[currentMonth];
-  }
-},
-    
-    /**
-     * Update month and year when changed by user
-     */
-    updateMonthYear: function(month, year) {
-      // Skip if we're in the middle of rendering
-      if (_isRendering) {
-        console.log(`Skipping month/year update during rendering`);
-        return;
-      }
-      
-      // Skip if we're already loading a view
-      if (_loadingView) {
-        console.log(`Skipping month/year update during ${_loadingView} loading`);
-        return;
-      }
-      
-      console.log(`Updating month/year to ${month} ${year}`);  
-      API.setMonthYear(month, year,
-        function(result) {
-          console.log('Month/year updated:', month, year);
-          
-          // Invalidate budget cache when month/year changes
-          if (_cache.config.invalidateOnMonthYearChange) {
-            _cache.invalidateRelated('budget');
+
+        if (yearSelector && this.handlers.year) {
+          yearSelector.removeEventListener("change", this.handlers.year);
+          console.log("Year change event detached");
+        }
+      },
+
+      // Attach event listeners
+      attach: function () {
+        const monthSelector = document.getElementById("monthSelector");
+        const yearSelector = document.getElementById("yearSelector");
+
+        if (monthSelector && this.handlers.month) {
+          monthSelector.addEventListener("change", this.handlers.month);
+          console.log("Month change event attached");
+        }
+
+        if (yearSelector && this.handlers.year) {
+          yearSelector.addEventListener("change", this.handlers.year);
+          console.log("Year change event attached");
+        }
+      },
+    };
+
+    // Settings module
+    const Settings = {
+      // Default settings
+      defaults: {
+        currencySymbol: "$",
+        dateFormat: "MM/DD/YYYY",
+        darkMode: false,
+        showRemaining: true,
+        enableAlerts: true,
+        startingDay: "1",
+        language: "en",
+        showDecimals: true,
+      },
+
+      // Get a setting with fallback to default
+      getSetting: function (key) {
+        const userSettings = Utils.getLocalStorage("simbudget_settings", {});
+        return userSettings[key] !== undefined
+          ? userSettings[key]
+          : this.defaults[key];
+      },
+
+      // Set a setting
+      setSetting: function (key, value) {
+        const userSettings = Utils.getLocalStorage("simbudget_settings", {});
+        userSettings[key] = value;
+        return Utils.setLocalStorage("simbudget_settings", userSettings);
+      },
+
+      // Save all settings
+      saveAll: function (settings) {
+        return Utils.setLocalStorage("simbudget_settings", settings);
+      },
+
+      // Get all settings
+      getAll: function () {
+        const userSettings = Utils.getLocalStorage("simbudget_settings", {});
+        // Merge with defaults for any missing settings
+        return { ...this.defaults, ...userSettings };
+      },
+
+      // Convenience methods for common settings
+      getCurrencySymbol: function () {
+        return this.getSetting("currencySymbol");
+      },
+
+      getDateFormat: function () {
+        return this.getSetting("dateFormat");
+      },
+
+      isDarkMode: function () {
+        return this.getSetting("darkMode");
+      },
+
+      showDecimals: function () {
+        return this.getSetting("showDecimals");
+      },
+    };
+
+    // View management
+    const Views = {
+      // Switch to a view
+      switchTo: function (viewName) {
+        if (!viewName) return;
+
+        // Hide all views
+        document.querySelectorAll(".view").forEach((view) => {
+          view.classList.remove("active-view");
+        });
+
+        // Show the selected view
+        const targetView = document.getElementById(viewName + "View");
+        if (targetView) {
+          targetView.classList.add("active-view");
+          _currentView = viewName;
+
+          // Update sidebar active state
+          document.querySelectorAll(".sidebar-item").forEach((item) => {
+            item.classList.remove("active");
+          });
+
+          const activeItem = document.querySelector(
+            `.sidebar-item[data-view="${viewName}"]`
+          );
+          if (activeItem) {
+            activeItem.classList.add("active");
           }
-          
-          // Reload budget data with new month/year
-          SimBudget.loadViewData('budget', true); 
-        },
-        function(error) {
-          Utils.showToast('Error updating month/year: ' + error, 'error');
+
+          // Load data for the view
+          SimBudget.loadViewData(viewName);
         }
-      );
-    },
-    
-    /**
-     * Bind all event listeners
-     */
-    /**
- * Bind all event listeners
+      },
+
+      // Get current view
+      getCurrent: function () {
+        return _currentView;
+      },
+    };
+
+    // Public methods
+    return {
+      // Settings module reference
+      Settings: Settings,
+
+      // Views module reference
+      Views: Views,
+
+  /**
+ * Initialize the application
  */
-bindEvents: function() {
-  // Sidebar toggle
-  const toggleBtn = document.getElementById('toggleSidebar');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', function() {
-      const sidebar = document.getElementById('sidebar');
-      const contentArea = document.getElementById('contentArea');
-      
-      if (sidebar) {
-        sidebar.classList.toggle('sb-open');
-        sidebar.classList.toggle('sb-collapsed');
-        
-        if (contentArea) {
-          contentArea.classList.toggle('sb-expanded');
-        }
-      }
-    });
-  }
-  
-  // Mobile sidebar toggle
-  const mobileToggle = document.getElementById('mobileSidebarToggle');
-  if (mobileToggle) {
-    mobileToggle.addEventListener('click', function() {
-      const sidebar = document.getElementById('sidebar');
-      const backdrop = document.getElementById('sidebarBackdrop');
-      
-      if (sidebar) {
-        sidebar.classList.toggle('sb-open');
-        
-        if (backdrop) {
-          backdrop.classList.toggle('sb-visible');
-        }
-        
-        // Update toggle icon
-        this.innerHTML = sidebar.classList.contains('sb-open') ? 
-          '<i class="material-icons">close</i>' : 
-          '<i class="material-icons">menu</i>';
-        
-        // Lock/unlock body scroll
-        document.body.style.overflow = sidebar.classList.contains('sb-open') ? 'hidden' : '';
-      }
-    });
-  }
-  
-  // Sidebar navigation - FIXED to use sb-nav-item instead of sidebar-item
-  document.querySelectorAll('.sb-nav-item, [data-view="settings"]').forEach(item => {
-    item.addEventListener('click', function(e) {
-      e.preventDefault();
-      
-      // Get the view name from data attribute
-      const viewName = this.getAttribute('data-view');
-      if (!viewName) return;
-      
-      // Update active state
-      document.querySelectorAll('.sb-nav-item').forEach(navItem => {
-        navItem.classList.remove('active');
-      });
-      this.classList.add('active');
-      
-      // Switch to the view using SimBudget's existing function
-      if (window.SimBudget && SimBudget.Views) {
-        SimBudget.Views.switchTo(viewName);
-      }
-      
-      // Close sidebar on mobile
-      if (window.innerWidth < 992) {
-        const sidebar = document.getElementById('sidebar');
-        const backdrop = document.getElementById('sidebarBackdrop');
-        const mobileToggle = document.getElementById('mobileSidebarToggle');
-        
-        if (sidebar) sidebar.classList.remove('sb-open');
-        if (backdrop) backdrop.classList.remove('sb-visible');
-        document.body.style.overflow = '';
-        if (mobileToggle) mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
-      }
-    });
-    
-    // Also handle link clicks directly
-    const link = item.querySelector('a');
-    if (link) {
-      link.addEventListener('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Trigger click on parent
-        const navItem = this.closest('.sb-nav-item, [data-view="settings"]');
-        if (navItem) navItem.click();
-      });
-    }
-  });
-  
-  // Month and year selectors
-  const monthSelector = document.getElementById('monthSelector');
-  const yearSelector = document.getElementById('yearSelector');
-  
-  if (monthSelector && yearSelector) {
-    // Create handlers and store references
-    _eventManager.handlers.month = function() {
-      SimBudget.updateMonthYear(this.value, yearSelector.value);
-    };
-    
-    _eventManager.handlers.year = function() {
-      SimBudget.updateMonthYear(monthSelector.value, this.value);
-    };
-    
-    // Initial attachment
-    monthSelector.addEventListener('change', _eventManager.handlers.month);
-    yearSelector.addEventListener('change', _eventManager.handlers.year);
-  }
-  
-  // Settings panel
-  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-  if (saveSettingsBtn) {
-    saveSettingsBtn.addEventListener('click', this.saveSettings);
-  }
-  
-  const resetSettingsBtn = document.getElementById('resetSettings');
-  if (resetSettingsBtn) {
-    resetSettingsBtn.addEventListener('click', this.resetSettings);
-  }
-  
-  const testConnectionBtn = document.getElementById('testConnection');
-  if (testConnectionBtn) {
-    testConnectionBtn.addEventListener('click', this.testConnection);
-  }
-  
-  // Responsive design - auto-collapse sidebar on small screens
-  window.addEventListener('resize', Utils.debounce(function() {
-    const sidebar = document.getElementById('sidebar');
-    if (window.innerWidth < 768 && sidebar && sidebar.classList.contains('sb-open')) {
-      // Close sidebar
-      sidebar.classList.remove('sb-open');
-      
-      const backdrop = document.getElementById('sidebarBackdrop');
-      if (backdrop) backdrop.classList.remove('sb-visible');
-      
-      document.body.style.overflow = '';
-      
-      const mobileToggle = document.getElementById('mobileSidebarToggle');
-      if (mobileToggle) mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
-    }
-  }, 250));
+initialize: function() {
+  if (_initialized) return;
+
+  console.log("Initializing SimBudget...");
 
 
-  // Add this to the bindEvents function in your Init.html file
-// Sidebar backdrop click handler
-const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-if (sidebarBackdrop) {
-  sidebarBackdrop.addEventListener('click', function() {
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) {
-      sidebar.classList.remove('sb-open');
-      this.classList.remove('sb-visible');
-      document.body.style.overflow = '';
-      
-      const mobileToggle = document.getElementById('mobileSidebarToggle');
-      if (mobileToggle) mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
-    }
-  });
-}
-  
-  // Set up view-specific buttons
-  const refreshBudgetBtn = document.getElementById('refreshBudget');
-  if (refreshBudgetBtn) {
-    refreshBudgetBtn.addEventListener('click', () => {
-      // Force refresh by invalidating cache
-      _cache.invalidate('budget');
-      this.loadViewData('budget', true);
-    });
-  }
-  
-  const refreshNetWorthBtn = document.getElementById('refreshNetWorth');
-  if (refreshNetWorthBtn) {
-    refreshNetWorthBtn.addEventListener('click', () => {
-      // Force refresh by invalidating cache
-      _cache.invalidate('netWorth');
-      this.loadViewData('netWorth', true);
-    });
-  }
+  // Set up event listeners
+  this.bindEvents();
+
+  // Set up month and year selectors
+  this.setupMonthYearSelectors();
+
+  // Check for existing sheet URL
+  this.checkExistingConnection();
+
+  // Apply settings
+  this.applySettings();
+
+  // Load user info
+  this.loadUserInfo();
+
+  // Load translations based on saved language preference
+  this.loadTranslations();
+
+  // Load initial budget data
+  this.loadViewData("budget");
+
+ 
+
+  _initialized = true;
+  console.log("SimBudget initialized");
 },
-    
-    /**
-     * Check for existing connection and load if available
-     */
-    checkExistingConnection: function() {
-      API.getUserCredentials(
-        function(result) {
-          if (result.sheetUrl) {
-            const urlInput = document.getElementById('budgetSheetUrl');
-            if (urlInput) {
-              urlInput.value = result.sheetUrl;
+
+      /**
+       * Load translations based on user preference
+       */
+      loadTranslations: function () {
+        const language = this.Settings.getSetting("language") || "en";
+
+        API.getTranslations(
+          language,
+          function (result) {
+            if (result && result.translations) {
+              // Store translations globally
+              window.SimBudget = window.SimBudget || {};
+              SimBudget.translations = result.translations;
+
+              // Apply translations to the UI
+              SimBudget.applyTranslations();
             }
-            
-            // Auto-test connection 
-            SimBudget.testConnection();
+          },
+          function (error) {
+            console.error("Error loading translations:", error);
+          }
+        );
+      },
+
+              /**
+         * Apply translations to UI elements
+         */
+        applyTranslations: function () {
+          if (!SimBudget.translations) return;
+
+          document.querySelectorAll("[data-translate]").forEach((el) => {
+            const key = el.getAttribute("data-translate");
+            if (key && SimBudget.translations[key]) {
+              el.textContent = SimBudget.translations[key];
+            }
+          });
+
+          document
+            .querySelectorAll("[data-translate-placeholder]")
+            .forEach((el) => {
+              const key = el.getAttribute("data-translate-placeholder");
+              if (key && SimBudget.translations[key]) {
+                el.setAttribute("placeholder", SimBudget.translations[key]);
+              }
+            });
+
+          document.querySelectorAll("[data-translate-title]").forEach((el) => {
+            const key = el.getAttribute("data-translate-title");
+            if (key && SimBudget.translations[key]) {
+              el.setAttribute("title", SimBudget.translations[key]);
+            }
+          });
+
+          if (this._currentBudgetData) {
+            // Force update budget messages with translations
+            this.updateInfoMessage(true);
           }
         },
-        function(error) {
-          console.error('Error getting user credentials:', error);
-        }
-      );
-    },
-    
-    /**
-     * Apply user settings
-     */
-    applySettings: function() {
-      const settings = Settings.getAll();
-      
-      // Apply dark mode if enabled
-      if (settings.darkMode) {
-        document.body.classList.add('dark-mode');
-      } else {
-        document.body.classList.remove('dark-mode');
-      }
-      
-      // Set values in settings form
-      const currencyInput = document.getElementById('currencySymbol');
-      if (currencyInput) {
-        currencyInput.value = settings.currencySymbol;
-      }
-      
-      const dateFormatSelect = document.getElementById('dateFormat');
-      if (dateFormatSelect) {
-        dateFormatSelect.value = settings.dateFormat;
-      }
-      
-      const darkModeCheckbox = document.getElementById('darkMode');
-      if (darkModeCheckbox) {
-        darkModeCheckbox.checked = settings.darkMode;
-      }
-      
-      const languageSelect = document.getElementById('languageSelector');
-      if (languageSelect) {
-        languageSelect.value = settings.language;
-      }
-      
-      const showRemainingCheckbox = document.getElementById('showRemaining');
-      if (showRemainingCheckbox) {
-        showRemainingCheckbox.checked = settings.showRemaining;
-      }
-      
-      const enableAlertsCheckbox = document.getElementById('enableAlerts');
-      if (enableAlertsCheckbox) {
-        enableAlertsCheckbox.checked = settings.enableAlerts;
-      }
-      
-      const startingDaySelect = document.getElementById('startingDay');
-      if (startingDaySelect) {
-        startingDaySelect.value = settings.startingDay;
-      }
+      /**
+       * Set up month and year selectors
+       */
+      setupMonthYearSelectors: function () {
+        // YEAR SELECTOR - Add this first
+        const yearSelector = document.getElementById("yearSelector");
+        if (yearSelector) {
+          // Clear existing options
+          yearSelector.innerHTML = "";
 
-      // In applySettings function
-        const showDecimalsCheckbox = document.getElementById('showDecimals');
+          // Get current year
+          const currentYear = new Date().getFullYear();
+
+          // Create options for a range of years (current year ± 2)
+          for (let year = currentYear - 2; year <= currentYear + 2; year++) {
+            const option = document.createElement("option");
+            option.value = year;
+            option.textContent = year;
+            yearSelector.appendChild(option);
+          }
+
+          // Set current year as selected
+          yearSelector.value = currentYear.toString();
+        }
+
+        // MONTH SELECTOR - Keep your existing code
+        const monthSelector = document.getElementById("monthSelector");
+        if (monthSelector) {
+          // Clear existing options
+          monthSelector.innerHTML = "";
+
+          // Month keys for translations
+          const monthKeys = [
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+          ];
+
+          // English month names (preserve for values)
+          const monthNames = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+          ];
+
+          // Get current month (0-11)
+          const currentMonth = new Date().getMonth();
+
+          // Create options for each month
+          monthKeys.forEach((monthKey, index) => {
+            const option = document.createElement("option");
+            option.value = monthNames[index]; // Keep English values for backend compatibility
+            option.setAttribute("data-translate", monthKey); // Enable translation
+            option.textContent = monthNames[index]; // Default text
+            monthSelector.appendChild(option);
+          });
+
+          // Set current month as selected
+          monthSelector.value = monthNames[currentMonth];
+        }
+      },
+
+      /**
+       * Update month and year when changed by user
+       */
+      updateMonthYear: function (month, year) {
+        // Skip if we're in the middle of rendering
+        if (_isRendering) {
+          console.log(`Skipping month/year update during rendering`);
+          return;
+        }
+
+        // Skip if we're already loading a view
+        if (_loadingView) {
+          console.log(
+            `Skipping month/year update during ${_loadingView} loading`
+          );
+          return;
+        }
+
+        console.log(`Updating month/year to ${month} ${year}`);
+        API.setMonthYear(
+          month,
+          year,
+          function (result) {
+            console.log("Month/year updated:", month, year);
+
+            // Invalidate budget cache when month/year changes
+            if (_cache.config.invalidateOnMonthYearChange) {
+              _cache.invalidateRelated("budget");
+            }
+
+            // Reload budget data with new month/year
+            SimBudget.loadViewData("budget", true);
+          },
+          function (error) {
+            Utils.showToast("Error updating month/year: " + error, "error");
+          }
+        );
+      },
+
+      /**
+       * Bind all event listeners
+       */
+      /**
+       * Bind all event listeners
+       */
+      bindEvents: function () {
+        // Sidebar toggle
+        const toggleBtn = document.getElementById("toggleSidebar");
+        if (toggleBtn) {
+          toggleBtn.addEventListener("click", function () {
+            const sidebar = document.getElementById("sidebar");
+            const contentArea = document.getElementById("contentArea");
+
+            if (sidebar) {
+              sidebar.classList.toggle("sb-open");
+              sidebar.classList.toggle("sb-collapsed");
+
+              if (contentArea) {
+                contentArea.classList.toggle("sb-expanded");
+              }
+            }
+          });
+        }
+
+
+
+
+        // Mobile sidebar toggle
+        const mobileToggle = document.getElementById("mobileSidebarToggle");
+        if (mobileToggle) {
+          mobileToggle.addEventListener("click", function () {
+            const sidebar = document.getElementById("sidebar");
+            const backdrop = document.getElementById("sidebarBackdrop");
+
+            if (sidebar) {
+              sidebar.classList.toggle("sb-open");
+
+              if (backdrop) {
+                backdrop.classList.toggle("sb-visible");
+              }
+
+              // Update toggle icon
+              this.innerHTML = sidebar.classList.contains("sb-open")
+                ? '<i class="material-icons">close</i>'
+                : '<i class="material-icons">menu</i>';
+
+              // Lock/unlock body scroll
+              document.body.style.overflow = sidebar.classList.contains(
+                "sb-open"
+              )
+                ? "hidden"
+                : "";
+            }
+          });
+        }
+
+        // Sidebar navigation - FIXED to use sb-nav-item instead of sidebar-item
+        document
+          .querySelectorAll('.sb-nav-item, [data-view="settings"]')
+          .forEach((item) => {
+            item.addEventListener("click", function (e) {
+              e.preventDefault();
+
+              // Get the view name from data attribute
+              const viewName = this.getAttribute("data-view");
+              if (!viewName) return;
+
+              // Update active state
+              document.querySelectorAll(".sb-nav-item").forEach((navItem) => {
+                navItem.classList.remove("active");
+              });
+              this.classList.add("active");
+
+              // Switch to the view using SimBudget's existing function
+              if (window.SimBudget && SimBudget.Views) {
+                SimBudget.Views.switchTo(viewName);
+              }
+
+              // Close sidebar on mobile
+              if (window.innerWidth < 992) {
+                const sidebar = document.getElementById("sidebar");
+                const backdrop = document.getElementById("sidebarBackdrop");
+                const mobileToggle = document.getElementById(
+                  "mobileSidebarToggle"
+                );
+
+                if (sidebar) sidebar.classList.remove("sb-open");
+                if (backdrop) backdrop.classList.remove("sb-visible");
+                document.body.style.overflow = "";
+                if (mobileToggle)
+                  mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+              }
+            });
+
+            // Also handle link clicks directly
+            const link = item.querySelector("a");
+            if (link) {
+              link.addEventListener("click", function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Trigger click on parent
+                const navItem = this.closest(
+                  '.sb-nav-item, [data-view="settings"]'
+                );
+                if (navItem) navItem.click();
+              });
+            }
+          });
+
+        // Month and year selectors
+        const monthSelector = document.getElementById("monthSelector");
+        const yearSelector = document.getElementById("yearSelector");
+
+        if (monthSelector && yearSelector) {
+          // Create handlers and store references
+          _eventManager.handlers.month = function () {
+            SimBudget.updateMonthYear(this.value, yearSelector.value);
+          };
+
+          _eventManager.handlers.year = function () {
+            SimBudget.updateMonthYear(monthSelector.value, this.value);
+          };
+
+          // Initial attachment
+          monthSelector.addEventListener(
+            "change",
+            _eventManager.handlers.month
+          );
+          yearSelector.addEventListener("change", _eventManager.handlers.year);
+        }
+
+        // Settings panel
+        const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+        if (saveSettingsBtn) {
+          saveSettingsBtn.addEventListener("click", this.saveSettings);
+        }
+
+        const resetSettingsBtn = document.getElementById("resetSettings");
+        if (resetSettingsBtn) {
+          resetSettingsBtn.addEventListener("click", this.resetSettings);
+        }
+
+        const testConnectionBtn = document.getElementById("testConnection");
+        if (testConnectionBtn) {
+          testConnectionBtn.addEventListener("click", this.testConnection);
+        }
+
+        // Responsive design - auto-collapse sidebar on small screens
+        window.addEventListener(
+          "resize",
+          Utils.debounce(function () {
+            const sidebar = document.getElementById("sidebar");
+            if (
+              window.innerWidth < 768 &&
+              sidebar &&
+              sidebar.classList.contains("sb-open")
+            ) {
+              // Close sidebar
+              sidebar.classList.remove("sb-open");
+
+              const backdrop = document.getElementById("sidebarBackdrop");
+              if (backdrop) backdrop.classList.remove("sb-visible");
+
+              document.body.style.overflow = "";
+
+              const mobileToggle = document.getElementById(
+                "mobileSidebarToggle"
+              );
+              if (mobileToggle)
+                mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+            }
+          }, 250)
+        );
+
+        // Add this to the bindEvents function in your Init.html file
+        // Sidebar backdrop click handler
+        const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+        if (sidebarBackdrop) {
+          sidebarBackdrop.addEventListener("click", function () {
+            const sidebar = document.getElementById("sidebar");
+            if (sidebar) {
+              sidebar.classList.remove("sb-open");
+              this.classList.remove("sb-visible");
+              document.body.style.overflow = "";
+
+              const mobileToggle = document.getElementById(
+                "mobileSidebarToggle"
+              );
+              if (mobileToggle)
+                mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+            }
+          });
+        }
+
+        // Set up view-specific buttons
+        const refreshBudgetBtn = document.getElementById("refreshBudget");
+        if (refreshBudgetBtn) {
+          refreshBudgetBtn.addEventListener("click", () => {
+            // Force refresh by invalidating cache
+            _cache.invalidate("budget");
+            this.loadViewData("budget", true);
+          });
+        }
+
+        const refreshNetWorthBtn = document.getElementById("refreshNetWorth");
+        if (refreshNetWorthBtn) {
+          refreshNetWorthBtn.addEventListener("click", () => {
+            // Force refresh by invalidating cache
+            _cache.invalidate("netWorth");
+            this.loadViewData("netWorth", true);
+          });
+        }
+      },
+
+      /**
+       * Check for existing connection and load if available
+       */
+      checkExistingConnection: function () {
+        API.getUserCredentials(
+          function (result) {
+            if (result.sheetUrl) {
+              const urlInput = document.getElementById("budgetSheetUrl");
+              if (urlInput) {
+                urlInput.value = result.sheetUrl;
+              }
+
+              // Auto-test connection
+              SimBudget.testConnection();
+            }
+          },
+          function (error) {
+            console.error("Error getting user credentials:", error);
+          }
+        );
+      },
+
+      /**
+       * Apply user settings
+       */
+      applySettings: function () {
+        const settings = Settings.getAll();
+
+        // Apply dark mode if enabled
+        if (settings.darkMode) {
+          document.body.classList.add("dark-mode");
+        } else {
+          document.body.classList.remove("dark-mode");
+        }
+
+        // Set values in settings form
+        const currencyInput = document.getElementById("currencySymbol");
+        if (currencyInput) {
+          currencyInput.value = settings.currencySymbol;
+        }
+
+        const dateFormatSelect = document.getElementById("dateFormat");
+        if (dateFormatSelect) {
+          dateFormatSelect.value = settings.dateFormat;
+        }
+
+        const darkModeCheckbox = document.getElementById("darkMode");
+        if (darkModeCheckbox) {
+          darkModeCheckbox.checked = settings.darkMode;
+        }
+
+        const languageSelect = document.getElementById("languageSelector");
+        if (languageSelect) {
+          languageSelect.value = settings.language;
+        }
+
+        const showRemainingCheckbox = document.getElementById("showRemaining");
+        if (showRemainingCheckbox) {
+          showRemainingCheckbox.checked = settings.showRemaining;
+        }
+
+        const enableAlertsCheckbox = document.getElementById("enableAlerts");
+        if (enableAlertsCheckbox) {
+          enableAlertsCheckbox.checked = settings.enableAlerts;
+        }
+
+        const startingDaySelect = document.getElementById("startingDay");
+        if (startingDaySelect) {
+          startingDaySelect.value = settings.startingDay;
+        }
+
+        // In applySettings function
+        const showDecimalsCheckbox = document.getElementById("showDecimals");
         if (showDecimalsCheckbox) {
-        showDecimalsCheckbox.checked = settings.showDecimals;
+          showDecimalsCheckbox.checked = settings.showDecimals;
         }
-    },
-    
-    /**
-     * Load user info
-     */
-    loadUserInfo: function() {
-      API.getUserCredentials(
-        function(result) {
-          const userEmailEl = document.getElementById('userEmail');
-          if (userEmailEl) {
-            userEmailEl.textContent = result.email || 'Not signed in';
-          }
-        },
-        function(error) {
-          console.error('Error getting user credentials:', error);
-          const userEmailEl = document.getElementById('userEmail');
-          if (userEmailEl) {
-            userEmailEl.textContent = 'Error loading user info';
-          }
-        }
-      );
-    },
-    
-    /**
-     * Save settings
-     */
-    saveSettings: function() {
-      // Get values from form
-      const settings = {
-        currencySymbol: document.getElementById('currencySymbol').value,
-        dateFormat: document.getElementById('dateFormat').value,
-        darkMode: document.getElementById('darkMode').checked,
-        showRemaining: document.getElementById('showRemaining').checked,
-        enableAlerts: document.getElementById('enableAlerts').checked,
-        startingDay: document.getElementById('startingDay').value,
-        language: document.getElementById('languageSelector').value,
-         showDecimals: document.getElementById('showDecimals').checked
+      },
 
-      };
-      
-      // Save to local storage
-      if (SimBudget.Settings.saveAll(settings)) {
-        // Apply settings
-        SimBudget.applySettings();
-        
-        // Save sheet URL if provided
-        const sheetUrl = document.getElementById('budgetSheetUrl').value;
-        if (sheetUrl) {
-          API.setBudgetSheetUrl(sheetUrl, 
-            function() {
-              Utils.showStatus('Settings saved successfully', false, document.getElementById('settingsStatus'), 3000);
-              
-              // Invalidate all caches when sheet URL changes
-              _cache.invalidateAll();
-            },
-            function(error) {
-              Utils.showStatus('Settings saved but sheet URL could not be saved: ' + error, true, document.getElementById('settingsStatus'));
+      /**
+       * Load user info
+       */
+      loadUserInfo: function () {
+        API.getUserCredentials(
+          function (result) {
+            const userEmailEl = document.getElementById("userEmail");
+            if (userEmailEl) {
+              userEmailEl.textContent = result.email || "Not signed in";
             }
+          },
+          function (error) {
+            console.error("Error getting user credentials:", error);
+            const userEmailEl = document.getElementById("userEmail");
+            if (userEmailEl) {
+              userEmailEl.textContent = "Error loading user info";
+            }
+          }
+        );
+      },
+
+      /**
+       * Save settings
+       */
+      saveSettings: function () {
+        // Get values from form
+        const settings = {
+          currencySymbol: document.getElementById("currencySymbol").value,
+          dateFormat: document.getElementById("dateFormat").value,
+          darkMode: document.getElementById("darkMode").checked,
+          showRemaining: document.getElementById("showRemaining").checked,
+          enableAlerts: document.getElementById("enableAlerts").checked,
+          startingDay: document.getElementById("startingDay").value,
+          language: document.getElementById("languageSelector").value,
+          showDecimals: document.getElementById("showDecimals").checked,
+        };
+
+        // Save to local storage
+        if (SimBudget.Settings.saveAll(settings)) {
+          // Apply settings
+          SimBudget.applySettings();
+
+          // Save sheet URL if provided
+          const sheetUrl = document.getElementById("budgetSheetUrl").value;
+          if (sheetUrl) {
+            API.setBudgetSheetUrl(
+              sheetUrl,
+              function () {
+                Utils.showStatus(
+                  "Settings saved successfully",
+                  false,
+                  document.getElementById("settingsStatus"),
+                  3000
+                );
+
+                // Invalidate all caches when sheet URL changes
+                _cache.invalidateAll();
+              },
+              function (error) {
+                Utils.showStatus(
+                  "Settings saved but sheet URL could not be saved: " + error,
+                  true,
+                  document.getElementById("settingsStatus")
+                );
+              }
+            );
+          } else {
+            Utils.showStatus(
+              "Settings saved successfully",
+              false,
+              document.getElementById("settingsStatus"),
+              3000
+            );
+          }
+        } else {
+          Utils.showStatus(
+            "Error saving settings",
+            true,
+            document.getElementById("settingsStatus")
+          );
+        }
+      },
+
+      /**
+       * Reset settings to defaults
+       */
+      resetSettings: function () {
+        // Reset to defaults
+        if (SimBudget.Settings.saveAll(SimBudget.Settings.defaults)) {
+          // Apply settings
+          SimBudget.applySettings();
+
+          Utils.showStatus(
+            "Settings reset to defaults",
+            false,
+            document.getElementById("settingsStatus"),
+            3000
           );
         } else {
-          Utils.showStatus('Settings saved successfully', false, document.getElementById('settingsStatus'), 3000);
+          Utils.showStatus(
+            "Error resetting settings",
+            true,
+            document.getElementById("settingsStatus")
+          );
         }
-      } else {
-        Utils.showStatus('Error saving settings', true, document.getElementById('settingsStatus'));
-      }
-    },
-    
-    /**
-     * Reset settings to defaults
-     */
-    resetSettings: function() {
-      // Reset to defaults
-      if (SimBudget.Settings.saveAll(SimBudget.Settings.defaults)) {
-        // Apply settings
-        SimBudget.applySettings();
-        
-        Utils.showStatus('Settings reset to defaults', false, document.getElementById('settingsStatus'), 3000);
-      } else {
-        Utils.showStatus('Error resetting settings', true, document.getElementById('settingsStatus'));
-      }
-    },
-    
-    /**
-     * Test connection to sheet
-     */
-    testConnection: function() {
-      const sheetUrl = document.getElementById('budgetSheetUrl').value;
-      if (!sheetUrl) {
-        Utils.showStatus('Please enter a spreadsheet URL', true, document.getElementById('connectionStatus'));
-        return;
-      }
-      
-      // Show loading state
-      Utils.showStatus('Testing connection...', false, document.getElementById('connectionStatus'));
-      
-      API.verifySheetUrl(sheetUrl,
-        function(result) {
-          Utils.showStatus('Connection successful!', false, document.getElementById('connectionStatus'), 3000);
-          
-          // Invalidate all caches when connection changes
-          _cache.invalidateAll();
-        },
-        function(error) {
-          Utils.showStatus('Connection failed: ' + error, true, document.getElementById('connectionStatus'));
-        }
-      );
-    },
-    
-    /**
-     * Load data for a specific view with caching
-     * @param {string} viewName - Name of the view to load
-     * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
-     */
-    loadViewData: function(viewName, forceRefresh = false) {
-      console.log(`Loading data for ${viewName} view, force refresh: ${forceRefresh}`);
-      
-      // Skip if already loading the same view
-      if (_loadingView === viewName && !forceRefresh) {
-        console.log(`Already loading ${viewName}, skipping duplicate request`);
-        return;
-      }
-      
-      // Set loading flag
-      _loadingView = viewName;
-      
-      // Check cache first unless force refresh is requested
-      if (!forceRefresh && _cache.isValid(viewName)) {
-        console.log(`Using cached data for ${viewName} view`);
-        this.renderViewFromCache(viewName);
-        // Clear loading flag
-        _loadingView = null;
-        return;
-      }
-      
-      // Otherwise load from server
-      switch(viewName) {
-        case 'budget':
-          this.loadBudgetData();
-          break;
-        case 'expense':
-          this.loadExpenseData();
-          break;
-        case 'income':
-          // TODO: Add income data loading
-          _loadingView = null; // Clear flag since not implemented
-          break;
-        case 'recurring':
-          // TODO: Add recurring data loading
-          _loadingView = null; // Clear flag since not implemented
-          break;
-        case 'netWorth':
-          // TODO: Add net worth data loading
-          _loadingView = null; // Clear flag since not implemented
-          break;
-        case 'reports':
-          // TODO: Add reports data loading
-          _loadingView = null; // Clear flag since not implemented
-          break;
-        case 'setup':
-          // TODO: Add setup data loading
-          _loadingView = null; // Clear flag since not implemented
-          break;
-        case 'settings':
-          // Settings data is loaded inline
-          _loadingView = null; // Clear flag since settings are not loaded via API
-          break;
-        default:
-          console.error(`Unknown view name: ${viewName}`);
-          _loadingView = null; // Clear flag on error
-      }
-    },
-    
-    /**
-     * Render view using cached data
-     * @param {string} viewName - Name of the view to render
-     */
-    renderViewFromCache: function(viewName) {
-      console.log(`Rendering ${viewName} view from cache`);
-      const cachedData = _cache.get(viewName);
-      
-      if (!cachedData) {
-        console.error(`No cached data found for ${viewName} view`);
-        return;
-      }
-      
-      switch(viewName) {
-        case 'budget':
-          this.renderBudgetDashboard(cachedData);
-          break;
-        case 'expense':
-          this.renderExpenseView(cachedData);
-          break;
-        case 'income':
-          // TODO: Implement income view rendering
-          break;
-        case 'recurring':
-          // TODO: Implement recurring view rendering
-          break;
-        case 'netWorth':
-          // TODO: Implement net worth view rendering
-          break;
-        case 'reports':
-          // TODO: Implement reports view rendering
-          break;
-        default:
-          console.error(`Unknown view name for cache rendering: ${viewName}`);
-      }
-    },
+      },
 
-    /**
- * Load budget data
- */
-/**
- * Load budget data using a single consolidated API call
- */
-loadBudgetData: function() {
-  console.log("Loading budget data using consolidated API call...");
-  const contentArea = document.getElementById('budgetContent');
-  
-  // Show loading state (keeping your existing loading state code)
-  if (contentArea) {
-    // Check if dashboard container exists
-    if (contentArea.querySelector('.dashboard-container')) {
-      // Create loading overlay instead of replacing content
-      const overlay = document.createElement('div');
-      overlay.className = 'loading-overlay';
-      overlay.innerHTML = '<div class="loading-spinner"></div>';
-      overlay.style.position = 'absolute';
-      overlay.style.top = '0';
-      overlay.style.left = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
-      overlay.style.display = 'flex';
-      overlay.style.alignItems = 'center';
-      overlay.style.justifyContent = 'center';
-      overlay.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
-      overlay.style.zIndex = '100';
-      
-      // Position the container relative to make absolute positioning work
-      contentArea.style.position = 'relative';
-      
-      // Add the overlay
-      contentArea.appendChild(overlay);
-    } else {
-      // First load - use full dashboard structure with loading spinner in center
-      contentArea.innerHTML = `
+      /**
+       * Test connection to sheet
+       */
+      testConnection: function () {
+        const sheetUrl = document.getElementById("budgetSheetUrl").value;
+        if (!sheetUrl) {
+          Utils.showStatus(
+            "Please enter a spreadsheet URL",
+            true,
+            document.getElementById("connectionStatus")
+          );
+          return;
+        }
+
+        // Show loading state
+        Utils.showStatus(
+          "Testing connection...",
+          false,
+          document.getElementById("connectionStatus")
+        );
+
+        API.verifySheetUrl(
+          sheetUrl,
+          function (result) {
+            Utils.showStatus(
+              "Connection successful!",
+              false,
+              document.getElementById("connectionStatus"),
+              3000
+            );
+
+            // Invalidate all caches when connection changes
+            _cache.invalidateAll();
+          },
+          function (error) {
+            Utils.showStatus(
+              "Connection failed: " + error,
+              true,
+              document.getElementById("connectionStatus")
+            );
+          }
+        );
+      },
+
+      /**
+       * Load data for a specific view with caching
+       * @param {string} viewName - Name of the view to load
+       * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
+       */
+      loadViewData: function (viewName, forceRefresh = false) {
+        console.log(
+          `Loading data for ${viewName} view, force refresh: ${forceRefresh}`
+        );
+
+        // Skip if already loading the same view
+        if (_loadingView === viewName && !forceRefresh) {
+          console.log(
+            `Already loading ${viewName}, skipping duplicate request`
+          );
+          return;
+        }
+
+        // Set loading flag
+        _loadingView = viewName;
+
+        // Check cache first unless force refresh is requested
+        if (!forceRefresh && _cache.isValid(viewName)) {
+          console.log(`Using cached data for ${viewName} view`);
+          this.renderViewFromCache(viewName);
+          // Clear loading flag
+          _loadingView = null;
+          return;
+        }
+
+        // Otherwise load from server
+        switch (viewName) {
+          case "budget":
+            this.loadBudgetData();
+            break;
+          case "expense":
+            this.loadExpenseData();
+            break;
+          case "income":
+            // TODO: Add income data loading
+            _loadingView = null; // Clear flag since not implemented
+            break;
+          case "recurring":
+            // TODO: Add recurring data loading
+            _loadingView = null; // Clear flag since not implemented
+            break;
+          case "netWorth":
+            // TODO: Add net worth data loading
+            _loadingView = null; // Clear flag since not implemented
+            break;
+          case "reports":
+            // TODO: Add reports data loading
+            _loadingView = null; // Clear flag since not implemented
+            break;
+          case "setup":
+            // TODO: Add setup data loading
+            _loadingView = null; // Clear flag since not implemented
+            break;
+          case "settings":
+            // Settings data is loaded inline
+            _loadingView = null; // Clear flag since settings are not loaded via API
+            break;
+          default:
+            console.error(`Unknown view name: ${viewName}`);
+            _loadingView = null; // Clear flag on error
+        }
+      },
+
+      /**
+       * Render view using cached data
+       * @param {string} viewName - Name of the view to render
+       */
+      renderViewFromCache: function (viewName) {
+        console.log(`Rendering ${viewName} view from cache`);
+        const cachedData = _cache.get(viewName);
+
+        if (!cachedData) {
+          console.error(`No cached data found for ${viewName} view`);
+          return;
+        }
+
+        switch (viewName) {
+          case "budget":
+            this.renderBudgetDashboard(cachedData);
+            break;
+          case "expense":
+            this.renderExpenseView(cachedData);
+            break;
+          case "income":
+            // TODO: Implement income view rendering
+            break;
+          case "recurring":
+            // TODO: Implement recurring view rendering
+            break;
+          case "netWorth":
+            // TODO: Implement net worth view rendering
+            break;
+          case "reports":
+            // TODO: Implement reports view rendering
+            break;
+          default:
+            console.error(`Unknown view name for cache rendering: ${viewName}`);
+        }
+      },
+
+      /**
+       * Load budget data using a single consolidated API call
+       */
+      loadBudgetData: function () {
+        console.log("Loading budget data using consolidated API call...");
+        const contentArea = document.getElementById("budgetContent");
+
+        // Show loading state (keeping your existing loading state code)
+        if (contentArea) {
+          // Check if dashboard container exists
+          if (contentArea.querySelector(".dashboard-container")) {
+            // Create loading overlay instead of replacing content
+            const overlay = document.createElement("div");
+            overlay.className = "loading-overlay";
+
+            // CHANGE: Use a container with proper vertical stacking
+            overlay.innerHTML = `
+              <div class="loading-container">
+                <div class="loading-spinner"></div>
+              </div>
+            `;
+
+            // Keep all your existing styles
+            overlay.style.position = "absolute";
+            overlay.style.top = "0";
+            overlay.style.left = "0";
+            overlay.style.width = "100%";
+            overlay.style.height = "100%";
+            overlay.style.display = "flex";
+            overlay.style.alignItems = "center";
+            overlay.style.justifyContent = "center";
+            overlay.style.backdropFilter = "blur(5px)";
+            overlay.style.zIndex = "100";
+
+            // Position the container relative
+            contentArea.style.position = "relative";
+
+            // Add the overlay
+            contentArea.appendChild(overlay);
+
+            // ADD QUOTE - minimal change approach
+            try {
+              const quoteText = (SimBudget.translations && SimBudget.translations.budget_quote) || 
+              "Budgeting is telling your money where to go, not wondering where it went.";
+              overlay
+                    .querySelector(".loading-container")
+                    .insertAdjacentHTML(
+                      "beforeend",
+                      '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' + quoteText + '</p>'
+                    );
+            } catch (e) {
+              console.error("Non-critical error adding quote:", e);
+            }
+          } else {
+            // First load - use full dashboard structure with loading spinner in center
+            contentArea.innerHTML = `
         <div class="dashboard-container" style="opacity: 0.5;">
           <!-- First Column: Financial Summary & Chart -->
           <div class="col-left">
@@ -1062,187 +1188,235 @@ loadBudgetData: function() {
             </div>
           </div>
         </div>
-        <div class="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.8); z-index: 100;">
+        div class="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 100;">
           <div class="loading-spinner"></div>
         </div>
       `;
-      
-      // Position the container relative to make absolute positioning work
-      contentArea.style.position = 'relative';
-    }
-  }
-  
-  // Make a single API call instead of 5 separate calls
-  API.getDashboardData(
-    function(result) {
-      console.log("Dashboard data loaded successfully");
-      
-      // Cache the data
-      _cache.set('budget', result.dashboardData);
-      
-      // Set rendering flag to prevent event loops
-      _isRendering = true;
-      
-      // Temporarily remove event listeners
-      _eventManager.detach();
-      
-      // Render the dashboard with the full data
-      SimBudget.renderBudgetDashboard(result.dashboardData);
-      
-      // Re-enable events after render completes
-      setTimeout(() => {
-        _eventManager.attach();
-        _isRendering = false;
-        _loadingView = null; // Clear loading flag
-        console.log("Rendering complete, events restored");
-      }, 500);
-    },
-    function(error) {
-      console.error("Error loading dashboard data:", error);
-      _loadingView = null; // Clear loading flag
-      
-      // Show error message
-      if (contentArea) {
-        contentArea.innerHTML = `
+
+            // Position the container relative to make absolute positioning work
+            contentArea.style.position = "relative";
+
+            // ADD QUOTE - minimal change approach
+            try {
+              const quoteText =
+                typeof Utils.getRandomQuote === "function"
+                  ? Utils.getRandomQuote()
+                  : "Budgeting is telling your money where to go, not wondering where it went.";
+              contentArea
+                  .querySelector(".loading-spinner")
+                  .insertAdjacentHTML(
+                    "afterend",
+                    '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' + quoteText + '</p>'
+                  );
+            } catch (e) {
+              console.error("Non-critical error adding quote:", e);
+            }
+          }
+        }
+
+        // Make a single API call instead of 5 separate calls
+        API.getDashboardData(
+          function (result) {
+            console.log("Dashboard data loaded successfully");
+
+            // Cache the data
+            _cache.set("budget", result.dashboardData);
+
+            // Set rendering flag to prevent event loops
+            _isRendering = true;
+
+            // Temporarily remove event listeners
+            _eventManager.detach();
+
+            // Render the dashboard with the full data
+            SimBudget.renderBudgetDashboard(result.dashboardData);
+
+            // Re-enable events after render completes
+            setTimeout(() => {
+              _eventManager.attach();
+              _isRendering = false;
+              _loadingView = null; // Clear loading flag
+              console.log("Rendering complete, events restored");
+            }, 500);
+          },
+          function (error) {
+            console.error("Error loading dashboard data:", error);
+            _loadingView = null; // Clear loading flag
+
+            // Show error message
+            if (contentArea) {
+              contentArea.innerHTML = `
           <div class="error-message">
             <i class="material-icons">error</i>
             <span>Error loading budget data: ${error}</span>
           </div>
         `;
-      }
-    }
-  );
-},
-    
-    /**
-     * This function remains in init.html even though it's referenced from dashboard.js
-     * to maintain original scope access to _currentBudgetData
-     */
-    updateInfoMessage: function(force = false) {
-      if (!this._currentBudgetData) {
-        console.log('No budget data available');
-        return;
-      }
-      
-      const budget = this._currentBudgetData;
-      
-      // Find the message element
-      let infoMessageElement = document.getElementById('budget-info-message');
-      
-      // If not found, try the other possible ID
-      if (!infoMessageElement) {
-        infoMessageElement = document.getElementById('budget-alert');
-        console.log('Using alternate element ID: budget-alert');
-      }
-      
-      // Last resort: find by class
-      if (!infoMessageElement) {
-        infoMessageElement = document.querySelector('.budget-alert, .info-message');
-        console.log('Using element found by class selector');
-      }
-      
-      // If still not found, exit but log error
-      if (!infoMessageElement) {
-        console.error('ALERT: Could not find budget message element with any known ID or class');
-        return;
-      }
-      
-      // Calculate total budgeted amount from final values only
-      let totalBudgeted = 0;
-      budget.categories.forEach(cat => {
-        // Only use budgeted values that are numbers, not in-progress edits
-        if (typeof cat.budgeted === 'number') {
-          totalBudgeted += cat.budgeted || 0;
+            }
+          }
+        );
+      },
+
+      /**
+       * This function remains in init.html even though it's referenced from dashboard.js
+       * to maintain original scope access to _currentBudgetData
+       */
+      updateInfoMessage: function (force = false) {
+        if (!this._currentBudgetData) {
+          console.log("No budget data available");
+          return;
         }
-      });
-      
-      // Store the current message for comparison
-      const currentMessage = infoMessageElement.textContent;
-      
-      // Calculate the new message
-      let message = '';
-      let messageType = 'info'; // Default styling
-      
-      // Helper function for comparing floating point numbers with a small tolerance
-      const isApproximatelyEqual = (a, b) => Math.abs(a - b) < 0.01;
-      
-      if (budget.income === 0 || budget.income === '') {
-        message = `You budgeted ${Utils.formatCurrency(totalBudgeted)}. Tip: Align it with your income.`;
+
+        const budget = this._currentBudgetData;
+
+        // Find the message element
+        let infoMessageElement = document.getElementById("budget-info-message");
+
+        // If not found, try the other possible ID
+        if (!infoMessageElement) {
+          infoMessageElement = document.getElementById("budget-alert");
+          console.log("Using alternate element ID: budget-alert");
+        }
+
+        // Last resort: find by class
+        if (!infoMessageElement) {
+          infoMessageElement = document.querySelector(
+            ".budget-alert, .info-message"
+          );
+          console.log("Using element found by class selector");
+        }
+
+        // If still not found, exit but log error
+        if (!infoMessageElement) {
+          console.error(
+            "ALERT: Could not find budget message element with any known ID or class"
+          );
+          return;
+        }
+
+        // Calculate total budgeted amount from final values only
+        let totalBudgeted = 0;
+        budget.categories.forEach((cat) => {
+          // Only use budgeted values that are numbers, not in-progress edits
+          if (typeof cat.budgeted === "number") {
+            totalBudgeted += cat.budgeted || 0;
+          }
+        });
+
+        // Store the current message for comparison
+        const currentMessage = infoMessageElement.textContent;
+
+        // Calculate the new message
+        let message = "";
+        let messageType = "info"; // Default styling
+
+        // Helper function for comparing floating point numbers with a small tolerance
+        const isApproximatelyEqual = (a, b) => Math.abs(a - b) < 0.01;
+
+            if (budget.income === 0 || budget.income === "") {
+        const formattedBudget = Utils.formatCurrency(totalBudgeted);
+        message = Utils.formatTranslation(SimBudget.translations.budget_no_income_tip || 
+          "You budgeted {0}. Tip: Align it with your income.", [formattedBudget]);
       } else if (isApproximatelyEqual(budget.income, totalBudgeted)) {
-        // Positive confirmation when budget matches income (with tolerance for floating point)
-        message = `Your budget of ${Utils.formatCurrency(totalBudgeted)} perfectly matches your income!`;
-        messageType = 'success';
+        const formattedBudget = Utils.formatCurrency(totalBudgeted);
+        message = Utils.formatTranslation(SimBudget.translations.budget_perfect_match || 
+          "Your budget of {0} perfectly matches your income!", [formattedBudget]);
+        messageType = "success";
       } else if (budget.income > totalBudgeted) {
-        message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)} with ${Utils.formatCurrency(Math.max(0, budget.income - totalBudgeted))} left to allocate.`;
-        messageType = 'info';
+        const formattedBudget = Utils.formatCurrency(totalBudgeted);
+        const formattedRemaining = Utils.formatCurrency(Math.max(0, budget.income - totalBudgeted));
+        message = Utils.formatTranslation(SimBudget.translations.budget_under_income || 
+          "You've budgeted {0} with {1} left to allocate.", [formattedBudget, formattedRemaining]);
+        messageType = "info";
       } else if (totalBudgeted > budget.income) {
-        message = `You've budgeted ${Utils.formatCurrency(totalBudgeted)}, exceeding income by ${Utils.formatCurrency(totalBudgeted - budget.income)}.`;
-        messageType = 'warning';
+        const formattedBudget = Utils.formatCurrency(totalBudgeted);
+        const formattedExcess = Utils.formatCurrency(totalBudgeted - budget.income);
+        message = Utils.formatTranslation(SimBudget.translations.budget_over_income || 
+          "You've budgeted {0}, exceeding income by {1}.", [formattedBudget, formattedExcess]);
+        messageType = "warning";
       }
-      
-      // Only update if the message changed or force is true
-      const textChanged = currentMessage !== message;
-      if (force || textChanged) {
-        // Update the content with direct method
-        infoMessageElement.textContent = message;
-        
-        // Update classes
-        infoMessageElement.className = infoMessageElement.classList.contains('budget-alert') 
-          ? 'budget-alert' 
-          : 'info-message';
-        infoMessageElement.classList.add(messageType);
-        
-        // Ensure visibility
-        infoMessageElement.style.display = message ? 'block' : 'none';
-      }
-                
-      // Return the message for potential further use
-      return message;
-    },
-                
-    /**
-     * Load expense data
-     */
-    loadExpenseData: function() {
-      const contentArea = document.getElementById('expenseContent');
-      
-      // Show loading state
-      contentArea.innerHTML = '<div class="loading-spinner"></div>';
-      
-      API.getExpenseData(
-        function(result) {
-          // Cache the result
-          _cache.set('expense', result.expenses);
-          
-          // Clear loading flag
-          _loadingView = null;
-          
-          // Render the expenses
-          SimBudget.renderExpenseView(result.expenses);
-        },
-        function(error) {
-          // Clear loading flag on error
-          _loadingView = null;
-          
-          contentArea.innerHTML = `
+
+      // ADD THE RETRY LOGIC RIGHT HERE, before the textChanged line
+if (message && (!SimBudget.translations || !SimBudget.translations.budget_no_income_tip)) {
+  // If translations aren't loaded yet, set a flag to retry later
+  if (!this._pendingTranslationUpdate) {
+    this._pendingTranslationUpdate = true;
+    console.log("Translations not loaded yet, will retry message translation later");
+    
+    // Wait for translations to load and then update again
+    setTimeout(() => {
+      console.log("Retrying message translation");
+      this._pendingTranslationUpdate = false;
+      this.updateInfoMessage(true);
+    }, 1000);
+  }
+}
+
+
+        // Only update if the message changed or force is true
+        const textChanged = currentMessage !== message;
+        if (force || textChanged) {
+          // Update the content with direct method
+          infoMessageElement.textContent = message;
+
+          // Update classes
+          infoMessageElement.className = infoMessageElement.classList.contains(
+            "budget-alert"
+          )
+            ? "budget-alert"
+            : "info-message";
+          infoMessageElement.classList.add(messageType);
+
+          // Ensure visibility
+          infoMessageElement.style.display = message ? "block" : "none";
+        }
+
+        // Return the message for potential further use
+        return message;
+      },
+
+      /**
+       * Load expense data
+       */
+      loadExpenseData: function () {
+        const contentArea = document.getElementById("expenseContent");
+
+        // Show loading state
+        contentArea.innerHTML = '<div class="loading-spinner"></div>';
+
+        API.getExpenseData(
+          function (result) {
+            // Cache the result
+            _cache.set("expense", result.expenses);
+
+            // Clear loading flag
+            _loadingView = null;
+
+            // Render the expenses
+            SimBudget.renderExpenseView(result.expenses);
+          },
+          function (error) {
+            // Clear loading flag on error
+            _loadingView = null;
+
+            contentArea.innerHTML = `
             <div class="error-message">
               <i class="material-icons">error</i>
               <span>Error loading expense data: ${error}</span>
             </div>
           `;
-        }
-      );
-    },
-    
-    /**
-     * Render expense view with provided data
-     * @param {Array} expenses - Expense data to render
-     */
-    renderExpenseView: function(expenses) {
-      const contentArea = document.getElementById('expenseContent');
-      
-      // Create expense list
-      let html = `
+          }
+        );
+      },
+
+      /**
+       * Render expense view with provided data
+       * @param {Array} expenses - Expense data to render
+       */
+      renderExpenseView: function (expenses) {
+        const contentArea = document.getElementById("expenseContent");
+
+        // Create expense list
+        let html = `
         <div class="expense-controls">
           <div class="search-container">
             <input type="text" id="expenseSearch" placeholder="Search expenses...">
@@ -1276,148 +1450,158 @@ loadBudgetData: function() {
             </thead>
             <tbody>
       `;
-      
-      // Add rows for each expense
-      if (expenses.length === 0) {
-        html += `
+
+        // Add rows for each expense
+        if (expenses.length === 0) {
+          html += `
           <tr>
             <td colspan="5" class="no-data">No expenses found</td>
           </tr>
         `;
-      } else {
-        expenses.forEach(function(expense) {
-          html += `
+        } else {
+          expenses.forEach(function (expense) {
+            html += `
             <tr data-row-index="${expense.rowIndex}">
               <td>${Utils.formatDate(expense.date)}</td>
               <td>${Utils.formatCurrency(expense.amount)}</td>
               <td>${expense.category}</td>
               <td>${expense.name}</td>
               <td>
-                <button class="btn icon-btn edit-expense" data-id="${expense.rowIndex}">
+                <button class="btn icon-btn edit-expense" data-id="${
+                  expense.rowIndex
+                }">
                   <i class="material-icons">edit</i>
                 </button>
-                <button class="btn icon-btn delete-expense" data-id="${expense.rowIndex}">
+                <button class="btn icon-btn delete-expense" data-id="${
+                  expense.rowIndex
+                }">
                   <i class="material-icons">delete</i>
                 </button>
               </td>
             </tr>
           `;
-        });
-      }
-      
-      html += `
+          });
+        }
+
+        html += `
             </tbody>
           </table>
         </div>
       `;
-      
-      // Update the expense content
-      contentArea.innerHTML = html;
-      
-      // Set up the edit and delete buttons
-      document.querySelectorAll('.edit-expense').forEach(button => {
-        button.addEventListener('click', function() {
-          const rowIndex = this.getAttribute('data-id');
-          // TODO: Add edit expense functionality
-          alert('Edit expense ' + rowIndex);
-        });
-      });
-      
-      document.querySelectorAll('.delete-expense').forEach(button => {
-        button.addEventListener('click', function() {
-          const rowIndex = this.getAttribute('data-id');
-          // TODO: Add delete expense functionality
-          alert('Delete expense ' + rowIndex);
-        });
-      });
-      
-      // Set up search functionality
-      const searchInput = document.getElementById('expenseSearch');
-      if (searchInput) {
-        searchInput.addEventListener('input', Utils.debounce(function() {
-          const searchValue = this.value.toLowerCase();
-          document.querySelectorAll('.expense-table tbody tr').forEach(row => {
-            if (row.classList.contains('no-data')) return;
-            
-            const text = row.textContent.toLowerCase();
-            if (text.includes(searchValue)) {
-              row.style.display = '';
-            } else {
-              row.style.display = 'none';
-            }
+
+        // Update the expense content
+        contentArea.innerHTML = html;
+
+        // Set up the edit and delete buttons
+        document.querySelectorAll(".edit-expense").forEach((button) => {
+          button.addEventListener("click", function () {
+            const rowIndex = this.getAttribute("data-id");
+            // TODO: Add edit expense functionality
+            alert("Edit expense " + rowIndex);
           });
-        }, 300));
+        });
+
+        document.querySelectorAll(".delete-expense").forEach((button) => {
+          button.addEventListener("click", function () {
+            const rowIndex = this.getAttribute("data-id");
+            // TODO: Add delete expense functionality
+            alert("Delete expense " + rowIndex);
+          });
+        });
+
+        // Set up search functionality
+        const searchInput = document.getElementById("expenseSearch");
+        if (searchInput) {
+          searchInput.addEventListener(
+            "input",
+            Utils.debounce(function () {
+              const searchValue = this.value.toLowerCase();
+              document
+                .querySelectorAll(".expense-table tbody tr")
+                .forEach((row) => {
+                  if (row.classList.contains("no-data")) return;
+
+                  const text = row.textContent.toLowerCase();
+                  if (text.includes(searchValue)) {
+                    row.style.display = "";
+                  } else {
+                    row.style.display = "none";
+                  }
+                });
+            }, 300)
+          );
+        }
+      },
+    };
+  })();
+
+  // Make debug functions available globally for testing
+  window.SimBudgetDebug = {
+    /**
+     * Force reload budget data from server
+     */
+    reloadBudget: function () {
+      console.log("Debug: Force reloading budget data");
+      SimBudget.loadBudgetData();
+    },
+
+    /**
+     * Clear the cache and reload
+     */
+    clearCache: function () {
+      console.log("Debug: Clearing cache");
+      if (window._cache && typeof window._cache.invalidateAll === "function") {
+        window._cache.invalidateAll();
+        console.log("Cache cleared");
+      } else {
+        console.log("Global cache not available");
       }
     },
 
+    /**
+     * Check current structure and log it
+     */
+    checkData: function () {
+      console.log("Current budget data:", SimBudget._currentBudgetData);
 
+      if (window._cache && typeof window._cache.get === "function") {
+        console.log("Cached budget data:", window._cache.get("budget"));
+      } else {
+        console.log("Cache is not accessible");
+      }
+    },
+
+    /**
+     * Test API connection
+     */
+    testConnection: function () {
+      console.log("Testing API connection...");
+      API.testServerConnection(
+        function (result) {
+          console.log("API Connection successful:", result);
+        },
+        function (error) {
+          console.error("API Connection failed:", error);
+        }
+      );
+    },
   };
 
-
-})();
-
-// Make debug functions available globally for testing
-window.SimBudgetDebug = {
-  /**
-   * Force reload budget data from server
-   */
-  reloadBudget: function() {
-    console.log("Debug: Force reloading budget data");
-    SimBudget.loadBudgetData();
-  },
-  
-  /**
-   * Clear the cache and reload
-   */
-  clearCache: function() {
-    console.log("Debug: Clearing cache");
-    if (window._cache && typeof window._cache.invalidateAll === 'function') {
-      window._cache.invalidateAll();
-      console.log("Cache cleared");
+  // Initialize when DOM is loaded
+  document.addEventListener("DOMContentLoaded", function () {
+    if (typeof SimBudget !== "undefined") {
+      SimBudget.initialize();
     } else {
-      console.log("Global cache not available");
+      console.error("SimBudget object not found. Initialization failed.");
     }
-  },
+  });
+
+  // Expose global cache for debugging
+  window._dataCache = _cache;
+
+
+
   
-  /**
-   * Check current structure and log it
-   */
-  checkData: function() {
-    console.log("Current budget data:", SimBudget._currentBudgetData);
-    
-    if (window._cache && typeof window._cache.get === 'function') {
-      console.log("Cached budget data:", window._cache.get('budget'));
-    } else {
-      console.log("Cache is not accessible");
-    }
-  },
+
   
-  /**
-   * Test API connection
-   */
-  testConnection: function() {
-    console.log("Testing API connection...");
-    API.testServerConnection(
-      function(result) {
-        console.log("API Connection successful:", result);
-      },
-      function(error) {
-        console.error("API Connection failed:", error);
-      }
-    );
-  }
-};
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-  if (typeof SimBudget !== 'undefined') {
-    SimBudget.initialize();
-  } else {
-    console.error('SimBudget object not found. Initialization failed.');
-  }
-});
-
-// Expose global cache for debugging
-window._dataCache = _cache;
-
 </script>

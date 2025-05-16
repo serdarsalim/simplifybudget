@@ -1,0 +1,1627 @@
+<!-- transactionEntry.js.html -->
+<script>
+(function() {
+  function setVh() {
+    document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+  }
+  window.addEventListener('resize', setVh);
+  setVh();
+})();
+/**
+ * QuickExpenseEntry.js - Simplified expense entry functionality for SimBudget
+ * Uses standard form controls with autocomplete for better reliability and performance
+ */
+
+// QuickExpenseEntry module - Using IIFE pattern to match existing architecture
+var QuickExpenseEntry = (function() {
+  // Private variables
+  let _initialized = false;
+  let _categories = [];
+  let _accounts = [];
+  let _isModalOpen = false;
+  let _saveTimeout = null;
+  let _saveCounter = 0;
+  
+  // Current selections
+  let _selectedDate = new Date();
+  let _selectedCategory = '';
+  let _selectedAmount = '';
+  let _selectedLabel = '';
+  let _selectedNotes = '';
+  let _selectedAccount = '';
+  
+  // Cache objects to improve performance
+  const _elements = {};
+  const _dateCache = {};
+  
+  /**
+   * Get an element by ID with caching
+   * @param {string} id - Element ID
+   * @return {HTMLElement} Element
+   */
+  function getElement(id) {
+    if (!_elements[id]) {
+      _elements[id] = document.getElementById(id);
+    }
+    return _elements[id];
+  }
+  
+  /**
+   * Initialize the Quick Expense Entry module
+   */
+  function init() {
+    if (_initialized) return;
+    
+    console.log('Initializing Quick Expense Entry...');
+    
+    // Include HTML in the page
+    includeTransactionEntryHTML();
+    
+    // Set up event listeners after a short delay to ensure DOM is ready
+    setTimeout(function() {
+      bindEvents();
+      
+      // Load categories and accounts data
+      loadCategories();
+      loadAccounts();
+      
+      // Load last used values from local storage
+      loadSavedValues();
+      
+      _initialized = true;
+      console.log('Quick Expense Entry initialized');
+    }, 500);
+  }
+  
+  /**
+   * Include the TransactionEntry HTML in the page
+   */
+  function includeTransactionEntryHTML() {
+    try {
+      console.log("Including TransactionEntry HTML");
+      
+      // Check if the floating action button already exists
+      if (!document.getElementById('quickExpenseBtn')) {
+        console.log("Creating floating action button");
+        const btn = document.createElement('div');
+        btn.id = 'quickExpenseBtn';
+        btn.className = 'quick-expense-btn';
+        btn.title = 'Add Quick Expense';
+        btn.innerHTML = '<i class="material-icons">add</i>';
+        document.body.appendChild(btn);
+      }
+      
+      // Check if the modal already exists
+      if (!document.getElementById('quickExpenseModal')) {
+        console.log("Creating expense modal");
+        
+        // Create the modal HTML structure with the new 2x2 grid layout
+        const modalHTML = `
+          <div id="quickExpenseModal" class="quick-expense-modal">
+            <div class="quick-expense-backdrop"></div>
+            <div class="quick-expense-card">
+              <div class="quick-expense-header">
+                <h3>Quick Expense</h3>
+                <button class="close-btn" aria-label="Close">
+                  <i class="material-icons">close</i>
+                </button>
+              </div>
+              
+              <div class="quick-expense-content">
+                <!-- Top Grid: 2x2 layout -->
+                <div class="expense-top-grid">
+                  <!-- Row 1: Category | Amount -->
+                  <div class="grid-item category-column">
+                    <select id="expenseCategory" class="form-control category-select">
+                      <!-- Categories will be populated dynamically -->
+                    </select>
+                  </div>
+                  
+                  <div class="grid-item amount-column">
+                    <div class="amount-input-container">
+                      <span class="currency-symbol">$</span>
+                      <input type="number" id="expenseAmount" class="form-control amount-input" 
+                             placeholder="Amount" min="0.01" step="0.01" required>
+                    </div>
+                  </div>
+                  
+                  <!-- Row 2: Date | Save -->
+                  <div class="grid-item date-column">
+                    <div class="date-selector">
+                      <button class="date-nav-btn up-date-btn" aria-label="Previous day">
+                        <i class="material-icons">keyboard_arrow_up</i>
+                      </button>
+                      <div class="date-display">
+                        <div class="date-value" id="currentDateValue">Today</div>
+                        <div class="date-label" id="currentDateLabel">May 15</div>
+                      </div>
+                      <button class="date-nav-btn down-date-btn" aria-label="Next day">
+                        <i class="material-icons">keyboard_arrow_down</i>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div class="grid-item save-column">
+                    <button id="saveExpenseBtn" class="save-btn">
+                      <span class="save-text">Save</span>
+                      <div class="save-icon-container">
+                        <i class="material-icons save-icon">check</i>
+                        <div class="save-spinner"></div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Success message appears within the modal -->
+                <div id="successMessage" class="success-message">
+                  <i class="material-icons success-icon">check_circle</i>
+                  <span>Expense saved successfully!</span>
+                </div>
+                
+                <!-- Bottom section: Single column layout for additional fields -->
+                <div class="expense-bottom-section">
+                  <!-- Description/Label Field -->
+                  <div class="form-group">
+                    <input type="text" id="expenseLabel" class="form-control" 
+                           placeholder="Description">
+                  </div>
+                  
+                  <!-- Notes Field -->
+                  <div class="form-group">
+                    <textarea id="expenseNotes" class="form-control notes-input" 
+                              placeholder="Notes (Optional)"></textarea>
+                  </div>
+                  
+                  <!-- Account Field -->
+                  <div class="form-group">
+                    <select id="expenseAccount" class="form-control account-select">
+                      <option value="">-- Select Account --</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Append the modal to the document body
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        console.log("Modal HTML injected into DOM");
+      } else {
+        console.log("Modal already exists in DOM");
+      }
+    } catch (error) {
+      console.error('Error including TransactionEntry HTML:', error);
+    }
+  }
+  
+  /**
+   * Bind all event listeners
+   */
+  function bindEvents() {
+    try {
+      console.log("Binding event listeners");
+      
+      // FAB button click - open modal
+      const quickExpenseBtn = getElement('quickExpenseBtn');
+      if (quickExpenseBtn) {
+        console.log("Adding click handler to FAB button");
+        quickExpenseBtn.addEventListener('click', openModal);
+      }
+      
+      // Close button and backdrop click - close modal
+      const closeBtn = document.querySelector('.close-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', closeModal);
+      }
+      
+      const backdrop = document.querySelector('.quick-expense-backdrop');
+      if (backdrop) {
+        backdrop.addEventListener('click', closeModal);
+      }
+      
+      // Prevent clicks on the modal card from closing the modal
+      const modalCard = document.querySelector('.quick-expense-card');
+      if (modalCard) {
+        modalCard.addEventListener('click', function(e) {
+          e.stopPropagation();
+        });
+      }
+      
+      // Date navigation buttons - now using up/down instead of prev/next
+      const upDateBtn = document.querySelector('.up-date-btn');
+      const downDateBtn = document.querySelector('.down-date-btn');
+      
+      if (upDateBtn) {
+        upDateBtn.addEventListener('click', function() {
+          changeDate(-1); // Previous day (up)
+        });
+      }
+      
+      if (downDateBtn) {
+        downDateBtn.addEventListener('click', function() {
+          changeDate(1); // Next day (down)
+        });
+      }
+      
+      // Category select
+      const categorySelect = getElement('expenseCategory');
+      if (categorySelect) {
+        // Focus handler for possible resetting later if needed
+        categorySelect.addEventListener('focus', function() {
+          // No reset on focus, keep previously selected category
+        });
+        
+        categorySelect.addEventListener('change', function() {
+          _selectedCategory = this.value;
+          saveValuesToLocalStorage();
+        });
+      }
+      
+      // Save button click
+      const saveBtn = getElement('saveExpenseBtn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', saveExpense);
+      }
+      
+      // Form inputs change handlers for local storage
+      const amountInput = getElement('expenseAmount');
+      const labelInput = getElement('expenseLabel');
+      const notesInput = getElement('expenseNotes');
+      const accountSelect = getElement('expenseAccount');
+      
+      if (amountInput) {
+        amountInput.addEventListener('change', function() {
+          _selectedAmount = this.value;
+          saveValuesToLocalStorage();
+        });
+      }
+      
+      if (labelInput) {
+        labelInput.addEventListener('change', function() {
+          _selectedLabel = this.value;
+          saveValuesToLocalStorage();
+        });
+      }
+      
+      if (notesInput) {
+        notesInput.addEventListener('change', function() {
+          _selectedNotes = this.value;
+        });
+      }
+      
+      if (accountSelect) {
+        accountSelect.addEventListener('change', function() {
+          _selectedAccount = this.value;
+          saveValuesToLocalStorage();
+        });
+      }
+      
+      // Keyboard shortcuts
+      document.addEventListener('keydown', function(e) {
+        // Escape key closes modal
+        if (e.key === 'Escape' && _isModalOpen) {
+          closeModal();
+        }
+        
+        // Enter key saves when modal is open and focus is not in a textarea
+        if (e.key === 'Enter' && _isModalOpen && e.target.tagName !== 'TEXTAREA') {
+          if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            saveExpense();
+          }
+        }
+      });
+      
+      console.log("Event listeners bound successfully");
+    } catch (error) {
+      console.error('Error binding event listeners:', error);
+    }
+  }
+  
+  /**
+   * Change the current date by a number of days
+   * @param {number} days - Number of days to change by (negative=past, positive=future)
+   */
+  function changeDate(days) {
+    const newDate = new Date(_selectedDate);
+    newDate.setDate(newDate.getDate() + days);
+    _selectedDate = newDate;
+    updateDateDisplay();
+    saveValuesToLocalStorage();
+  }
+  
+  /**
+   * Update the date display with the current selected date
+   */
+  function updateDateDisplay() {
+    const dateValue = getElement('currentDateValue');
+    const dateLabel = getElement('currentDateLabel');
+    
+    if (dateValue && dateLabel) {
+      const formattedDate = formatDateForDisplay(_selectedDate);
+      dateValue.textContent = formattedDate.displayText;
+      dateLabel.textContent = formattedDate.dateString;
+    }
+  }
+  
+  /**
+   * Format a date for display
+   * @param {Date} date - The date to format
+   * @return {Object} Object with displayText and dateString properties
+   */
+  function formatDateForDisplay(date) {
+    if (!date || isNaN(date.getTime())) {
+      date = new Date();
+    }
+    
+    // Create cache key for this date
+    const cacheKey = date.toISOString().split('T')[0];
+    
+    // Return cached value if available
+    if (_dateCache[cacheKey]) {
+      return _dateCache[cacheKey];
+    }
+    
+    // Format the date
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateString = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+    
+    // Is it today?
+    const today = new Date();
+    const isToday = date.getDate() === today.getDate() &&
+                    date.getMonth() === today.getMonth() &&
+                    date.getFullYear() === today.getFullYear();
+    
+    // Is it yesterday or tomorrow?
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.getDate() === yesterday.getDate() &&
+                        date.getMonth() === yesterday.getMonth() &&
+                        date.getFullYear() === yesterday.getFullYear();
+    
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = date.getDate() === tomorrow.getDate() &&
+                       date.getMonth() === tomorrow.getMonth() &&
+                       date.getFullYear() === tomorrow.getFullYear();
+    
+    // Create display text
+    let displayText;
+    if (isToday) {
+      displayText = 'Today';
+    } else if (isYesterday) {
+      displayText = 'Yesterday';
+    } else if (isTomorrow) {
+      displayText = 'Tomorrow';
+    } else {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      displayText = days[date.getDay()];
+    }
+    
+    // Create result object
+    const result = {
+      displayText: displayText,
+      dateString: dateString
+    };
+    
+    // Cache the result
+    _dateCache[cacheKey] = result;
+    
+    return result;
+  }
+  
+  /**
+   * Show the success message within the modal
+   */
+  function showSuccessMessage() {
+    const successMessage = getElement('successMessage');
+    if (successMessage) {
+      // Hide it first to reset animation
+      successMessage.classList.remove('show');
+      
+      // Force reflow
+      void successMessage.offsetWidth;
+      
+      // Show with animation
+      successMessage.classList.add('show');
+      
+      // Auto-hide after delay
+      setTimeout(function() {
+        successMessage.classList.remove('show');
+      }, 2500);
+    }
+  }
+  
+  /**
+   * Open the quick expense modal
+   */
+  function openModal() {
+    console.log("openModal called");
+    
+    // Make sure modal is created 
+    if (!document.getElementById('quickExpenseModal')) {
+      console.log("Modal not found, creating it");
+      includeTransactionEntryHTML();
+    }
+    
+    const modal = document.getElementById('quickExpenseModal');
+    console.log("Modal element found:", !!modal);
+    
+    if (modal) {
+      // Force display styling
+      modal.style.opacity = '0';
+      modal.style.visibility = 'visible';
+      modal.style.display = 'flex';
+      
+      // Force reflow
+      void modal.offsetWidth;
+      
+      // Now add the visible class to trigger the transition
+      modal.classList.add('visible');
+      console.log("Modal visible class added");
+      
+      // Direct style application as backup
+      setTimeout(function() {
+        modal.style.opacity = '1';
+        console.log("Forced opacity to 1");
+      }, 50);
+      
+      _isModalOpen = true;
+      
+      // Always set date to today when opening modal
+      _selectedDate = new Date();
+      
+      // Update display with current data
+      updateDateDisplay();
+      updateCategoriesDropdown();
+      updateAccountDropdown();
+      
+      // Update form fields with stored values except amount
+      const amountInput = getElement('expenseAmount');
+      const labelInput = getElement('expenseLabel');
+      const notesInput = getElement('expenseNotes');
+      
+      if (amountInput) {
+        amountInput.value = ''; // Always start with empty amount
+        // Focus the amount field automatically
+        setTimeout(() => {
+          amountInput.focus();
+        }, 300);
+      }
+      
+      if (labelInput) {
+        labelInput.value = _selectedLabel || '';
+      }
+      
+      // Clear notes field - we don't save notes between sessions
+      if (notesInput) {
+        notesInput.value = '';
+        _selectedNotes = '';
+      }
+      
+      // Update currency symbol 
+      updateCurrencySymbol();
+      
+      // Hide success message if visible
+      const successMessage = getElement('successMessage');
+      if (successMessage) {
+        successMessage.classList.remove('show');
+      }
+    } else {
+      console.error("Modal element not found after creation attempt");
+    }
+  }
+  
+  /**
+   * Update the currency symbol based on settings
+   */
+  function updateCurrencySymbol() {
+    // Get the currency symbol from SimBudget settings if available
+    let currencySymbol = '$';
+    if (window.SimBudget && SimBudget.Settings && typeof SimBudget.Settings.getCurrencySymbol === 'function') {
+      currencySymbol = SimBudget.Settings.getCurrencySymbol();
+    }
+    
+    // Update the currency symbol display
+    const currencyDisplay = document.querySelector('.currency-symbol');
+    if (currencyDisplay) {
+      currencyDisplay.textContent = currencySymbol;
+    }
+  }
+  
+  /**
+   * Close the quick expense modal
+   */
+  function closeModal() {
+    const modal = document.getElementById('quickExpenseModal');
+    if (modal) {
+      modal.classList.remove('visible');
+      _isModalOpen = false;
+      
+      // After animation completes, set display to none
+      setTimeout(function() {
+        if (!modal.classList.contains('visible')) {
+          modal.style.display = 'none';
+        }
+      }, 300);
+    }
+  }
+  
+  /**
+   * Update the categories dropdown with available categories
+   */
+  function updateCategoriesDropdown() {
+    const categorySelect = getElement('expenseCategory');
+    if (!categorySelect) return;
+    
+    // Clear existing options
+    categorySelect.innerHTML = '';
+    
+    // Sort the categories alphabetically
+    const sortedCategories = [..._categories].sort((a, b) => a.localeCompare(b));
+    
+    // Add categories as options
+    sortedCategories.forEach(function(category) {
+      const option = document.createElement('option');
+      option.value = category;
+      option.textContent = category;
+      categorySelect.appendChild(option);
+    });
+    
+    // Select the previously selected category or the first one if nothing was selected
+    if (_selectedCategory && _categories.includes(_selectedCategory)) {
+      categorySelect.value = _selectedCategory;
+    } else if (_categories.length > 0) {
+      categorySelect.value = _categories[0];
+      _selectedCategory = _categories[0];
+    }
+  }
+  
+  /**
+   * Save the expense data
+   */
+  function saveExpense() {
+    // Get all form values
+    const amountInput = getElement('expenseAmount');
+    const categorySelect = getElement('expenseCategory'); 
+    const labelInput = getElement('expenseLabel');
+    const notesInput = getElement('expenseNotes');
+    const accountSelect = getElement('expenseAccount');
+    
+    // Basic validation
+    if (!amountInput || !categorySelect) {
+      console.error('Required inputs missing');
+      return;
+    }
+    
+    const amount = parseFloat(amountInput.value);
+    const category = categorySelect.value.trim();
+    
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      amountInput.focus();
+      return;
+    }
+    
+    if (category === '') {
+      alert('Please select a category');
+      categorySelect.focus();
+      return;
+    }
+    
+    // Don't allow multiple saves while processing
+    const saveBtn = getElement('saveExpenseBtn');
+    if (saveBtn && saveBtn.classList.contains('loading')) {
+      return;
+    }
+    
+    // Update save button state
+    if (saveBtn) {
+      saveBtn.classList.add('loading');
+      saveBtn.classList.remove('success');
+    }
+    
+    // Update stored values
+    _selectedAmount = amount;
+    _selectedCategory = category;
+    _selectedLabel = labelInput ? labelInput.value : '';
+    _selectedNotes = notesInput ? notesInput.value : '';
+    _selectedAccount = accountSelect ? accountSelect.value : '';
+    
+    // Create the expense object
+    const expense = {
+      date: _selectedDate,
+      amount: _selectedAmount,
+      category: _selectedCategory,
+      name: _selectedLabel,
+      notes: _selectedNotes,
+      account: _selectedAccount
+    };
+    
+    // Generate a unique ID for this save operation
+    const saveId = ++_saveCounter;
+    
+    // Call the API to save the expense
+    if (window.API && typeof API.saveExpense === 'function') {
+      API.saveExpense(
+        expense,
+        function(result) {
+          // Check if this is the most recent save
+          if (saveId !== _saveCounter) {
+            return;
+          }
+          
+          console.log('Expense saved successfully:', result);
+          
+          // Update save button state
+          if (saveBtn) {
+            saveBtn.classList.remove('loading');
+            saveBtn.classList.add('success');
+          }
+          
+          // Show success message
+          showSuccessMessage();
+          
+          // Clear the form fields for next entry but keep category
+          if (amountInput) {
+            amountInput.value = '';
+            // Focus back on the amount field for quick entry of another expense
+            setTimeout(() => {
+              amountInput.focus();
+            }, 100);
+          }
+          
+          if (labelInput) labelInput.value = '';
+          if (notesInput) notesInput.value = '';
+          
+          // Refresh the expense list if we're on the expense view
+          if (window.SimBudget && typeof SimBudget.loadViewData === 'function') {
+            SimBudget.loadViewData('expense', true);
+          }
+          
+          // Save values to local storage
+          saveValuesToLocalStorage();
+        },
+        function(error) {
+          // Check if this is the most recent save
+          if (saveId !== _saveCounter) {
+            return;
+          }
+          
+          console.error('Error saving expense:', error);
+          
+          // Update save button state
+          if (saveBtn) {
+            saveBtn.classList.remove('loading');
+          }
+          
+          // Show error toast
+          if (window.Utils && typeof Utils.showToast === 'function') {
+            Utils.showToast('Error saving expense: ' + error, 'error');
+          } else {
+            alert('Error saving expense: ' + error);
+          }
+        }
+      );
+    } else {
+      // Mock save for demonstration purposes
+      setTimeout(function() {
+        console.log('Expense saved (mock):', expense);
+        
+        // Update save button state
+        if (saveBtn) {
+          saveBtn.classList.remove('loading');
+          saveBtn.classList.add('success');
+        }
+        
+        // Show success message
+        showSuccessMessage();
+        
+        // Clear the form fields for next entry but keep category
+        if (amountInput) {
+          amountInput.value = '';
+          // Focus back on the amount field for quick entry of another expense
+          setTimeout(() => {
+            amountInput.focus();
+          }, 100);
+        }
+        
+        if (labelInput) labelInput.value = '';
+        if (notesInput) notesInput.value = '';
+        
+        // Save values to local storage
+        saveValuesToLocalStorage();
+      }, 1000);
+    }
+  }
+  
+  /**
+   * Load categories from the server
+   */
+  function loadCategories() {
+    // First try to load from local storage for immediate display
+    const cachedCategories = localStorage.getItem('simbudget_categories');
+    if (cachedCategories) {
+      try {
+        _categories = JSON.parse(cachedCategories);
+        console.log('Loaded categories from cache:', _categories);
+        
+        // Set default selected category if none is set
+        if (!_selectedCategory && _categories.length > 0) {
+          _selectedCategory = _categories[0];
+        }
+        
+        // Update categories dropdown if modal is open
+        if (_isModalOpen) {
+          updateCategoriesDropdown();
+        }
+      } catch (e) {
+        console.error('Error parsing cached categories:', e);
+      }
+    }
+    
+    // If API exists, use it to load categories
+    if (window.API && typeof API.getCategories === 'function') {
+      API.getCategories(
+        function(result) {
+          if (result && result.categories) {
+            _categories = result.categories;
+            
+            // Set default selected category if none is set
+            if (!_selectedCategory && _categories.length > 0) {
+              _selectedCategory = _categories[0];
+            }
+            
+            // Cache the categories
+            localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
+            
+            // Update categories dropdown if modal is open
+            if (_isModalOpen) {
+              updateCategoriesDropdown();
+            }
+          }
+        },
+        function(error) {
+          console.error('Error loading categories:', error);
+        }
+      );
+    } else {
+      // Fallback to sample data if API not available
+      setTimeout(function() {
+        const sampleCategories = [
+          'Groceries',
+          'Dining Out',
+          'Transportation',
+          'Entertainment',
+          'Utilities',
+          'Rent/Mortgage',
+          'Healthcare',
+          'Shopping',
+          'Personal Care',
+          'Education',
+          'Travel',
+          'Gifts',
+          'Subscriptions',
+          'Insurance'
+        ];
+        
+        _categories = sampleCategories;
+        
+        // Set default selected category if none is set
+        if (!_selectedCategory && _categories.length > 0) {
+          _selectedCategory = _categories[0];
+        }
+        
+        // Cache the categories
+        localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
+        
+        // Update categories dropdown if modal is open
+        if (_isModalOpen) {
+          updateCategoriesDropdown();
+        }
+      }, 500);
+    }
+  }
+  
+  /**
+   * Load accounts from the server
+   */
+  function loadAccounts() {
+    // First try to load from local storage for immediate display
+    const cachedAccounts = localStorage.getItem('simbudget_accounts');
+    if (cachedAccounts) {
+      try {
+        _accounts = JSON.parse(cachedAccounts);
+        console.log('Loaded accounts from cache:', _accounts);
+        
+        // Update account dropdown if modal is open
+        if (_isModalOpen) {
+          updateAccountDropdown();
+        }
+      } catch (e) {
+        console.error('Error parsing cached accounts:', e);
+      }
+    }
+    
+    // If API exists, use it to load accounts
+    if (window.API && typeof API.getAccounts === 'function') {
+      API.getAccounts(
+        function(result) {
+          if (result && result.accounts) {
+            _accounts = result.accounts;
+            
+            // Cache the accounts
+            localStorage.setItem('simbudget_accounts', JSON.stringify(_accounts));
+            
+            // Update account dropdown if modal is open
+            if (_isModalOpen) {
+              updateAccountDropdown();
+            }
+          }
+        },
+        function(error) {
+          console.error('Error loading accounts:', error);
+        }
+      );
+    } else {
+      // Fallback to sample data if API not available
+      setTimeout(function() {
+        const sampleAccounts = [
+          'Checking Account',
+          'Savings Account',
+          'Credit Card',
+          'Cash',
+          'Investment Account'
+        ];
+        
+        _accounts = sampleAccounts;
+        
+        // Cache the accounts
+        localStorage.setItem('simbudget_accounts', JSON.stringify(_accounts));
+        
+        // Update account dropdown if modal is open
+        if (_isModalOpen) {
+          updateAccountDropdown();
+        }
+        
+        // Set initial selected account if not already set
+        if (!_selectedAccount && _accounts.length > 0) {
+          _selectedAccount = _accounts[0];
+        }
+      }, 500);
+    }
+  }
+  
+  /**
+   * Update account dropdown with current data
+   */
+  function updateAccountDropdown() {
+    const accountSelect = getElement('expenseAccount');
+    if (!accountSelect) return;
+    
+    // Clear existing options except the first placeholder option
+    while (accountSelect.options.length > 1) {
+      accountSelect.remove(1);
+    }
+    
+    // Add accounts
+    _accounts.forEach(function(account) {
+      const option = document.createElement('option');
+      option.value = account;
+      option.textContent = account;
+      if (account === _selectedAccount) {
+        option.selected = true;
+      }
+      accountSelect.appendChild(option);
+    });
+  }
+  
+  /**
+   * Load saved values from local storage
+   */
+  function loadSavedValues() {
+    try {
+      // Get stored values
+      const storedValues = localStorage.getItem('simbudget_quick_expense');
+      if (storedValues) {
+        const values = JSON.parse(storedValues);
+        
+        // Date needs special handling as it's stored as a string
+        if (values.date) {
+          _selectedDate = new Date(values.date);
+          if (isNaN(_selectedDate.getTime())) {
+            _selectedDate = new Date(); // Use today if invalid
+          }
+        } else {
+          _selectedDate = new Date(); // Default to today
+        }
+        
+        // Set other values
+        _selectedCategory = values.category || '';
+        _selectedAmount = values.amount || '';
+        _selectedLabel = values.label || '';
+        _selectedAccount = values.account || '';
+        
+        console.log('Loaded saved values:', values);
+      } else {
+        // Set defaults
+        _selectedDate = new Date();
+      }
+    } catch (e) {
+      console.error('Error loading saved values:', e);
+      
+      // Set defaults
+      _selectedDate = new Date();
+    }
+  }
+  
+  /**
+   * Save values to local storage
+   */
+  function saveValuesToLocalStorage() {
+    try {
+      const values = {
+        date: _selectedDate.toISOString(),
+        category: _selectedCategory,
+        amount: _selectedAmount,
+        label: _selectedLabel,
+        account: _selectedAccount
+      };
+      
+      localStorage.setItem('simbudget_quick_expense', JSON.stringify(values));
+      console.log('Saved values to local storage:', values);
+    } catch (e) {
+      console.error('Error saving values to local storage:', e);
+    }
+  }
+  
+  // Public API
+  return {
+    init: init,
+    openModal: openModal,
+    closeModal: closeModal
+  };
+})();
+
+// Initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  QuickExpenseEntry.init();
+});
+
+// Expose globally
+window.QuickExpenseEntry = QuickExpenseEntry;
+
+// API integration
+window.API = window.API || {};
+window.API.openQuickExpenseModal = function() {
+  console.log("API.openQuickExpenseModal called");
+  if (window.QuickExpenseEntry && typeof QuickExpenseEntry.openModal === 'function') {
+    QuickExpenseEntry.openModal();
+    return true;
+  } else {
+    console.error("QuickExpenseEntry module not available");
+    return false;
+  }
+};
+</script>
+
+<!-- transactionEntry.css.html -->
+<style>
+/* ======================================================
+   QUICK EXPENSE ENTRY STYLES - SIMPLIFY BUDGET (REDESIGNED)
+   ======================================================
+   New 2x2 grid layout with single column bottom section
+*/
+
+/* ============= COLOR VARIABLES ============= */
+:root {
+  /* Colors - Warm Orange/Yellow Palette (matching existing theme) */
+  --qe-primary: #a96322;         /* Main orange */
+  --qe-primary-light: #ffb067;   /* Lighter orange */
+  --qe-primary-dark: #e67e00;    /* Darker orange */
+  --qe-accent: #ffd166;          /* Yellow accent */
+  --qe-success: #4caf50;         /* Success green */
+  --qe-error: #f44336;           /* Error red */
+  
+  /* Background and surfaces */
+  --qe-background: #f5f5f7;      /* Light gray background */
+  --qe-surface: #ffffff;         /* White cards */
+  --qe-surface-alt: #f9f9f9;     /* Slightly off-white for contrast */
+  --qe-border: #e1e1e1;          /* Light borders */
+  --qe-overlay: rgba(0, 0, 0, 0.5); /* Modal backdrop */
+  
+  /* Text colors */
+  --qe-text-primary: #000000;    /* Black text */
+  --qe-text-secondary: #86868b;  /* Medium gray text */
+  --qe-text-disabled: #c7c7cc;   /* Light gray for disabled text */
+  
+  /* Shadows */
+  --qe-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --qe-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --qe-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.14);
+  
+  /* Timing */
+  --qe-transition-fast: 0.15s;
+  --qe-transition-normal: 0.25s;
+  
+  /* Dark mode colors - will be applied with body.dark-mode */
+  --qe-dark-background: #1c1c1e;
+  --qe-dark-surface: #2c2c2e;
+  --qe-dark-surface-alt: #3c3c3e;
+  --qe-dark-border: #3d3d3d;
+  --qe-dark-text-primary: #ffffff;
+  --qe-dark-text-secondary: #98989d;
+  --qe-dark-text-disabled: #68686d;
+  --qe-dark-overlay: rgba(0, 0, 0, 0.7);
+}
+
+/* ============= GLOBAL FLOATING ACTION BUTTON ============= */
+.quick-expense-btn {
+  position: fixed;
+  bottom: 50px;
+  right: 50px;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background-color: var(--qe-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--qe-shadow-md);
+  cursor: pointer;
+  z-index: 9997; /* High z-index to stay above most content */
+  transition: transform var(--qe-transition-fast), 
+              background-color var(--qe-transition-fast),
+              box-shadow var(--qe-transition-fast);
+}
+
+/* Move FAB button closer to bottom on mobile */
+@media (max-width: 767px) {
+  .quick-expense-btn {
+    bottom: 15px;
+    right: 20px;
+  }
+}
+
+.quick-expense-btn:hover {
+  background-color: var(--qe-primary-dark);
+  box-shadow: var(--qe-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.quick-expense-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--qe-shadow-sm);
+}
+
+.quick-expense-btn i {
+  font-size: 24px;
+}
+
+/* ============= MODAL OVERLAY ============= */
+.quick-expense-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  opacity: 0;
+  visibility: hidden;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.quick-expense-modal.visible {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: flex !important;
+}
+
+.quick-expense-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--qe-overlay);
+  backdrop-filter: blur(3px);
+}
+
+/* ============= MODAL CARD ============= */
+.quick-expense-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  width: 95%;
+  max-width: 500px; /* Adjusted max-width */
+  max-height: calc(var(--vh, 1vh) * 90);
+  overflow-y: auto;
+  position: relative;
+  z-index: 10001;
+  transform: translateY(20px);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.quick-expense-modal.visible .quick-expense-card {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* ============= MODAL HEADER ============= */
+.quick-expense-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px; /* Reduced padding */
+  border-bottom: 1px solid var(--qe-border);
+}
+
+.quick-expense-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--qe-text-primary);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--qe-text-secondary);
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  transition: background-color var(--qe-transition-fast);
+  padding: 0;
+}
+
+.close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* ============= FORM CONTENT ============= */
+.quick-expense-content {
+  padding: 16px; /* Slightly increased padding */
+}
+
+.expense-top-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Two columns */
+  grid-template-rows: auto auto; /* Two rows */
+  gap: 12px; /* Gap between grid items */
+  margin-bottom: 12px;
+}
+
+/* Common styles for all grid items */
+.grid-item {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Input field heights - increased for better touch targets */
+:root {
+  --input-height: 52px; /* Increased for larger touch targets */
+}
+
+/* Form fields labels - now only used in CSS, not HTML */
+.expense-top-grid label, .empty-label {
+  display: none;
+}
+
+/* Form fields - more touch friendly */
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: none;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0 12px; /* Increased padding */
+  font-size: 16px; /* Increased to 16px to prevent zoom on mobile */
+  border: 1px solid var(--qe-border);
+  border-radius: 8px;
+  background-color: var(--qe-surface);
+  color: var(--qe-text-primary);
+  transition: border-color var(--qe-transition-fast);
+  box-shadow: var(--qe-shadow-sm);
+  height: var(--input-height);
+}
+
+/* Remove default focus outlines on form controls */
+.form-control:focus {
+  outline: none;
+  border-color: var(--qe-primary);
+  box-shadow: 0 0 0 2px rgba(169, 99, 34, 0.15);
+}
+
+/* Date selector styling */
+.date-selector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--qe-border);
+  border-radius: 8px;
+  background-color: var(--qe-surface-alt);
+  overflow: hidden;
+  height: var(--input-height);
+}
+
+.date-nav-btn {
+  background: none;
+  border: none;
+  color: var(--qe-text-secondary);
+  cursor: pointer;
+  width: 100%;
+  height: calc(var(--input-height) * 0.25); /* Each button takes 1/4 of height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--qe-transition-fast);
+  padding: 0;
+  line-height: 1;
+}
+
+.date-nav-btn i {
+  font-size: 16px; /* Increased */
+  line-height: 1;
+}
+
+.date-nav-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--qe-text-primary);
+}
+
+.date-display {
+  text-align: center;
+  font-weight: 500;
+  padding: 0 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: calc(var(--input-height) * 0.5); /* Middle section takes 1/2 of height */
+}
+
+.date-value {
+  font-size: 14px; /* Increased */
+  color: var(--qe-text-primary);
+  line-height: 1.1;
+}
+
+.date-label {
+  font-size: 11px; /* Increased */
+  color: var(--qe-text-secondary);
+  line-height: 1.1;
+}
+
+/* Amount input styling */
+.amount-input-container {
+  position: relative;
+  height: var(--input-height);
+}
+
+.amount-input-container .currency-symbol {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--qe-text-secondary);
+  font-weight: 500;
+}
+
+.amount-input {
+  padding-left: 26px; /* Space for currency symbol */
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--qe-primary);
+}
+
+/* Hide default number input controls */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Category select styling */
+.category-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='none' d='M0 0h24v24H0z'/%3E%3Cpath d='M12 15l-4-4h8z' fill='rgba(0,0,0,0.5)'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+/* Notes field */
+.notes-input {
+  min-height: 70px; /* Increased */
+  resize: vertical;
+  height: auto;
+  padding: 10px 12px;
+}
+
+/* Account selector */
+.account-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='none' d='M0 0h24v24H0z'/%3E%3Cpath d='M12 15l-4-4h8z' fill='rgba(0,0,0,0.5)'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+/* ============= SAVE BUTTON ============= */
+.save-btn {
+  padding: 0 16px;
+  border: none;
+  background-color: var(--qe-primary);
+  color: white;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--qe-transition-fast),
+              transform var(--qe-transition-fast),
+              box-shadow var(--qe-transition-fast);
+  box-shadow: var(--qe-shadow-sm);
+  position: relative;
+  overflow: hidden;
+  min-width: 80px;
+  height: var(--input-height);
+  width: 100%;
+}
+
+.save-btn:hover {
+  background-color: var(--qe-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: var(--qe-shadow-md);
+}
+
+.save-btn:active {
+  transform: translateY(0);
+}
+
+.save-text, .save-icon-container {
+  transition: opacity var(--qe-transition-fast);
+}
+
+.save-icon-container {
+  position: absolute;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.save-spinner {
+  width: 20px; /* Increased */
+  height: 20px; /* Increased */
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  display: none;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Button states */
+.save-btn.loading .save-text,
+.save-btn.success .save-text {
+  opacity: 0;
+}
+
+.save-btn.loading .save-icon-container,
+.save-btn.success .save-icon-container {
+  opacity: 1;
+}
+
+.save-btn.loading .save-icon {
+  display: none;
+}
+
+.save-btn.loading .save-spinner {
+  display: block;
+}
+
+.save-btn.success {
+  background-color: var(--qe-success);
+}
+
+
+
+/* Success message styling */
+.success-message {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: var(--qe-success);
+  padding: 10px;
+  border-radius: 8px;
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  transition: opacity 0.3s ease, height 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+}
+
+.success-message.show {
+  opacity: 1;
+  height: auto;
+  padding: 10px;
+  margin: 0 0 16px 0;
+}
+
+.success-message .success-icon {
+  margin-right: 8px;
+  font-size: 20px;
+}
+
+.success-message span {
+  font-weight: 500;
+}
+
+/* ============= DARK MODE STYLES ============= */
+body.dark-mode .quick-expense-btn {
+  background-color: var(--qe-primary-light);
+}
+
+body.dark-mode .quick-expense-backdrop {
+  background-color: var(--qe-dark-overlay);
+}
+
+body.dark-mode .quick-expense-card {
+  background-color: var(--qe-dark-surface);
+}
+
+body.dark-mode .quick-expense-header {
+  border-color: var(--qe-dark-border);
+}
+
+body.dark-mode .quick-expense-header h3 {
+  color: var(--qe-dark-text-primary);
+}
+
+body.dark-mode .close-btn {
+  color: var(--qe-dark-text-secondary);
+}
+
+body.dark-mode .close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .date-selector {
+  background-color: var(--qe-dark-surface-alt);
+  border-color: var(--qe-dark-border);
+}
+
+body.dark-mode .date-nav-btn {
+  color: var(--qe-dark-text-secondary);
+}
+
+body.dark-mode .date-nav-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--qe-dark-text-primary);
+}
+
+body.dark-mode .date-value {
+  color: var(--qe-dark-text-primary);
+}
+
+body.dark-mode .date-label {
+  color: var(--qe-dark-text-secondary);
+}
+
+body.dark-mode .form-group label {
+  color: var(--qe-dark-text-secondary);
+}
+
+body.dark-mode .form-control {
+  background-color: var(--qe-dark-surface-alt);
+  border-color: var(--qe-dark-border);
+  color: var(--qe-dark-text-primary);
+}
+
+body.dark-mode .form-control:focus {
+  box-shadow: 0 0 0 3px rgba(169, 99, 34, 0.2);
+}
+
+body.dark-mode .currency-symbol {
+  color: var(--qe-dark-text-secondary);
+}
+
+body.dark-mode .category-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='none' d='M0 0h24v24H0z'/%3E%3Cpath d='M12 15l-4-4h8z' fill='rgba(255,255,255,0.5)'/%3E%3C/svg%3E");
+}
+
+body.dark-mode .expense-bottom-section {
+  border-color: var(--qe-dark-border);
+}
+
+body.dark-mode .success-message {
+  background-color: rgba(76, 175, 80, 0.15);
+  color: #81c784; /* Lighter green for dark mode */
+}
+
+/* ============= RESPONSIVE DESIGN ============= */
+@media (max-width: 480px) {
+  .quick-expense-content {
+    padding: 12px;
+  }
+  
+  .expense-top-grid {
+    gap: 10px;
+  }
+  
+  .form-control {
+    font-size: 14px;
+  }
+  
+  .form-group {
+    margin-bottom: 12px;
+  }
+}
+
+/* For very small screens, ensure no horizontal scroll */
+@media (max-width: 320px) {
+  .quick-expense-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 0;
+    height: 100%;
+    max-height: 100%;
+  }
+  
+  .expense-top-grid {
+    gap: 8px;
+  }
+  
+  .quick-expense-content {
+    padding: 10px;
+  }
+}
+
+/* ============= ANIMATIONS ============= */
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.form-group {
+  animation: fade-in 0.3s ease-out;
+  animation-fill-mode: both;
+}
+
+/* Button pulse animation for attention */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.quick-expense-btn.pulse {
+  animation: pulse 0.5s;
+}
+</style>

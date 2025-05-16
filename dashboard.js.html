@@ -263,11 +263,15 @@ if (data.subscriptions) {
       let percentText = '';
       if (income > 0) {
         const percentage = Math.round((total / income) * 100);
-        percentText = ` • ${percentage}% of income`;
+        const ofIncomeText = SimBudget.translations?.subscriptions_of_income || "of income";
+        percentText = ` • ${percentage}% ${ofIncomeText}`;
       }
       
+      // Get translated "total" text
+      const totalText = SimBudget.translations?.subscriptions_total || "total";
+      
       // Build a consistent format with our currency formatting function
-      const formattedSummary = `${count} 🔁 • ${Utils.formatCurrency(total)} total${percentText}`;
+      const formattedSummary = `${count} 🔁 • ${Utils.formatCurrency(total)} ${totalText}${percentText}`;
       
       // Update the element
       subscriptionInfo.innerHTML = formattedSummary;

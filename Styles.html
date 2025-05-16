@@ -315,6 +315,7 @@ body.dark-mode .view-header {
   height: 36px;
   padding: 0;
   border-radius: 50%;
+  background: white;
 }
 
 .btn.icon-btn i {
@@ -723,5 +724,38 @@ body.dark-mode .view-header {
   }
 }
 
+/* Loading overlay dark mode styling */
+.loading-overlay {
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(5px);
+}
+
+.dark-mode .loading-overlay {
+  background-color: rgba(25, 25, 25, 0.9);
+  backdrop-filter: blur(5px);
+}
+
+.loading-quote {
+  color: #666;
+}
+
+.dark-mode .loading-quote {
+  color: #aaa;
+}
+
+/* Safari zoom prevention - place at the top of your CSS */
+input, 
+select, 
+textarea, 
+button {
+  font-size: 16px !important; /* Force minimum size Safari recognizes */
+}
+
+/* Target iOS devices specifically if needed */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
 
 </style>

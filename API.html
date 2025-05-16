@@ -357,34 +357,54 @@ getDashboardData: function(successCallback, errorCallback) {
   }
 },
 
-
     
-    /**
-     * Get expense data
-     * @param {Function} successCallback - Called on success
-     * @param {Function} errorCallback - Called on error
-     */
-    getExpenseData: function(successCallback, errorCallback) {
-      try {
-        google.script.run
-          .withSuccessHandler(function(result) {
-            if (result && result.success) {
-              successCallback(result);
-            } else {
-              _lastError = result && result.error ? result.error : "Unknown error";
-              errorCallback(_lastError);
-            }
-          })
-          .withFailureHandler(function(error) {
-            _lastError = error;
-            errorCallback(error);
-          })
-          .getExpenseData();
-      } catch (e) {
-        _lastError = e.message || String(e);
-        errorCallback(_lastError);
-      }
-    },
+
+
+
+openQuickExpenseModal: function(successCallback, errorCallback) {
+  try {
+    console.log("API.openQuickExpenseModal called");
+    
+    // First, ensure the modal HTML is injected
+    if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureModalExists === 'function') {
+      QuickExpenseEntry.ensureModalExists();
+    }
+    
+    // Get the modal element
+    const modal = document.getElementById('quickExpenseModal');
+    console.log("- Modal element found:", !!modal);
+    console.log("- Modal class before:", modal ? modal.className : "N/A");
+    
+    if (!modal) {
+      _lastError = "Quick expense modal not found in DOM";
+      console.error(_lastError);
+      if (errorCallback) errorCallback(_lastError);
+      return;
+    }
+    
+    // Make the modal visible
+    modal.classList.add('visible');
+    console.log("- Modal class after:", modal ? modal.className : "N/A");
+    
+    if (successCallback) {
+      successCallback({ success: true, message: "Modal opened successfully" });
+    }
+  } catch (e) {
+    _lastError = e.message || String(e);
+    console.error("Error opening quick expense modal:", _lastError);
+    if (errorCallback) errorCallback(_lastError);
+  }
+},
+
+
+
+
+
+
+
+
+
+
     
     /**
      * Gets the last error that occurred in any API call

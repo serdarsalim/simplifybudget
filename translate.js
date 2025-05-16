@@ -130,6 +130,10 @@ function getTranslationHints() {
  */
 function getUIDictionary() {
   return {
+
+    // Budget quote
+    "budget_quote": "Budgeting is telling your money where to go, not wondering where it went.",
+
     // General
     "educational_disclaimer": "Only for educational purposes. Not for real financial advice.",
     "refresh": "Refresh",
@@ -137,6 +141,18 @@ function getUIDictionary() {
     "save": "Save",
     "reset": "Reset",
     "test": "Test",
+    
+
+    // Budget alert messages
+    "budget_no_income_tip": "You budgeted {0}. Tip: Align it with your income.",
+    "budget_perfect_match": "Your budget of {0} perfectly matches your income!",
+    "budget_under_income": "You've budgeted {0} with {1} left to allocate.",
+    "budget_over_income": "You've budgeted {0}, exceeding income by {1}.",
+    
+        // Subscription info translations
+    "subscriptions_total": "total",
+    "subscriptions_of_income": "of income",
+
     
         // Month names
     "january": "January",

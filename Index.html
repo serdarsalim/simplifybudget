@@ -3,25 +3,20 @@
   <head>
     <base target="_top">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     
     <!-- Chart.js for data visualization -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     
-    <?!= include('Styles'); ?>
+  <?!= include('Styles'); ?>
     
-    <!-- Include the new dashboard styles -->
-    <style>
-      <?!= include('dashboard.css'); ?>
-      <?!= include('sidebar.css'); ?>
-      <?!= include('settings.css'); ?>
-    </style>
-    
-    <title data-translate="app_title">Simplify</title>
+ <title data-translate="app_title">Simplify</title>
   </head>
   <body>
+
+
     <div class="app-container">
       <!-- SIDEBAR -->
       <?!= include('Sidebar'); ?>
@@ -32,17 +27,17 @@
         <?!= include('dashboard.html'); ?>
         
         <!-- Expense View - Initially Hidden -->
-        <div id="expenseView" class="view">
-          <div class="view-header">
-            <h1><i class="material-icons">receipt_long</i> <span data-translate="expenses">Expenses</span></h1>
-            <div class="view-actions">
-              <button id="addExpense" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_expense">Add Expense</span></button>
+        <!-- Expense View - Initially Hidden -->
+          <div id="expenseView" class="view">
+              <div class="view-header">
+                <h1><i class="material-icons">receipt_long</i> <span data-translate="expenses">Expenses</span></h1>
+                <div class="view-actions">
+                  <button id="addExpense" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_expense">Add Expense</span></button>
+                </div>
+              </div>
+              <div id="expenseContent" class="view-content">
+              </div>
             </div>
-          </div>
-          <div id="expenseContent" class="view-content">
-            <!-- Expense data will be loaded here -->
-          </div>
-        </div>
         
         <!-- Income View - Initially Hidden -->
         <div id="incomeView" class="view">
@@ -119,8 +114,19 @@
             <?!= include('Settings'); ?>
           </div>
         </div>
+
+
+
         </div>
+
+
+
+ 
+
       </div>
+    
+    
+
     </div>
     
     <!-- Include JavaScript -->
@@ -129,11 +135,15 @@
     <?!= include('Init'); ?>
     <?!= include('dashboard.js'); ?>
     <?!= include('settings.js'); ?>
+    <?!= include('transactionEntry.js'); ?>
     <script>
       // Main entry point - Initialize the application
       document.addEventListener('DOMContentLoaded', function() {
         SimBudget.initialize();
       });
+
+
+        
     </script>
   </body>
 </html>
