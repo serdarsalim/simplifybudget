@@ -1,13 +1,19 @@
 // SERVER-SIDE CODE: Add to transaction.js (server-side)
 
+// BUGFIX: Making the refresh button work, fixing caching, and filtering quick expense dropdown
+
+// 1. Fix for Server-Side Code in transaction.js
+// Adjust the getCategories function to prioritize cache usage
+
 /**
- * Get active categories from setup sheet with caching
- * @param {boolean} useCache - Whether to use cached data if available
+ * Get active categories from setup sheet with improved caching
+ * @param {boolean} useCache - Whether to use cached data if available (true by default)
  * @return {Object} Categories data and active status
  */
 function getCategories(useCache = true) {
   try {
     const props = PropertiesService.getUserProperties();
+    Logger.log("getCategories called with useCache=" + useCache);
     
     // Check for cached data if useCache is true
     if (useCache) {
@@ -26,6 +32,7 @@ function getCategories(useCache = true) {
     }
     
     // No cache or cache bypassed, get data from spreadsheet
+    Logger.log("No cache or cache bypassed, getting from spreadsheet");
     const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
     
     if (!spreadsheetId) {
@@ -35,10 +42,8 @@ function getCategories(useCache = true) {
       };
     }
     
-    // Open spreadsheet
+    // Open spreadsheet and get Setup sheet
     const ss = SpreadsheetApp.openById(spreadsheetId);
-    
-    // Get Setup sheet
     const setupSheet = ss.getSheetByName("Setup");
     if (!setupSheet) {
       return {
@@ -47,34 +52,37 @@ function getCategories(useCache = true) {
       };
     }
     
-    // Get category names from range G15:G44
-    const categoryRange = setupSheet.getRange("G15:G44").getValues();
+    // Get category data from columns F and G (15:44)
+    const range = setupSheet.getRange("F15:G44");
+    const values = range.getValues();
     
-    // Get active status from range F15:F44
-    const activeRange = setupSheet.getRange("F15:F44").getValues();
-    
-    // Process into category array
+    // Process categories
     const categories = [];
-    for (let i = 0; i < categoryRange.length; i++) {
-      const category = categoryRange[i][0];
+    const activeCategories = [];
+    
+    for (let i = 0; i < values.length; i++) {
+      const isActive = values[i][0] === true; // Column F is checkbox (active/inactive)
+      const categoryName = values[i][1];      // Column G is category name
       
-      // Only add non-empty categories
-      if (category && category.trim() !== "") {
-        categories.push(category);
+      // Skip empty rows
+      if (!categoryName || categoryName === "") continue;
+      
+      // Add to categories list
+      categories.push(categoryName);
+      
+      // If active, add to active categories list
+      if (isActive) {
+        activeCategories.push(categoryName);
       }
     }
     
-    // Filter for only active categories
-    const activeCategories = categories.filter((cat, i) => {
-      const index = categoryRange.findIndex(row => row[0] === cat);
-      return index >= 0 && (activeRange[index][0] === true || activeRange[index][0] === "TRUE");
-    });
-    
-    // Store data in user properties for caching
+    // Save to user properties for caching
     props.setProperty("CACHED_CATEGORIES", JSON.stringify(categories));
     props.setProperty("ACTIVE_CATEGORIES", JSON.stringify(activeCategories));
     
-    // Return both full list and active status
+    Logger.log("Returning categories from spreadsheet: " + categories.length + " total, " + 
+               activeCategories.length + " active");
+    
     return {
       success: true,
       categories: categories,

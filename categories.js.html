@@ -1,4 +1,3 @@
-<!-- categories.js.html - ENHANCED VERSION WITH SPREADSHEET UPDATES -->
 <script>
 /**
  * CategoriesManager - Enhanced category management for SimBudget
@@ -16,6 +15,7 @@ var CategoriesManager = (function() {
   let _categories = [];
   let _isLoading = false;
   let _isSaving = false;
+  let _isNavigating = false;
   
   // DOM element cache for performance
   const _elements = {};
@@ -32,33 +32,80 @@ var CategoriesManager = (function() {
     return _elements[id];
   }
   
-  /**
-   * Initialize the Categories Manager
-   * @param {Array} categories - Categories data from API
-   * @param {Array} activeCategories - Active categories array from API
-   */
-  function init(categories, activeCategories) {
-    console.log('Initializing Categories Manager...');
+  // Replace the existing init function with this improved version:
+function init(categories, activeCategories) {
+  console.log('Initializing Categories Manager...');
+  
+  // Store initialization attempt for debugging
+  window._lastCategoryInitTime = new Date().getTime();
+  
+  // Force reset if explicit data provided
+  if (categories && Array.isArray(categories)) {
+    console.log('Explicit category data provided, resetting initialization state');
+    _initialized = false;
+  }
+  
+  // If already initialized with data, just refresh UI and exit
+  if (_initialized && _categories && _categories.length > 0) {
+    console.log('Categories Manager already initialized with data - refreshing UI');
+    renderCategories();
+    return;
+  }
+  
+  // If categories data is provided directly, use it
+  if (categories && Array.isArray(categories)) {
+    console.log('Using provided categories data:', categories.length, 'items');
+    _categories = processCategories(categories, activeCategories || []);
+    renderCategories();
+    _initialized = true;
     
-    // Initialize only once
-    if (_initialized) {
-      console.log('Categories Manager already initialized');
-      return;
-    }
+    // Ensure QuickExpenseEntry has latest data - even if modal not open
+    setTimeout(() => {
+      if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+        QuickExpenseEntry.ensureCategoriesLoaded(_categories);
+      }
+    }, 100);
+  } else {
+    // First try localStorage before API
+    const cachedCategories = localStorage.getItem('simbudget_categories');
+    const cachedActiveCategories = localStorage.getItem('simbudget_active_categories');
     
-    // If categories data is provided directly, use it
-    if (categories && Array.isArray(categories)) {
-      console.log('Using provided categories data:', categories);
-      _categories = processCategories(categories, activeCategories || []);
-      renderCategories();
+    if (cachedCategories) {
+      try {
+        console.log('Using categories from localStorage');
+        const parsedCategories = JSON.parse(cachedCategories);
+        let activeList = [];
+        
+        // Try to get active categories list
+        if (cachedActiveCategories) {
+          activeList = JSON.parse(cachedActiveCategories);
+        }
+        
+        _categories = processCategories(parsedCategories, activeList);
+        renderCategories();
+        _initialized = true;
+        
+        // Ensure QuickExpenseEntry has latest data
+        setTimeout(() => {
+          if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+            QuickExpenseEntry.ensureCategoriesLoaded(_categories);
+          }
+        }, 100);
+        
+        // Load from server in background ONLY if not navigating
+        if (!_isNavigating) {
+          setTimeout(() => loadCategories(false), 500);
+        }
+      } catch (e) {
+        console.error('Error parsing cached categories, falling back to API:', e);
+        loadCategories();
+      }
     } else {
-      // Otherwise load from API
+      // No cache, load from API
       loadCategories();
     }
-    
-    // Set initialized flag
-    _initialized = true;
   }
+}
   
   /**
    * Load categories from server with caching
@@ -263,66 +310,78 @@ var CategoriesManager = (function() {
    * @param {Function} errorCallback - Called on error
    */
   function toggleCategory(index, active, successCallback, errorCallback) {
-    console.log(`Toggling category at index ${index} to ${active}`);
-    
-    if (_isSaving) {
-      console.log('Already saving, please wait...');
-      if (errorCallback) errorCallback('Already saving');
-      return;
-    }
-    
-    // Update _categories array
-    if (_categories[index]) {
-      const categoryName = _categories[index].name;
-      _categories[index].active = active;
-      
-      // Update UI
-      const card = document.querySelector(`.category-card[data-index="${index}"]`);
-      if (card) {
-        if (active) {
-          card.classList.add('active');
-        } else {
-          card.classList.remove('active');
-        }
-      }
-      
-      // Set saving flag
-      _isSaving = true;
-      
-      // Save to spreadsheet via API
-      API.updateCategoryStatus(
-        categoryName, 
-        active,
-        function(result) {
-          console.log('Category status updated in spreadsheet:', result);
-          
-          // Update local storage with latest data
-          localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
-          
-          // Update quick expense dropdown to show only active categories
-          updateQuickExpenseDropdown();
-          
-          // Clear saving flag
-          _isSaving = false;
-          
-          // Call success callback if provided
-          if (successCallback) successCallback(result);
-        },
-        function(error) {
-          console.error('Error updating category in spreadsheet:', error);
-          
-          // Revert the change in memory
-          _categories[index].active = !active;
-          
-          // Clear saving flag
-          _isSaving = false;
-          
-          // Call error callback if provided
-          if (errorCallback) errorCallback(error);
-        }
-      );
-    }
+  console.log(`Toggling category at index ${index} to ${active}`);
+  
+  if (_isSaving) {
+    console.log('Already saving, please wait...');
+    if (errorCallback) errorCallback('Already saving');
+    return;
   }
+  
+  // Update _categories array
+  if (_categories[index]) {
+    const categoryName = _categories[index].name;
+    _categories[index].active = active;
+    
+    // Update UI
+    const card = document.querySelector(`.category-card[data-index="${index}"]`);
+    if (card) {
+      if (active) {
+        card.classList.add('active');
+      } else {
+        card.classList.remove('active');
+      }
+    }
+    
+    // Set saving flag
+    _isSaving = true;
+    
+    // Save to spreadsheet via API
+    API.updateCategoryStatus(
+      categoryName, 
+      active,
+      function(result) {
+        console.log('Category status updated in spreadsheet:', result);
+        
+        // Store THE WHOLE CATEGORIES ARRAY in the same format it's needed on load
+        localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
+        
+        // Also keep the active categories list for quick access
+        const activeCategories = _categories
+          .filter(cat => cat.active)
+          .map(cat => cat.name);
+        localStorage.setItem('simbudget_active_categories', JSON.stringify(activeCategories));
+        
+        // IMPROVED: First directly update QuickExpenseEntry (even if modal closed)
+        if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+          QuickExpenseEntry.ensureCategoriesLoaded(_categories);
+          console.log('Directly updated QuickExpenseEntry with new categories data');
+        }
+        
+        // Then use the global function for any other components
+        window.updateAllCategoryDropdowns();
+        
+        // Clear saving flag
+        _isSaving = false;
+        
+        // Call success callback if provided - THIS IS CRITICAL FOR THE SPINNER
+        if (successCallback) successCallback(result);
+      },
+      function(error) {
+        console.error('Error updating category in spreadsheet:', error);
+        
+        // Revert the change in memory
+        _categories[index].active = !active;
+        
+        // Clear saving flag
+        _isSaving = false;
+        
+        // Call error callback if provided
+        if (errorCallback) errorCallback(error);
+      }
+    );
+  }
+}
   
   /**
    * Update the quick expense dropdown to show only active categories
@@ -401,7 +460,25 @@ var CategoriesManager = (function() {
     if (_isLoading || _isSaving) return;
     
     console.log('Refreshing categories with forceRefresh=true');
-    loadCategories(true); // Force refresh from spreadsheet
+    
+    // Set a global flag to force refresh
+    window._forceCategoriesRefresh = true;
+    
+    // Clear initialized flag
+    _initialized = false;
+    
+    // Force a full reload
+    if (window.SimBudget && typeof SimBudget.loadViewData === 'function') {
+      SimBudget.loadViewData('categories', true); // forceRefresh=true
+    } else {
+      // Fallback to direct load if SimBudget not available
+      loadCategories(true);
+    }
+    
+    // Use the global function with setTimeout
+    setTimeout(() => {
+      window.updateAllCategoryDropdowns();
+    }, 500);
   }
   
   // Public API
@@ -420,7 +497,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Expose globally
 window.CategoriesManager = CategoriesManager;
+
+// Single source for updating all dropdown instances
+// Single source for updating all dropdown instances - improved version
+window.updateAllCategoryDropdowns = function() {
+  console.log('Updating all category dropdowns');
+  
+  // First update internal dropdowns in CategoriesManager
+  if (window.CategoriesManager && typeof CategoriesManager.updateQuickExpenseDropdown === 'function') {
+    CategoriesManager.updateQuickExpenseDropdown();
+  }
+  
+  // Then update QuickExpenseEntry using the new resilient method
+  if (window.QuickExpenseEntry) {
+    if (typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+      QuickExpenseEntry.ensureCategoriesLoaded();
+      console.log('Used ensureCategoriesLoaded to update QuickExpenseEntry dropdowns');
+    } else if (typeof QuickExpenseEntry.loadCategories === 'function') {
+      // Fallback to old method
+      QuickExpenseEntry.loadCategories();
+      console.log('Used legacy loadCategories to update QuickExpenseEntry dropdowns');
+    }
+  }
+};
+
+
 </script>
+
+
 
 <!-- categories.css.html - ENHANCED VERSION WITH SAVING INDICATORS -->
 <style>

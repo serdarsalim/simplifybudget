@@ -225,6 +225,7 @@
     const Views = {
       // Switch to a view
       // Switch to a view
+// Switch to a view
 switchTo: function (viewName) {
   if (!viewName) return;
 
@@ -513,6 +514,21 @@ initialize: function() {
             }
           });
         }
+
+        //refresh categories
+
+          const refreshCategoriesBtn = document.getElementById("refreshCategories");
+  if (refreshCategoriesBtn) {
+    refreshCategoriesBtn.addEventListener("click", () => {
+      // Force refresh by invalidating cache
+      if (window.CategoriesManager && typeof CategoriesManager.refreshCategories === 'function') {
+        CategoriesManager.refreshCategories();
+      } else {
+        console.error("Cannot refresh categories - CategoriesManager not available");
+        Utils.showToast("Cannot refresh categories", "error");
+      }
+    });
+  }
 
 
 
@@ -939,7 +955,12 @@ initialize: function() {
        * @param {string} viewName - Name of the view to load
        * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
        */
-      loadViewData: function(viewName, forceRefresh = false) {
+      /**
+ * Load data for a specific view with caching
+ * @param {string} viewName - Name of the view to load
+ * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
+ */
+loadViewData: function(viewName, forceRefresh = false) {
   console.log(`Loading data for ${viewName} view, force refresh: ${forceRefresh}`);
 
   // Skip if already loading the same view
@@ -998,7 +1019,7 @@ initialize: function() {
   }
 },
 
-      // Add as a new function in SimBudget
+
 // In Init.html - modify the loadCategoriesData function
 loadCategoriesData: function() {
   // Get content container
@@ -1012,14 +1033,70 @@ loadCategoriesData: function() {
   // Get or create categories container
   let categoriesContainer = document.getElementById("categories-container");
   if (!categoriesContainer) {
-    // Only create container if it doesn't exist
     categoriesContainer = document.createElement("div");
     categoriesContainer.id = "categories-container";
     categoriesContainer.className = "categories-container";
     contentArea.appendChild(categoriesContainer);
   }
   
-  // Show loading state INSIDE the container (not replacing it)
+  // First check if CategoriesManager is initialized and has data
+  if (window.CategoriesManager && CategoriesManager._initialized && 
+      CategoriesManager._categories && CategoriesManager._categories.length > 0) {
+    console.log("CategoriesManager already initialized, skipping load");
+    _loadingView = null;
+    return;
+  }
+  
+  // Then check local cache before showing loading state
+  const cachedCategories = localStorage.getItem('simbudget_categories');
+  const cachedActiveCategories = localStorage.getItem('simbudget_active_categories');
+  
+  if (cachedCategories && !window._forceCategoriesRefresh) {
+    try {
+      // Use cached data
+      console.log("Using cached categories from localStorage");
+      const parsedCategories = JSON.parse(cachedCategories);
+      let activeList = [];
+      
+      if (cachedActiveCategories) {
+        activeList = JSON.parse(cachedActiveCategories);
+      }
+      
+      // Store in SimBudget cache too
+      _cache.set("categories", parsedCategories);
+      
+      // Initialize manager with cached data
+      if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
+        CategoriesManager.init(parsedCategories, activeList);
+      }
+      
+      // Clear loading flag
+      _loadingView = null;
+      
+      // Optionally refresh in background after a delay
+      setTimeout(() => {
+        if (!window._isViewChanging) {
+          API.getCategories(
+            function(result) {
+              console.log("Background refresh of categories completed");
+              // No UI update needed here unless data changed significantly
+            },
+            function(error) {
+              console.log("Background refresh error (non-critical):", error);
+            },
+            false // Don't force refresh, use server cache
+          );
+        }
+      }, 2000);
+      
+      return;
+    } catch (e) {
+      console.error("Error parsing cached categories:", e);
+      // Fall through to API call on error
+    }
+  }
+  
+  // Show loading state ONLY if we couldn't use cache
   categoriesContainer.innerHTML = '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
   
   // Call API to get categories
@@ -1032,6 +1109,7 @@ loadCategoriesData: function() {
       
       // Clear loading flag
       _loadingView = null;
+      window._forceCategoriesRefresh = false;
       
       // Initialize CategoriesManager with data
       if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
@@ -1043,13 +1121,39 @@ loadCategoriesData: function() {
     function(error) {
       console.error("Error loading categories:", error);
       _loadingView = null;
+      window._forceCategoriesRefresh = false;
       
-      // Show error INSIDE container
+      // Try to use cached data even on error
+      if (cachedCategories) {
+        try {
+          const parsedCategories = JSON.parse(cachedCategories);
+          let activeList = [];
+          
+          if (cachedActiveCategories) {
+            activeList = JSON.parse(cachedActiveCategories);
+          }
+          
+          if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
+            CategoriesManager.init(parsedCategories, activeList);
+            
+            // Show a toast about using cached data due to error
+            if (window.Utils && typeof Utils.showToast === 'function') {
+              Utils.showToast('Using cached categories - ' + error, 'warning');
+            }
+            return;
+          }
+        } catch (e) {
+          console.error("Error parsing cached categories on error fallback:", e);
+        }
+      }
+      
+      // Show error INSIDE container only if we couldn't use cache
       categoriesContainer.innerHTML = `<div class="categories-error">
         <i class="material-icons">error</i>
         <span>Error loading categories: ${error}</span>
       </div>`;
-    }
+    },
+    window._forceCategoriesRefresh || false // Only force refresh if flag is set
   );
 },
 

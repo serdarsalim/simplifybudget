@@ -693,6 +693,18 @@ body.dark-mode .view-header {
   .btn {
     padding: var(--spacing-xs) var(--spacing-sm);
   }
+
+  /* Override header layout on small screens to keep primary button on the right */
+  .view-header {
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+  .view-actions {
+    margin-left: auto !important;
+    margin-top: 0 !important;
+  }
+}
   
 
 
@@ -755,6 +767,37 @@ button {
 @supports (-webkit-touch-callout: none) {
   input, select, textarea {
     font-size: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Move all primary buttons to the right in mobile view */
+  .btn.primary {
+    margin-left: auto;
+  }
+  
+  /* For button groups/containers */
+  .button-group,
+  .view-actions,
+  .form-actions,
+  .modal-footer,
+  .action-buttons {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+  }
+  
+  /* When primary button is inside a flex container */
+  .flex-container .btn.primary,
+  .view-header-title .btn.primary,
+  .card-actions .btn.primary {
+    order: -1;
+  }
+  
+  /* For forms with multiple buttons */
+  form .btn.primary {
+    float: right;
+    clear: right;
   }
 }
 

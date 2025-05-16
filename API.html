@@ -428,19 +428,38 @@ updateCategoryStatus: function(categoryName, active, successCallback, errorCallb
   }
 },
 
-/**
- * Get categories with option to force refresh
- * @param {Function} successCallback - Called on success
- * @param {Function} errorCallback - Called on error
- * @param {boolean} forceRefresh - Whether to bypass cache
- */
+// API.html ADDITIONS: Fixed API functions to properly handle caching
+
+// In API.html, locate the getCategories function and add the highlighted line:
+
 getCategories: function(successCallback, errorCallback, forceRefresh) {
   try {
+    // Add logging to debug
+    console.log("API.getCategories called with forceRefresh=", forceRefresh);
+    
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success) {
           // Store the last result for potential future use
           API._lastCategoriesResponse = result;
+          
+          // Log where data came from
+          if (result.fromCache) {
+            console.log("Categories loaded from user properties cache");
+          } else {
+            console.log("Categories loaded directly from spreadsheet");
+          }
+          
+          // Store active categories separately for easier access
+          if (result.activeCategories) {
+            localStorage.setItem('simbudget_active_categories', JSON.stringify(result.activeCategories));
+          }
+          
+          // ADD THIS LINE: Store all categories data
+          if (result.categories) {
+            localStorage.setItem('simbudget_categories', JSON.stringify(result.categories));
+          }
+          
           successCallback(result);
         } else {
           _lastError = result && result.error ? result.error : "Unknown error";
@@ -458,7 +477,45 @@ getCategories: function(successCallback, errorCallback, forceRefresh) {
   }
 },
 
-
+/**
+ * Get only active categories - convenience method
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+getActiveCategories: function(successCallback, errorCallback) {
+  try {
+    // If we have cached response with active categories, use it
+    if (API._lastCategoriesResponse && API._lastCategoriesResponse.activeCategories) {
+      successCallback({
+        success: true,
+        activeCategories: API._lastCategoriesResponse.activeCategories
+      });
+      return;
+    }
+    
+    // Otherwise call getCategories to get fresh data
+    this.getCategories(
+      function(result) {
+        if (result && result.success && result.activeCategories) {
+          successCallback({
+            success: true,
+            activeCategories: result.activeCategories
+          });
+        } else {
+          // Fall back to all categories if active list not available
+          successCallback({
+            success: true,
+            activeCategories: result.categories || []
+          });
+        }
+      },
+      errorCallback
+    );
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
 
     
     /**
