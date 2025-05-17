@@ -474,19 +474,22 @@ var MonthlyGrid = (function() {
    * Create table body with daily rows
    */
   function createTableBody(categories, daysInMonth) {
-    const tbody = document.createElement('tbody');
+  const tbody = document.createElement('tbody');
+  
+  // Get today's date for highlighting
+  const today = new Date();
+  const isCurrentMonth = today.getMonth() === _currentMonth && today.getFullYear() === _currentYear;
+  const currentDay = today.getDate();
+  
+  // Create a row for each day
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateObj = new Date(_currentYear, _currentMonth, day);
+    const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
     
-    // Get today's date for highlighting
-    const today = new Date();
-    const isCurrentMonth = today.getMonth() === _currentMonth && today.getFullYear() === _currentYear;
-    const currentDay = today.getDate();
+    // CHANGE THIS LINE: Only Sunday (0) is a weekend now
+    const isWeekend = (dayOfWeek === 0);
     
-    // Create a row for each day
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateObj = new Date(_currentYear, _currentMonth, day);
-      const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
-      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-      const isToday = isCurrentMonth && day === currentDay;
+    const isToday = isCurrentMonth && day === currentDay;
       
       const row = document.createElement('tr');
       row.className = 'day-row';
@@ -619,103 +622,149 @@ var MonthlyGrid = (function() {
    * @param {string} day - Day of the month
    * @param {string} categoryId - Category ID
    */
-  function openTransactionModal(day, categoryId) {
-    // Debug log
-    console.log('Opening modal for day:', day, 'category:', categoryId);
-    
-    // Get modal and check it exists - FIXED: Using getElement instead of $
-    const modal = getElement('transaction-modal');
-    if (!modal) {
-      console.error('Modal element not found in DOM');
-      return;
-    }
-    
-    // Get the category
-    const category = _categories.find(c => c.id === categoryId);
-    if (!category) {
-      console.error('Category not found:', categoryId);
-      return;
-    }
-    
-    // Get transactions for this day/category
-    const transactions = getTransactionsForDayAndCategory(parseInt(day), categoryId);
-    console.log('Transactions found:', transactions.length);
-    
-    // Format the date for display
-    const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
-    const formattedDate = dateObj.toLocaleDateString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-    
-    // Update modal title
-    const modalTitle = getElement('modal-title');
-    if (modalTitle) {
-      modalTitle.textContent = `${category.emoji} ${category.name} on ${formattedDate}`;
-    }
-    
-    // Update modal content
-    const transactionsList = getElement('transactions-list');
-    if (transactionsList) {
-      transactionsList.innerHTML = '';
-      
-      if (transactions.length > 0) {
-        // Calculate total
-        const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-        
-        // Add total display
-        const totalElement = document.createElement('div');
-        totalElement.className = 'transactions-total';
-        totalElement.innerHTML = `<span>Total:</span> <span class="total-value">€${total}</span>`;
-        transactionsList.appendChild(totalElement);
-        
-        // Add each transaction
-        transactions.forEach(tx => {
-          const item = document.createElement('div');
-          item.className = 'transaction-item';
-          item.setAttribute('data-id', tx.id);
-          
-          item.innerHTML = `
-            <div class="transaction-row">
-              <input type="number" class="transaction-amount" value="${tx.amount}" min="0" step="0.01">
-              <input type="text" class="transaction-description" value="${tx.description || ''}">
-              <select class="transaction-account">
-                <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
-                <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
-                <option value="Savings" ${tx.account === 'Savings' ? 'selected' : ''}>Savings</option>
-              </select>
-              <div class="transaction-actions">
-                <button class="transaction-delete"><i class="material-icons">delete</i></button>
-              </div>
-            </div>
-          `;
-          
-          transactionsList.appendChild(item);
-        });
-      } else {
-        // No transactions yet, show empty state
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-transactions';
-        emptyState.textContent = 'No transactions for this day/category. Add one below!';
-        transactionsList.appendChild(emptyState);
-      }
-    }
-    
-    // Store current day/category for adding new transactions
-    modal.setAttribute('data-day', day);
-    modal.setAttribute('data-category', categoryId);
-    
-    // Add ESC key closing
-    document.addEventListener('keydown', handleEscKey);
-    
-    // Show the modal with a small delay to prevent immediate closing
-    setTimeout(() => {
-      modal.classList.add('visible');
-      console.log('Modal should now be visible');
-    }, 10);
+  /**
+ * Open transaction modal for a specific day and category
+ * @param {string} day - Day of the month
+ * @param {string} categoryId - Category ID
+ */
+function openTransactionModal(day, categoryId) {
+  // Debug log
+  console.log('Opening modal for day:', day, 'category:', categoryId);
+  
+  // Get modal and check it exists
+  const modal = getElement('transaction-modal');
+  if (!modal) {
+    console.error('Modal element not found in DOM');
+    return;
   }
+  
+  // Get the category
+  const category = _categories.find(c => c.id === categoryId);
+  if (!category) {
+    console.error('Category not found:', categoryId);
+    return;
+  }
+  
+  // Get transactions for this day/category
+  const transactions = getTransactionsForDayAndCategory(parseInt(day), categoryId);
+  console.log('Transactions found:', transactions.length);
+  
+  // Format the date for display
+  const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
+  const formattedDate = dateObj.toLocaleDateString('en-US', { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+  
+  // Calculate total
+  const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+  
+  // Update modal title with integrated total
+  const modalTitle = getElement('modal-title');
+  if (modalTitle) {
+    modalTitle.innerHTML = `
+      <div class="integrated-title">
+        <span class="title-category">${category.emoji} ${category.name}</span>
+        <span class="title-divider">|</span>
+        <span class="title-date">${formattedDate}</span>
+        ${total > 0 ? `<span class="title-divider">|</span><span class="title-total">Total: €${total}</span>` : ''}
+      </div>
+    `;
+  }
+  
+  // Update modal content
+  const transactionsList = getElement('transactions-list');
+  if (transactionsList) {
+    transactionsList.innerHTML = '';
+    
+    if (transactions.length > 0) {
+      // We no longer need to add a separate total element here
+      // since it's now integrated in the title
+      
+      // Add each transaction
+      transactions.forEach(tx => {
+        const item = document.createElement('div');
+        item.className = 'transaction-item';
+        item.setAttribute('data-id', tx.id);
+        
+        item.innerHTML = `
+          <div class="transaction-row">
+            <input type="number" class="transaction-amount" value="${tx.amount}" min="0" step="0.01">
+            <input type="text" class="transaction-description" value="${tx.description || ''}">
+            <select class="transaction-account">
+              <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
+              <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
+              <option value="Savings" ${tx.account === 'Savings' ? 'selected' : ''}>Savings</option>
+            </select>
+            <div class="transaction-actions">
+              <button class="transaction-delete"><i class="material-icons">delete</i></button>
+            </div>
+          </div>
+        `;
+        
+        transactionsList.appendChild(item);
+      });
+    } else {
+      // No transactions yet, show empty state
+      const emptyState = document.createElement('div');
+      emptyState.className = 'empty-transactions';
+      emptyState.textContent = 'No transactions for this day/category. Add one below!';
+      transactionsList.appendChild(emptyState);
+    }
+  }
+  
+  // Store current day/category for adding new transactions
+  modal.setAttribute('data-day', day);
+  modal.setAttribute('data-category', categoryId);
+  
+  // Add ESC key closing
+  document.addEventListener('keydown', handleEscKey);
+  
+  // Show the modal with a small delay to prevent immediate closing
+  setTimeout(() => {
+    modal.classList.add('visible');
+    console.log('Modal should now be visible');
+  }, 10);
+}
+
+/**
+ * Update the total in the transaction modal (needs to update the title now)
+ */
+function updateTransactionTotal() {
+  const transactionsList = getElement('transactions-list');
+  const modalTitle = getElement('modal-title');
+  if (!transactionsList || !modalTitle) return;
+  
+  // Get all transaction amounts
+  const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
+    .map(input => parseFloat(input.value) || 0);
+  
+  // Calculate total
+  const total = amounts.reduce((sum, amount) => sum + amount, 0);
+  
+  // Update the title total
+  const titleTotal = modalTitle.querySelector('.title-total');
+  if (titleTotal) {
+    titleTotal.textContent = `Total: €${total}`;
+  } else if (total > 0) {
+    // If total element doesn't exist but we have a value, add it
+    const titleContent = modalTitle.querySelector('.integrated-title');
+    if (titleContent) {
+      const divider = document.createElement('span');
+      divider.className = 'title-divider';
+      divider.textContent = '|';
+      
+      const newTotal = document.createElement('span');
+      newTotal.className = 'title-total';
+      newTotal.textContent = `Total: €${total}`;
+      
+      titleContent.appendChild(divider);
+      titleContent.appendChild(newTotal);
+    }
+  }
+}
   
   /**
    * Handle ESC key to close modal
@@ -744,107 +793,109 @@ var MonthlyGrid = (function() {
   /**
    * Add a new transaction row in the modal
    */
-  function addTransactionRow() {
-    console.log('Adding new transaction row');
-    
-    const transactionsList = getElement('transactions-list');
-    const modal = getElement('transaction-modal');
-    
-    if (!transactionsList || !modal) {
-      console.error('Required elements not found');
-      return;
-    }
-    
-    const day = modal.getAttribute('data-day');
-    const categoryId = modal.getAttribute('data-category');
-    
-    if (!day || !categoryId) {
-      console.error('Missing day or category information');
-      return;
-    }
-    
-    // Create a new transaction object
-    const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    console.log('Creating transaction with ID:', newId);
-    
-    const newTx = {
-      id: newId,
-      date: new Date(_currentYear, _currentMonth, parseInt(day)),
-      category: categoryId,
-      amount: 0,
-      description: '',
-      account: 'Main Account'
-    };
-    
-    // Add to our local data
-    _transactions.push(newTx);
-    
-    // Create a new transaction item
-    const item = document.createElement('div');
-    item.className = 'transaction-item new-transaction';
-    item.setAttribute('data-id', newTx.id);
-    
-    item.innerHTML = `
-      <div class="transaction-row">
-        <input type="number" class="transaction-amount" value="" min="0" step="0.01" placeholder="Amount">
-        <input type="text" class="transaction-description" value="" placeholder="Description">
-        <select class="transaction-account">
-          <option value="Main Account">Main Account</option>
-          <option value="Credit Card">Credit Card</option>
-          <option value="Savings">Savings</option>
-        </select>
-        <div class="transaction-actions">
-          <button class="transaction-delete"><i class="material-icons">delete</i></button>
-        </div>
-      </div>
-    `;
-    
-    // Add handlers to the delete button
-    const deleteBtn = item.querySelector('.transaction-delete');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', function(e) {
-        // Prevent event bubbling
-        e.stopPropagation();
-        
-        // Remove from UI
-        item.remove();
-        
-        // Remove from data
-        const index = _transactions.findIndex(tx => tx.id === newTx.id);
-        if (index !== -1) {
-          _transactions.splice(index, 1);
-        }
-        
-        // Update totals
-        updateTransactionTotal();
-      });
-    }
-    
-    // Focus the amount field after adding
-    setTimeout(() => {
-      const amountField = item.querySelector('.transaction-amount');
-      if (amountField) {
-        amountField.focus();
-      }
-    }, 100);
-    
-    // Add it to the list
-    if (transactionsList.querySelector('.empty-transactions')) {
-      // Remove empty state if it exists
-      transactionsList.innerHTML = '';
-      
-      // Add total element
-      const totalElement = document.createElement('div');
-      totalElement.className = 'transactions-total';
-      totalElement.innerHTML = `<span>Total:</span> <span class="total-value">€0</span>`;
-      transactionsList.appendChild(totalElement);
-    }
-    
-    transactionsList.appendChild(item);
-    
-    // Update UI to reflect changes
-    updateTransactionTotal();
+  /**
+ * Add a new transaction row in the modal
+ */
+function addTransactionRow() {
+  console.log('Adding new transaction row');
+  
+  const transactionsList = getElement('transactions-list');
+  const modal = getElement('transaction-modal');
+  
+  if (!transactionsList || !modal) {
+    console.error('Required elements not found');
+    return;
   }
+  
+  const day = modal.getAttribute('data-day');
+  const categoryId = modal.getAttribute('data-category');
+  
+  if (!day || !categoryId) {
+    console.error('Missing day or category information');
+    return;
+  }
+  
+  // Create a new transaction object
+  const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+  console.log('Creating transaction with ID:', newId);
+  
+  const newTx = {
+    id: newId,
+    date: new Date(_currentYear, _currentMonth, parseInt(day)),
+    category: categoryId,
+    amount: 0,
+    description: '',
+    account: 'Main Account'
+  };
+  
+  // Add to our local data
+  _transactions.push(newTx);
+  
+  // Create a new transaction item
+  const item = document.createElement('div');
+  item.className = 'transaction-item new-transaction';
+  item.setAttribute('data-id', newTx.id);
+  
+  item.innerHTML = `
+    <div class="transaction-row">
+      <input type="number" class="transaction-amount" value="" min="0" step="0.01" placeholder="Amount">
+      <input type="text" class="transaction-description" value="" placeholder="Description">
+      <select class="transaction-account">
+        <option value="Main Account">Main Account</option>
+        <option value="Credit Card">Credit Card</option>
+        <option value="Savings">Savings</option>
+      </select>
+      <div class="transaction-actions">
+        <button class="transaction-delete"><i class="material-icons">delete</i></button>
+      </div>
+    </div>
+  `;
+  
+  // Add handlers to the delete button
+  const deleteBtn = item.querySelector('.transaction-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', function(e) {
+      // Prevent event bubbling
+      e.stopPropagation();
+      
+      // Remove from UI
+      item.remove();
+      
+      // Remove from data
+      const index = _transactions.findIndex(tx => tx.id === newTx.id);
+      if (index !== -1) {
+        _transactions.splice(index, 1);
+      }
+      
+      // Update totals in the integrated title
+      updateTransactionTotal();
+    });
+  }
+  
+  // Add change event listeners to update the total when values change
+  const amountInput = item.querySelector('.transaction-amount');
+  if (amountInput) {
+    amountInput.addEventListener('input', updateTransactionTotal);
+  }
+  
+  // Focus the amount field after adding
+  setTimeout(() => {
+    const amountField = item.querySelector('.transaction-amount');
+    if (amountField) {
+      amountField.focus();
+    }
+  }, 100);
+  
+  // Add it to the list, removing empty state if present
+  if (transactionsList.querySelector('.empty-transactions')) {
+    transactionsList.innerHTML = '';
+  }
+  
+  transactionsList.appendChild(item);
+  
+  // Update UI to reflect changes
+  updateTransactionTotal();
+}
   
   /**
    * Update the total in the transaction modal
@@ -1721,6 +1772,71 @@ body.dark-mode .progress-percentage {
 }
 
 
+/* Updated styles for the integrated title in transaction modal */
+.integrated-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
 
+.title-category {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.title-divider {
+  color: rgba(0, 0, 0, 0.3);
+  font-weight: 300;
+}
+
+.title-date {
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 400;
+  font-size: 0.9em;
+}
+
+.title-total {
+  color: var(--primary);
+  font-weight: 600;
+  margin-left: auto; /* Push to the right */
+}
+
+/* Adjust modal header to accommodate the new title layout */
+.modal-header {
+  padding: 12px 16px;
+}
+
+/* Remove the old separate total element (visually hidden but still in DOM for backwards compatibility) */
+.transactions-total {
+  display: none;
+}
+
+/* Dark mode adjustments */
+body.dark-mode .title-divider {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+body.dark-mode .title-date {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .title-total {
+  color: var(--settings-primary-light);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .integrated-title {
+    font-size: 14px;
+  }
+  
+  .modal-header {
+    padding: 10px 12px;
+  }
+}
 
 </style>

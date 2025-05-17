@@ -1,0 +1,2197 @@
+<!-- recurring.js.html - Advanced Version With Safe Loading -->
+<script>
+/**
+ * RecurringManager - Recurring transactions management component for SimBudget
+ */
+var RecurringManager = (function() {
+  // Private variables
+  let _initialized = false;
+  let _recurringData = [];
+  let _categories = [];
+  let _activeFilter = 'active'; // Default filter: show active items
+  let _editingRow = null;
+  
+  // Constants for status types with matching color scheme
+  const STATUS_TYPES = {
+    ACTIVE: {value: 'Active', color: '#d6eacc'}, // Green
+    EXPIRES: {value: 'Expires', color: '#ffe8b3'}, // Yellow
+    ENDED: {value: 'Ended', color: '#f8d7da'}  // Pink
+  };
+
+  // Constants for frequency options - only the ones used in the spreadsheet
+  const FREQUENCY_OPTIONS = [
+    'Monthly',
+    'Yearly',
+    'Quarterly'
+  ];
+
+  // DOM element cache
+  const _elements = {};
+  
+  /**
+   * Get an element by ID with caching
+   */
+  function getElement(id) {
+    if (!_elements[id]) {
+      _elements[id] = document.getElementById(id);
+    }
+    return _elements[id];
+  }
+  
+  /**
+   * Initialize the Recurring Manager
+   */
+  function init(containerId) {
+    if (_initialized && !containerId) {
+      return;
+    }
+    
+    console.log('Initializing Recurring Manager...', containerId);
+    
+    // Find container element
+    const container = containerId ? 
+      document.getElementById(containerId) : 
+      getElement('recurringContent');
+    
+    if (!container) {
+      console.error('Recurring container not found');
+      return;
+    }
+    
+    // Store container in elements cache
+    _elements['recurringContent'] = container;
+    
+    try {
+      // Load categories from CategoriesManager if available
+      loadCategories();
+      
+      // Load sample data for immediate display
+      loadSampleData();
+      
+      // Render the recurring view
+      renderRecurringView();
+      
+      // Set up event handlers
+      bindEvents();
+      
+      _initialized = true;
+      console.log('Recurring Manager initialized successfully!');
+    } catch (err) {
+      console.error('Error initializing RecurringManager:', err);
+      
+      // Fallback to simple render if something goes wrong
+      container.innerHTML = `
+        <div class="rec-error">
+          <h3>Advanced Recurring Module</h3>
+          <p>Loaded with sample data. Backend integration coming soon.</p>
+          <div class="rec-sample-table">
+            <table>
+              <tr>
+                <th>Name</th>
+                <th>Amount</th>
+                <th>Frequency</th>
+                <th>Status</th>
+              </tr>
+              <tr style="background-color: #d6eacc">
+                <td>Netflix</td>
+                <td>€15.99</td>
+                <td>Monthly</td>
+                <td>Active</td>
+              </tr>
+              <tr style="background-color: #ffe8b3">
+                <td>Domain Hosting</td>
+                <td>€30.00</td>
+                <td>Yearly</td>
+                <td>Expires</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Load categories from CategoriesManager or create defaults
+   */
+  function loadCategories() {
+    console.log('Loading categories for recurring manager...');
+    
+    try {
+      if (window.CategoriesManager && typeof CategoriesManager.getCategories === 'function') {
+        _categories = CategoriesManager.getCategories();
+        console.log('Loaded categories from CategoriesManager:', _categories.length);
+      } else {
+        throw new Error('CategoriesManager not available');
+      }
+    } catch (err) {
+      console.log('Using default categories:', err.message);
+      // Default categories with emoji icons if CategoriesManager not available
+      _categories = [
+        {name: 'Housing 🏡', icon: '🏡'},
+        {name: 'Transport 🚗', icon: '🚗'},
+        {name: 'Utilities 💡', icon: '💡'},
+        {name: 'Fun 🎬', icon: '🎬'},
+        {name: 'Business 💼', icon: '💼'},
+        {name: 'Personal care ❤️', icon: '❤️'},
+        {name: 'Donation 🎗️', icon: '🎗️'}
+      ];
+    }
+  }
+  
+  /**
+   * Load sample data for initial display
+   */
+  function loadSampleData() {
+    console.log('Loading sample recurring data...');
+    
+    const paymentMethods = ['Revolut', 'QNB', 'Sparkasse', 'Maybank', 'CIMB'];
+    const recurringNames = [
+      'Netflix', 'Spotify', 'Domain Hosting', 'Phone Plan', 
+      'Insurance', 'Gym Membership', 'Cloud Storage', 'Mortgage'
+    ];
+    
+    // Create sample data with varied start dates and status
+    _recurringData = [];
+    
+    // Generate dates for recurring items
+    const today = new Date();
+    const oneYearAgo = new Date(today);
+    oneYearAgo.setFullYear(today.getFullYear() - 1);
+    
+    // For sample data only - generate plausible next payment dates
+    // In production these would come from the spreadsheet
+    function getSampleNextPayment(frequency) {
+      const nextPayment = new Date();
+      
+      // Add a random offset between 1-28 days in the future
+      nextPayment.setDate(nextPayment.getDate() + Math.floor(Math.random() * 28) + 1);
+      
+      return nextPayment;
+    }
+    
+    for (let i = 0; i < 12; i++) {
+      // Create variations in dates
+      const startDate = new Date(
+        oneYearAgo.getTime() + Math.random() * (today.getTime() - oneYearAgo.getTime())
+      );
+      
+      // Some items have end dates
+      let endDate = null;
+      let status = STATUS_TYPES.ACTIVE.value;
+      
+      // Randomly assign some items as expired or ending soon
+      const randomStatus = Math.random();
+      if (randomStatus > 0.8) {
+        // Ended - has an end date in the past
+        endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + Math.floor(Math.random() * 10));
+        if (endDate < today) {
+          status = STATUS_TYPES.ENDED.value;
+        }
+      } else if (randomStatus > 0.6) {
+        // Expires soon
+        endDate = new Date(today);
+        endDate.setMonth(endDate.getMonth() + Math.floor(Math.random() * 3) + 1);
+        status = STATUS_TYPES.EXPIRES.value;
+      }
+      
+      // Use weighted frequency distribution to match real-world usage
+      // More monthly than others (60% Monthly, 25% Yearly, 15% Quarterly)
+      const frequencyRandom = Math.random();
+      const frequency = frequencyRandom < 0.6 ? 'Monthly' : 
+                        (frequencyRandom < 0.85 ? 'Yearly' : 'Quarterly');
+      
+      // Generate a sample next payment date (in production this comes from spreadsheet)
+      const nextPayment = status !== STATUS_TYPES.ENDED.value ? 
+                          getSampleNextPayment(frequency) : null;
+      
+      // Get random category
+      const categoryIndex = Math.floor(Math.random() * _categories.length);
+      const category = _categories[categoryIndex].name;
+      
+      // Generate amount between 5 and 100
+      const amount = Math.floor(Math.random() * 95) + 5;
+      
+      _recurringData.push({
+        id: `recurring-${i}-${Date.now()}`,
+        startDate: startDate,
+        endDate: endDate,
+        name: recurringNames[i % recurringNames.length],
+        category: category,
+        frequency: frequency,
+        amount: amount,
+        payMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
+        notes: `Sample recurring item ${i+1}`,
+        status: status,
+        nextPayment: nextPayment
+      });
+    }
+    
+    // Sort by status (Active first) then by next payment date
+    _recurringData.sort((a, b) => {
+      // First by status priority (Active > Expires > Ended)
+      const statusOrder = {
+        [STATUS_TYPES.ACTIVE.value]: 0,
+        [STATUS_TYPES.EXPIRES.value]: 1,
+        [STATUS_TYPES.ENDED.value]: 2
+      };
+      
+      if (statusOrder[a.status] !== statusOrder[b.status]) {
+        return statusOrder[a.status] - statusOrder[b.status];
+      }
+      
+      // Then by next payment date (if both have next payment)
+      if (a.nextPayment && b.nextPayment) {
+        return a.nextPayment - b.nextPayment;
+      } else if (a.nextPayment) {
+        return -1;
+      } else if (b.nextPayment) {
+        return 1;
+      }
+      
+      // If no next payment, sort by name
+      return a.name.localeCompare(b.name);
+    });
+    
+    console.log('Sample data loaded:', _recurringData.length, 'items');
+  }
+  
+  // No calculateNextPayment function needed
+  // All next payment calculations are done by the spreadsheet
+  
+  /**
+   * Bind event handlers
+   */
+  function bindEvents() {
+    console.log('Binding recurring events...');
+    
+    try {
+      // Add recurring form submission
+      const addRecurringForm = getElement('addRecurringForm');
+      if (addRecurringForm) {
+        addRecurringForm.addEventListener('submit', function(e) {
+          e.preventDefault();
+          addRecurringEntry();
+        });
+      }
+      
+      // Status filter buttons
+      const filterButtons = document.querySelectorAll('.rec-filter-btn');
+      filterButtons.forEach(button => {
+        button.addEventListener('click', function() {
+          const status = this.getAttribute('data-status');
+          setStatusFilter(status);
+          
+          // Update active state on buttons
+          filterButtons.forEach(btn => btn.classList.remove('active'));
+          this.classList.add('active');
+        });
+      });
+      
+      // Table row actions - using event delegation
+      const recurringTable = getElement('recurringTable');
+      if (recurringTable) {
+        recurringTable.addEventListener('click', handleTableClicks);
+      }
+      
+      // Category filter change
+      const categoryFilter = getElement('categoryFilter');
+      if (categoryFilter) {
+        categoryFilter.addEventListener('change', function() {
+          filterSubscriptions();
+        });
+      }
+      
+      // Clear end date button
+      const clearEndDateBtn = getElement('clearEndDate');
+      if (clearEndDateBtn) {
+        clearEndDateBtn.addEventListener('click', function() {
+          const endDateInput = getElement('recurringEndDate');
+          if (endDateInput) {
+            endDateInput.value = '';
+          }
+        });
+      }
+      
+      console.log('Recurring events bound successfully');
+    } catch (err) {
+      console.error('Error binding recurring events:', err);
+    }
+  }
+  
+  /**
+   * Handle table row clicks with event delegation
+   */
+  function handleTableClicks(e) {
+    const target = e.target;
+    
+    // Find the closest button to handle clicks on icon inside button
+    const button = target.closest('button');
+    if (!button) return;
+    
+    // Get the row
+    const row = button.closest('tr');
+    if (!row) return;
+    
+    const itemId = row.getAttribute('data-id');
+    
+    // Determine which button was clicked
+    if (button.classList.contains('rec-edit-btn')) {
+      console.log('Edit button clicked for item:', itemId);
+      startEditing(itemId);
+    } else if (button.classList.contains('rec-save-btn')) {
+      console.log('Save button clicked for item:', itemId);
+      saveEdits(itemId);
+    } else if (button.classList.contains('rec-cancel-btn')) {
+      console.log('Cancel button clicked');
+      cancelEditing();
+    }
+  }
+  
+  /**
+   * Set the status filter and update the view
+   */
+  function setStatusFilter(status) {
+    _activeFilter = status || 'all';
+    console.log('Filter set to:', _activeFilter);
+    filterSubscriptions();
+  }
+  
+  /**
+   * Filter subscriptions based on current filters
+   */
+  function filterSubscriptions() {
+    // Get current category filter
+    const categoryFilter = getElement('categoryFilter');
+    const selectedCategory = categoryFilter ? categoryFilter.value : 'all';
+    
+    // Get all rows
+    const rows = document.querySelectorAll('#recurringTable tbody tr');
+    
+    // Track how many we're showing
+    let visibleCount = 0;
+    
+    // Log filter states to debug
+    console.log('Filtering with status:', _activeFilter, 'and category:', selectedCategory);
+    
+    rows.forEach(row => {
+      // Get row data attributes
+      const status = row.getAttribute('data-status');
+      const category = row.getAttribute('data-category');
+      
+      // Debug log for each row
+      console.log('Row status:', status, 'vs filter:', _activeFilter);
+      
+      // Determine if row should be visible based on filters
+      let visible = true;
+      
+      // Status filter - case insensitive comparison for reliability
+      if (_activeFilter !== 'all' && status.toLowerCase() !== _activeFilter.toLowerCase()) {
+        visible = false;
+      }
+      
+      // Category filter
+      if (selectedCategory !== 'all' && category !== selectedCategory) {
+        visible = false;
+      }
+      
+      // Show/hide the row
+      row.style.display = visible ? '' : 'none';
+      
+      if (visible) visibleCount++;
+    });
+    
+    // Update the visible count
+    const countElement = getElement('visibleSubscriptionsCount');
+    if (countElement) {
+      countElement.textContent = visibleCount;
+    }
+    
+    console.log('Showing', visibleCount, 'subscriptions after filtering');
+  }
+  
+  /**
+   * Start editing a recurring entry
+   */
+  function startEditing(itemId) {
+    // If already editing, save current edit first
+    if (_editingRow) {
+      if (_editingRow !== itemId) {
+        saveEdits(_editingRow);
+      } else {
+        return; // Already editing this row
+      }
+    }
+    
+    // Set current editing row
+    _editingRow = itemId;
+    
+    // Find the row
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    if (!row) return;
+    
+    // Get item data
+    const item = _recurringData.find(i => i.id === itemId);
+    if (!item) return;
+    
+    // Add editing class to row
+    row.classList.add('rec-editing');
+    
+    // Replace row with editable version
+    const cells = row.querySelectorAll('td');
+    
+    // Start Date (not editable to maintain subscription history)
+    const startDateFormatted = formatDate(item.startDate);
+    cells[0].innerHTML = `<span class="rec-noneditable">${startDateFormatted}</span>`;
+    
+    // Name
+    cells[1].innerHTML = `<input type="text" class="rec-edit-input" value="${item.name}" data-field="name">`;
+    
+    // Category (dropdown)
+    let categoryOptions = '<select class="rec-edit-input" data-field="category">';
+    _categories.forEach(cat => {
+      const selected = cat.name === item.category ? 'selected' : '';
+      categoryOptions += `<option value="${cat.name}" ${selected}>${cat.icon || ''} ${cat.name}</option>`;
+    });
+    categoryOptions += '</select>';
+    cells[2].innerHTML = categoryOptions;
+    
+    // Frequency (dropdown)
+    let frequencyOptions = '<select class="rec-edit-input" data-field="frequency">';
+    FREQUENCY_OPTIONS.forEach(freq => {
+      const selected = freq === item.frequency ? 'selected' : '';
+      frequencyOptions += `<option value="${freq}" ${selected}>${freq}</option>`;
+    });
+    frequencyOptions += '</select>';
+    cells[3].innerHTML = frequencyOptions;
+    
+    // Amount
+    const currencySymbol = getCurrencySymbol();
+    cells[4].innerHTML = `
+      <div class="rec-amount-wrapper">
+        <span class="rec-currency">${currencySymbol}</span>
+        <input type="number" class="rec-edit-input rec-amount" value="${item.amount}" data-field="amount" step="0.01" min="0">
+      </div>
+    `;
+    
+    // Payment Method
+    cells[5].innerHTML = `<input type="text" class="rec-edit-input" value="${item.payMethod}" data-field="payMethod">`;
+    
+    // End Date
+    const endDateFormatted = item.endDate ? formatDate(item.endDate) : '';
+    cells[6].innerHTML = `<input type="date" class="rec-edit-input" value="${formatDateForInput(item.endDate)}" data-field="endDate">`;
+    
+    // Next Payment (calculated)
+    const nextPaymentFormatted = item.nextPayment ? formatDate(item.nextPayment) : 'N/A';
+    cells[7].innerHTML = `<span class="rec-noneditable">${nextPaymentFormatted}</span>`;
+    
+    // Notes
+    cells[8].innerHTML = `<input type="text" class="rec-edit-input" value="${item.notes || ''}" data-field="notes">`;
+    
+    // Actions
+    cells[9].innerHTML = `
+      <button class="rec-action-btn rec-save-btn" title="Save changes">
+        <i class="material-icons">save</i>
+      </button>
+      <button class="rec-action-btn rec-cancel-btn" title="Cancel">
+        <i class="material-icons">close</i>
+      </button>
+    `;
+  }
+  
+  /**
+   * Save edits to a recurring entry
+   */
+  function saveEdits(itemId) {
+    if (!itemId) return;
+    
+    // Find the row
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    if (!row) return;
+    
+    // Get item data
+    const itemIndex = _recurringData.findIndex(i => i.id === itemId);
+    if (itemIndex === -1) return;
+    
+    // Get values from inputs
+    const inputs = row.querySelectorAll('.rec-edit-input');
+    
+    // Create updated item
+    const updatedItem = {..._recurringData[itemIndex]};
+    
+    // Update values from inputs
+    inputs.forEach(input => {
+      const field = input.getAttribute('data-field');
+      
+      if (field === 'endDate') {
+        updatedItem.endDate = input.value ? new Date(input.value) : null;
+      } else if (field === 'amount') {
+        updatedItem.amount = parseFloat(input.value) || 0;
+      } else if (field) {
+        updatedItem[field] = input.value;
+      }
+    });
+    
+    // In a real implementation, we would:
+    // 1. Send the updated data to the spreadsheet via API
+    // 2. Get updated calculated values (status, next payment) from the spreadsheet
+    // 3. Update the UI with the response values
+    
+    // For now, we'll simulate this by keeping the original status/nextPayment
+    // In production, these would come from the spreadsheet's calculations
+    
+    // Update the data
+    _recurringData[itemIndex] = updatedItem;
+    
+    // Render the row with updated data
+    renderRow(row, updatedItem);
+    
+    // Clear editing state
+    row.classList.remove('rec-editing');
+    _editingRow = null;
+    
+    // Update summary
+    updateSummary();
+    
+    // Show success message
+    showMessage('Subscription updated successfully', 'success');
+  }
+  
+  /**
+   * Cancel editing and revert changes
+   */
+  function cancelEditing() {
+    if (!_editingRow) return;
+    
+    // Find the row
+    const row = document.querySelector(`tr[data-id="${_editingRow}"]`);
+    if (!row) return;
+    
+    // Get original item data
+    const item = _recurringData.find(i => i.id === _editingRow);
+    if (!item) return;
+    
+    // Re-render the row with original data
+    renderRow(row, item);
+    
+    // Clear editing state
+    row.classList.remove('rec-editing');
+    _editingRow = null;
+  }
+  
+  /**
+   * Add a new recurring entry from form data
+   */
+  function addRecurringEntry() {
+    console.log('Adding new recurring entry...');
+    
+    const startDateInput = getElement('recurringStartDate');
+    const endDateInput = getElement('recurringEndDate');
+    const nameInput = getElement('recurringName');
+    const categorySelect = getElement('recurringCategory');
+    const frequencySelect = getElement('recurringFrequency');
+    const amountInput = getElement('recurringAmount');
+    const payMethodInput = getElement('recurringPayMethod');
+    const notesInput = getElement('recurringNotes');
+    
+    // Basic validation
+    if (!startDateInput || !nameInput || !categorySelect || !frequencySelect || !amountInput || !payMethodInput) {
+      console.error('Form inputs missing');
+      return;
+    }
+    
+    try {
+      const startDate = new Date(startDateInput.value);
+      const endDate = endDateInput.value ? new Date(endDateInput.value) : null;
+      const name = nameInput.value.trim();
+      const category = categorySelect.value;
+      const frequency = frequencySelect.value;
+      const amount = parseFloat(amountInput.value);
+      const payMethod = payMethodInput.value.trim();
+      const notes = notesInput ? notesInput.value.trim() : '';
+      
+      // Validate required fields
+      if (isNaN(startDate.getTime())) {
+        showMessage('Please enter a valid start date', 'error');
+        startDateInput.focus();
+        return;
+      }
+      
+      if (endDate && isNaN(endDate.getTime())) {
+        showMessage('Please enter a valid end date or leave it empty', 'error');
+        endDateInput.focus();
+        return;
+      }
+      
+      if (endDate && endDate < startDate) {
+        showMessage('End date must be after start date', 'error');
+        endDateInput.focus();
+        return;
+      }
+      
+      if (name === '') {
+        showMessage('Please enter a name', 'error');
+        nameInput.focus();
+        return;
+      }
+      
+      if (isNaN(amount) || amount <= 0) {
+        showMessage('Please enter a valid amount', 'error');
+        amountInput.focus();
+        return;
+      }
+      
+      if (payMethod === '') {
+        showMessage('Please enter a payment method', 'error');
+        payMethodInput.focus();
+        return;
+      }
+      
+      // Create new recurring entry
+      // In production, we'd send this to the spreadsheet and get back
+      // calculated values for nextPayment, status, etc.
+      
+      // For sample data, we'll generate a plausible next payment date
+      // In production this would come from the spreadsheet
+      function getSampleNextPayment() {
+        const nextPayment = new Date();
+        nextPayment.setDate(nextPayment.getDate() + Math.floor(Math.random() * 28) + 1);
+        return nextPayment;
+      }
+      
+      // Determine initial status for sample data
+      // In production, this would come from the spreadsheet
+      const today = new Date();
+      let status = STATUS_TYPES.ACTIVE.value;
+      
+      if (endDate) {
+        if (endDate < today) {
+          status = STATUS_TYPES.ENDED.value;
+        } else {
+          // If end date is within 3 months, it "expires soon"
+          const threeMonthsFromNow = new Date(today);
+          threeMonthsFromNow.setMonth(today.getMonth() + 3);
+          
+          if (endDate < threeMonthsFromNow) {
+            status = STATUS_TYPES.EXPIRES.value;
+          }
+        }
+      }
+      
+      // Create new recurring entry
+      const newEntry = {
+        id: `recurring-new-${Date.now()}`,
+        startDate: startDate,
+        endDate: endDate,
+        name: name,
+        category: category,
+        frequency: frequency,
+        amount: amount,
+        payMethod: payMethod,
+        notes: notes,
+        status: status,
+        nextPayment: status !== STATUS_TYPES.ENDED.value ? getSampleNextPayment() : null
+      };
+      
+      // In production: 
+      // 1. We would send this to the API to add to the spreadsheet
+      // 2. Get back the updated entry with calculated fields
+      // 3. Then add that to our data and update the UI
+      
+      // For now, we'll add it locally
+      _recurringData.unshift(newEntry); // Add to beginning of array
+      
+      // Reset form
+      startDateInput.value = formatDateForInput(new Date()); // Today's date
+      endDateInput.value = '';
+      nameInput.value = '';
+      amountInput.value = '';
+      notesInput.value = '';
+      
+      // Re-render
+      renderRecurringTable();
+      
+      // Update summary
+      updateSummary();
+      
+      // Show success message
+      showMessage('Subscription added successfully', 'success');
+      
+      // Apply filters to show the new item if applicable
+      filterSubscriptions();
+      
+      console.log('New recurring entry added:', newEntry.name);
+    } catch (err) {
+      console.error('Error adding recurring entry:', err);
+      showMessage('Error adding subscription: ' + err.message, 'error');
+    }
+  }
+  
+  /**
+   * Show a status message
+   */
+  function showMessage(message, type = 'info') {
+    console.log(`${type} message: ${message}`);
+    
+    const messageContainer = getElement('recurringMessage');
+    if (!messageContainer) return;
+    
+    // Set message content and type
+    messageContainer.textContent = message;
+    messageContainer.className = `rec-message rec-${type}-message`;
+    
+    // Show the message
+    messageContainer.style.display = 'block';
+    
+    // Hide after delay
+    setTimeout(() => {
+      messageContainer.style.display = 'none';
+    }, 3000);
+  }
+  
+  /**
+   * Calculate recurring transactions summary statistics
+   * NOTE: This is only for sample data when real data is not available
+   * In production, these values should come directly from the spreadsheet
+   */
+  function calculateRecurringSummary() {
+    try {
+      // In real implementation, this should come from the API
+      // This is just for sample data display
+      return {
+        activeCount: _recurringData.filter(item => 
+          item.status === STATUS_TYPES.ACTIVE.value || 
+          item.status === STATUS_TYPES.EXPIRES.value
+        ).length,
+        monthlyCost: 250.75,  // Sample value
+        annualCost: 3009.00,  // Sample value 
+        paidThisYear: 1254.50, // Sample value
+        leftToPay: 1754.50    // Sample value
+      };
+    } catch (err) {
+      console.error('Error calculating summary (sample data only):', err);
+      return {
+        activeCount: 0,
+        monthlyCost: 0,
+        annualCost: 0,
+        paidThisYear: 0,
+        leftToPay: 0
+      };
+    }
+  }
+  
+  /**
+   * Update the summary display
+   */
+  function updateSummary() {
+    try {
+      const summary = calculateRecurringSummary();
+      
+      // Update count
+      const countElement = getElement('totalSubscriptionsCount');
+      if (countElement) {
+        countElement.textContent = summary.activeCount;
+      }
+      
+      // Update visible count
+      const visibleCountElement = getElement('visibleSubscriptionsCount');
+      if (visibleCountElement) {
+        visibleCountElement.textContent = summary.activeCount; // Initially all active are visible
+      }
+      
+      // Update paid this year
+      const paidElement = getElement('paidThisYear');
+      if (paidElement) {
+        paidElement.textContent = formatCurrency(summary.paidThisYear);
+      }
+      
+      // Update left to pay
+      const leftElement = getElement('leftToPay');
+      if (leftElement) {
+        leftElement.textContent = formatCurrency(summary.leftToPay);
+      }
+      
+      // Update monthly total
+      const monthlyElement = getElement('monthlyCost');
+      if (monthlyElement) {
+        monthlyElement.textContent = formatCurrency(summary.monthlyCost);
+      }
+    } catch (err) {
+      console.error('Error updating summary:', err);
+    }
+  }
+  
+  /**
+   * Helper: Get currency symbol
+   */
+  function getCurrencySymbol() {
+    if (typeof SimBudget !== 'undefined' && 
+        SimBudget.Settings && 
+        typeof SimBudget.Settings.getCurrencySymbol === 'function') {
+      return SimBudget.Settings.getCurrencySymbol();
+    }
+    return '€'; // Default
+  }
+  
+  /**
+   * Helper: Format currency
+   */
+  function formatCurrency(amount) {
+    if (typeof Utils !== 'undefined' && 
+        typeof Utils.formatCurrency === 'function') {
+      return Utils.formatCurrency(amount);
+    }
+    return getCurrencySymbol() + amount.toFixed(2);
+  }
+  
+  /**
+   * Helper: Format date for display
+   */
+  function formatDate(date) {
+    if (!date) return '';
+    
+    if (typeof Utils !== 'undefined' && 
+        typeof Utils.formatDate === 'function') {
+      return Utils.formatDate(date);
+    }
+    
+    // Default date formatting
+    return date.toLocaleDateString();
+  }
+  
+  /**
+   * Helper: Format date for input element (YYYY-MM-DD)
+   */
+  function formatDateForInput(date) {
+    if (!date) return '';
+    
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return '';
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  }
+  
+  /**
+   * Render a single row in the table
+   */
+  function renderRow(row, item) {
+    if (!row || !item) return;
+    
+    // Format dates
+    const startDateFormatted = formatDate(item.startDate);
+    const endDateFormatted = item.endDate ? formatDate(item.endDate) : '';
+    const nextPaymentFormatted = item.nextPayment ? formatDate(item.nextPayment) : 'N/A';
+    
+    // Get category icon if available
+    const categoryObj = _categories.find(c => c.name === item.category);
+    const categoryIcon = categoryObj && categoryObj.icon ? categoryObj.icon : '';
+    
+    // Get background color based on status
+    let statusColor = STATUS_TYPES.ACTIVE.color;
+    if (item.status === STATUS_TYPES.EXPIRES.value) {
+      statusColor = STATUS_TYPES.EXPIRES.color;
+    } else if (item.status === STATUS_TYPES.ENDED.value) {
+      statusColor = STATUS_TYPES.ENDED.color;
+    }
+    
+    // Set status color
+    row.style.backgroundColor = statusColor;
+    
+    // Set data attributes for filtering
+    row.setAttribute('data-status', item.status);
+    row.setAttribute('data-category', item.category);
+    
+    // Create row HTML
+    row.innerHTML = `
+      <td class="rec-startdate-cell">${startDateFormatted}</td>
+      <td class="rec-name-cell">${item.name}</td>
+      <td class="rec-category-cell">${categoryIcon} ${item.category}</td>
+      <td class="rec-frequency-cell">${item.frequency}</td>
+      <td class="rec-amount-cell">${formatCurrency(item.amount)}</td>
+      <td class="rec-payment-cell">${item.payMethod}</td>
+      <td class="rec-enddate-cell">${endDateFormatted}</td>
+      <td class="rec-nextpayment-cell">${nextPaymentFormatted}</td>
+      <td class="rec-notes-cell">${item.notes || ''}</td>
+      <td class="rec-actions-cell">
+        <button class="rec-action-btn rec-edit-btn" title="Edit">
+          <i class="material-icons">edit</i>
+        </button>
+      </td>
+    `;
+  }
+  
+  /**
+   * Render the recurring table
+   */
+  function renderRecurringTable() {
+    console.log('Rendering recurring table...');
+    
+    try {
+      const recurringTable = getElement('recurringTable');
+      if (!recurringTable) {
+        console.error('Recurring table element not found');
+        return;
+      }
+      
+      const tbody = recurringTable.querySelector('tbody');
+      if (!tbody) {
+        console.error('Table body not found');
+        return;
+      }
+      
+      // Clear existing rows
+      tbody.innerHTML = '';
+      
+      // Add rows for each entry
+      _recurringData.forEach(item => {
+        const row = document.createElement('tr');
+        row.setAttribute('data-id', item.id);
+        
+        // Render the row
+        renderRow(row, item);
+        
+        tbody.appendChild(row);
+      });
+      
+      console.log('Recurring table rendered with', _recurringData.length, 'rows');
+    } catch (err) {
+      console.error('Error rendering recurring table:', err);
+    }
+  }
+  
+  /**
+   * Render the Category Filter dropdown
+   */
+  function renderCategoryFilter() {
+    try {
+      const categoryFilter = getElement('categoryFilter');
+      if (!categoryFilter) return;
+      
+      // Clear existing options
+      categoryFilter.innerHTML = '<option value="all">All Categories</option>';
+      
+      // Get unique categories from data
+      const uniqueCategories = [...new Set(_recurringData.map(item => item.category))];
+      
+      // Add options for each category
+      uniqueCategories.forEach(category => {
+        // Find category icon if available
+        const categoryObj = _categories.find(c => c.name === category);
+        const categoryIcon = categoryObj && categoryObj.icon ? categoryObj.icon : '';
+        
+        categoryFilter.innerHTML += `
+          <option value="${category}">${categoryIcon} ${category}</option>
+        `;
+      });
+      
+      console.log('Category filter rendered with', uniqueCategories.length, 'options');
+    } catch (err) {
+      console.error('Error rendering category filter:', err);
+    }
+  }
+  
+  /**
+   * Render the recurring view with all components
+   */
+  function renderRecurringView() {
+    console.log("Starting to render recurring view...");
+    
+    const container = getElement('recurringContent');
+    if (!container) {
+      console.error("Recurring container not found in renderRecurringView");
+      return;
+    }
+    
+    try {
+      // Get summary data
+      const summary = calculateRecurringSummary();
+      
+      // Get currency symbol
+      const currencySymbol = getCurrencySymbol();
+      
+      // Current date for default start date
+      const today = new Date();
+      const startDateValue = formatDateForInput(today);
+      
+      // Start with fresh HTML
+      container.innerHTML = `
+        <!-- Status message container -->
+        <div id="recurringMessage" class="rec-message" style="display: none;"></div>
+        
+        <!-- Summary Cards -->
+        <div class="rec-summary-row">
+          <div class="rec-summary-box">
+            <div class="rec-box-content">
+              <div class="rec-box-item">
+                <div class="rec-box-label">Active Subscriptions</div>
+                <div class="rec-box-value">
+                  <span id="visibleSubscriptionsCount">${summary.activeCount}</span>
+                  <span class="rec-box-subtitle">/ <span id="totalSubscriptionsCount">${summary.activeCount}</span> total</span>
+                </div>
+              </div>
+              <div class="rec-box-item">
+                <div class="rec-box-label">Paid This Year</div>
+                <div class="rec-box-value" id="paidThisYear">${formatCurrency(summary.paidThisYear)}</div>
+              </div>
+              <div class="rec-box-item">
+                <div class="rec-box-label">Left To Pay</div>
+                <div class="rec-box-value" id="leftToPay">${formatCurrency(summary.leftToPay)}</div>
+              </div>
+              <div class="rec-box-item">
+                <div class="rec-box-label">Monthly Cost</div>
+                <div class="rec-box-value" id="monthlyCost">${formatCurrency(summary.monthlyCost)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Add Recurring Form -->
+        <div class="rec-form-container">
+          <h3 class="rec-section-title">Add New Subscription</h3>
+          <form id="addRecurringForm" class="rec-form">
+            <div class="rec-form-grid">
+              <div class="rec-grid-item">
+                <label for="recurringStartDate">Start Date*</label>
+                <input type="date" id="recurringStartDate" required class="rec-input" value="${startDateValue}">
+              </div>
+              
+              <div class="rec-grid-item">
+                <label for="recurringEndDate">End Date</label>
+                <div class="rec-end-date-wrapper">
+                  <input type="date" id="recurringEndDate" class="rec-input">
+                  <button type="button" id="clearEndDate" class="rec-clear-btn" title="Clear end date">
+                    <i class="material-icons">close</i>
+                  </button>
+                </div>
+              </div>
+              
+              <div class="rec-grid-item">
+                <label for="recurringName">Name*</label>
+                <input type="text" id="recurringName" placeholder="Subscription name" required class="rec-input">
+              </div>
+              
+              <div class="rec-grid-item">
+                <label for="recurringCategory">Category*</label>
+                <select id="recurringCategory" required class="rec-input">
+                  ${_categories.map(cat => 
+                    `<option value="${cat.name}">${cat.icon || ''} ${cat.name}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              
+              <div class="rec-grid-item">
+                <label for="recurringFrequency">Frequency*</label>
+                <select id="recurringFrequency" required class="rec-input">
+                  ${FREQUENCY_OPTIONS.map(freq => 
+                    `<option value="${freq}">${freq}</option>`
+                  ).join('')}
+                </select>
+              </div>
+              
+              <div class="rec-grid-item">
+                <label for="recurringAmount">Amount*</label>
+                <div class="rec-amount-wrapper">
+                  <span class="rec-currency">${currencySymbol}</span>
+                  <input type="number" id="recurringAmount" placeholder="0.00" min="0.01" step="0.01" required class="rec-input rec-amount">
+                </div>
+              </div>
+              
+              <div class="rec-grid-item">
+                <label for="recurringPayMethod">Payment Method*</label>
+                <input type="text" id="recurringPayMethod" placeholder="e.g. Revolut, QNB" required class="rec-input">
+              </div>
+              
+              <div class="rec-grid-item rec-notes-item">
+                <label for="recurringNotes">Notes</label>
+                <input type="text" id="recurringNotes" placeholder="Optional notes" class="rec-input">
+              </div>
+              
+              <div class="rec-grid-item rec-submit-item">
+                <button type="submit" class="btn primary rec-add-btn">
+                  <i class="material-icons">add</i> Add
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+        
+        <!-- Recurring Table Section -->
+        <div class="rec-table-container">
+          <div class="rec-table-header">
+            <h3 class="rec-section-title">My Subscriptions</h3>
+            <div class="rec-filters">
+              <div class="rec-status-filters">
+                <button class="rec-filter-btn active" data-status="Active">Active</button>
+                <button class="rec-filter-btn" data-status="Expires">Expiring</button>
+                <button class="rec-filter-btn" data-status="Ended">Ended</button>
+                <button class="rec-filter-btn" data-status="all">All</button>
+              </div>
+              <div class="rec-category-filter">
+                <select id="categoryFilter" class="rec-filter-select">
+                  <option value="all">All Categories</option>
+                  <!-- Categories will be added dynamically -->
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="rec-table-wrapper">
+            <table id="recurringTable" class="rec-table">
+              <thead>
+                <tr>
+                  <th>Start Date</th>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Frequency</th>
+                  <th>Amount</th>
+                  <th>Payment</th>
+                  <th>End Date</th>
+                  <th>Next Payment</th>
+                  <th class="rec-notes-header">Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Recurring entries will be populated here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      
+      // Render the recurring table
+      renderRecurringTable();
+      
+      // Render category filter
+      renderCategoryFilter();
+      
+      // Apply initial filters
+      setStatusFilter('active');
+      
+      console.log("Recurring view rendering completed successfully");
+    } catch (err) {
+      console.error("Error rendering recurring view:", err);
+      
+      // Show fallback error message
+      container.innerHTML = `
+        <div class="rec-error">
+          <h3>Error Rendering Recurring Module</h3>
+          <p>An error occurred while rendering the recurring subscriptions view. Please try refreshing the page.</p>
+          <p class="rec-error-details">${err.message}</p>
+        </div>
+      `;
+    }
+  }
+  
+  /**
+   * Set recurring data from external source
+   */
+  function setRecurringData(recurringData) {
+    console.log('Setting recurring data from API...');
+    
+    if (!recurringData || !Array.isArray(recurringData)) {
+      console.warn('Invalid recurring data received:', recurringData);
+      return;
+    }
+    
+    try {
+      console.log('API returned recurring data:', recurringData.length, 'entries');
+      
+      // Convert API recurring data to our format
+      _recurringData = recurringData.map(item => {
+        // Ensure dates are Date objects
+        const startDate = item.startDate instanceof Date ? item.startDate : new Date(item.startDate);
+        const endDate = item.endDate ? (item.endDate instanceof Date ? item.endDate : new Date(item.endDate)) : null;
+        
+        return {
+          id: item.id || `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          startDate: startDate,
+          endDate: endDate,
+          name: item.name || '',
+          category: item.category || 'Other',
+          frequency: item.frequency || 'Monthly',
+          amount: parseFloat(item.amount),
+          payMethod: item.payMethod || 'Other',
+          notes: item.notes || '',
+          status: item.status || STATUS_TYPES.ACTIVE.value,
+          nextPayment: item.nextPayment ? new Date(item.nextPayment) : calculateNextPayment(startDate, item.frequency, endDate)
+        };
+      });
+      
+      // Sort by status (Active first) then by next payment date
+      _recurringData.sort((a, b) => {
+        // First by status priority (Active > Expires > Ended)
+        const statusOrder = {
+          [STATUS_TYPES.ACTIVE.value]: 0,
+          [STATUS_TYPES.EXPIRES.value]: 1,
+          [STATUS_TYPES.ENDED.value]: 2
+        };
+        
+        if (statusOrder[a.status] !== statusOrder[b.status]) {
+          return statusOrder[a.status] - statusOrder[b.status];
+        }
+        
+        // Then by next payment date (if both have next payment)
+        if (a.nextPayment && b.nextPayment) {
+          return a.nextPayment - b.nextPayment;
+        } else if (a.nextPayment) {
+          return -1;
+        } else if (b.nextPayment) {
+          return 1;
+        }
+        
+        // If no next payment, sort by name
+        return a.name.localeCompare(b.name);
+      });
+      
+      // Render with the new data
+      renderRecurringView();
+      
+      console.log('Recurring data successfully updated from API');
+    } catch (err) {
+      console.error('Error processing API recurring data:', err);
+    }
+  }
+  
+  // Public API
+  return {
+    init: init,
+    renderRecurringView: renderRecurringView,
+    setRecurringData: setRecurringData
+  };
+})();
+
+// Expose globally without auto-initialization
+window.RecurringManager = RecurringManager;
+
+/**
+ * Load recurring data with simplified reliable rendering
+ */
+SimBudget.loadRecurringData = function() {
+  console.log("Loading recurring view...");
+  
+  const contentArea = document.getElementById("recurringContent");
+  if (!contentArea) {
+    console.error("Recurring content area not found");
+    _loadingView = null;
+    return;
+  }
+
+  // Show simple loading state
+  contentArea.innerHTML = `
+    <div class="rec-loading">
+      <div class="loading-spinner"></div>
+      <p class="rec-loading-text">Loading subscription data...</p>
+    </div>
+  `;
+  
+  // Initialize RecurringManager directly with a slight delay
+  setTimeout(() => {
+    try {
+      if (window.RecurringManager && typeof RecurringManager.init === 'function') {
+        console.log("Initializing RecurringManager");
+        // Explicitly pass the container ID to ensure proper rendering
+        RecurringManager.init('recurringContent');
+        
+        // Only try API calls if API exists
+        if (window.API && typeof API.getRecurringData === 'function') {
+          console.log("Fetching real recurring data in background...");
+          
+          try {
+            API.getRecurringData(
+              function(result) {
+                console.log("Real recurring data loaded successfully");
+                
+                // Update UI with real data if available
+                if (result && result.success && result.recurring) {
+                  RecurringManager.setRecurringData(result.recurring);
+                }
+                
+                // Cache the result
+                if (window._cache && typeof _cache.set === 'function') {
+                  _cache.set("recurring", result.recurring || []);
+                }
+              },
+              function(error) {
+                console.log("Using sample data - couldn't load real data:", error);
+                // Just log the error - user already sees sample data
+              }
+            );
+          } catch (apiErr) {
+            console.warn("API call failed, continuing with sample data:", apiErr);
+          }
+        } else {
+          console.log("API.getRecurringData not available, using sample data only");
+        }
+      } else {
+        contentArea.innerHTML = '<div class="error-message">Error: Recurring Manager component not available</div>';
+        console.error("RecurringManager component not found");
+      }
+    } catch (err) {
+      console.error("Error in loadRecurringData:", err);
+      contentArea.innerHTML = `
+        <div class="error-message">
+          <h3>Error Loading Recurring View</h3>
+          <p>${err.message}</p>
+        </div>
+      `;
+    } finally {
+      // Always clear loading flag
+      _loadingView = null;
+    }
+  }, 300); // Slightly longer timeout to ensure DOM is ready
+};
+</script>
+
+<style>
+/* iOS-specific fix for date inputs - force full width */
+.rec-grid-item:nth-child(1) input[type="date"].rec-input,
+input[type="date"].rec-input {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  -webkit-appearance: none; /* Remove iOS default styling */
+  appearance: none;
+  display: block !important; /* Force block display */
+}
+
+/* Additional specificity for start date */
+.rec-grid-item:nth-child(1) {
+  width: 100% !important;
+  flex: 1 1 100% !important;
+  padding-right: 0 !important;
+}
+
+.rec-grid-item:nth-child(1) .rec-input[type="date"] {
+  display: block !important;
+  width: 100% !important;
+}/* Style for regular placeholders */
+.rec-input::placeholder {
+  color: #9e9e9e;
+  opacity: 1; /* Firefox needs this */
+}/* Currency symbol regular positioning - more space for placeholder */
+.rec-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1;
+}
+
+/* Move placeholder text far away from currency symbol */
+.rec-amount {
+  padding-left: 36px !important; /* Much larger padding */
+  text-indent: 8px; /* Additional text indent for placeholder */
+}/* Dark mode support for date floating labels only */
+body.dark-mode .rec-grid-item:nth-child(1) label,
+body.dark-mode .rec-grid-item:nth-child(2) label {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}/* More aggressive fix for amount placeholder position */
+.rec-amount-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.rec-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1; /* Lower z-index so it doesn't overlap */
+}
+
+.rec-amount {
+  padding-left: 36px !important; /* Much larger left padding */
+}
+
+/* Special styling for amount placeholder */
+input[type="number"].rec-amount::placeholder {
+  position: relative;
+  z-index: 3;
+}/* ==============================================================
+   RECURRING MANAGEMENT - COMPLETELY ISOLATED CSS WITH 'rec-' PREFIX
+   ==============================================================
+   All classes use the 'rec-' prefix to avoid conflicts.
+   Mobile-first approach with desktop adjustments after.
+*/
+
+/* ======== LOADING & ERROR STATES ======== */
+.rec-loading, .rec-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.rec-loading-text {
+  margin-top: 16px;
+  color: var(--text-secondary, #666);
+}
+
+.rec-error {
+  background-color: rgba(244, 67, 54, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(244, 67, 54, 0.2);
+}
+
+.rec-error-details {
+  font-family: monospace;
+  background: rgba(0,0,0,0.05);
+  padding: 8px;
+  border-radius: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #d32f2f;
+}
+
+/* ======== MESSAGES ======== */
+.rec-message {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.rec-success-message {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #2e7d32;
+}
+
+.rec-error-message {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #d32f2f;
+}
+
+.rec-info-message {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: #1976d2;
+}
+
+/* ======== SUMMARY BOX ======== */
+.rec-summary-row {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.rec-summary-box {
+  background-color: #ffb8a3; /* Match dashboard theme */
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+.rec-box-content {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rec-box-item {
+  flex: 1 0 calc(50% - 10px); /* Two columns on small screens */
+  padding: 8px;
+  text-align: center;
+  margin-bottom: 5px;
+}
+
+.rec-box-label {
+  font-size: 12px;
+  color: #607d8b;
+  margin-bottom: 4px;
+}
+
+.rec-box-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.rec-box-subtitle {
+  font-size: 14px;
+  color: #607d8b;
+  font-weight: normal;
+}
+
+/* Hide summary on mobile */
+@media (max-width: 768px) {
+  .rec-summary-row {
+    display: none;
+  }
+}
+
+/* ======== FORM SECTION ======== */
+.rec-form-container {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.rec-section-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.rec-form {
+  width: 100%;
+}
+
+/* Form adjustments for no labels */
+.rec-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Two columns for mobile */
+  grid-template-rows: auto auto auto auto; /* Four rows */
+  gap: 12px;
+  margin-top: 16px; /* Add some space at the top */
+}
+
+/* Mobile layout positioning */
+.rec-grid-item:nth-child(1) { /* Start Date */
+  grid-column: 1 / 2;
+  grid-row: 1;
+}
+
+.rec-grid-item:nth-child(2) { /* End Date */
+  grid-column: 2 / 3;
+  grid-row: 1;
+}
+
+.rec-grid-item:nth-child(3) { /* Name */
+  grid-column: 1 / 2;
+  grid-row: 2;
+}
+
+.rec-grid-item:nth-child(4) { /* Category */
+  grid-column: 2 / 3;
+  grid-row: 2;
+}
+
+.rec-grid-item:nth-child(5) { /* Frequency */
+  grid-column: 1 / 2;
+  grid-row: 3;
+}
+
+.rec-grid-item:nth-child(6) { /* Amount */
+  grid-column: 2 / 3;
+  grid-row: 3;
+}
+
+.rec-grid-item:nth-child(7) { /* Payment Method */
+  grid-column: 1 / 2;
+  grid-row: 4;
+}
+
+.rec-grid-item.rec-submit-item { /* Add button */
+  grid-column: 2 / 3;
+  grid-row: 4;
+}
+
+/* Hide notes on mobile */
+.rec-grid-item.rec-notes-item {
+  display: none;
+}
+
+.rec-grid-item {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hide all labels by default */
+.rec-grid-item label {
+  display: none;
+}
+
+/* Only show labels for date inputs as floating labels */
+.rec-grid-item:nth-child(1) label,
+.rec-grid-item:nth-child(2) label {
+  display: block;
+  position: absolute;
+  top: 4px;
+  left: 12px;
+  font-size: 11px;
+  color: #9e9e9e;
+  pointer-events: none;
+  margin: 0;
+  font-weight: normal;
+  background-color: white;
+  padding: 0 4px;
+  z-index: 2;
+}
+
+/* Position date input containers as relative for floating labels */
+.rec-grid-item:nth-child(1),
+.rec-grid-item:nth-child(2) {
+  position: relative;
+}
+
+/* Ensure all inputs have 100% width */
+.rec-input {
+  height: 48px;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 15px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Make all input containers fill width */
+.rec-grid-item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Date inputs - special styling with top padding for floating label and full width */
+.rec-grid-item:nth-child(1) .rec-input,
+.rec-grid-item:nth-child(2) .rec-input {
+  padding: 16px 12px 8px 12px; /* More padding at top for label */
+  height: 50px; /* Slightly taller for the label */
+  width: 100%; /* Full width */
+  box-sizing: border-box; /* Ensure padding is included in width */
+  flex: 1 1 auto; /* Allow flex growth and shrinking */
+}
+
+/* Force date inputs to span full column */
+.rec-grid-item:nth-child(1),
+.rec-grid-item:nth-child(2) {
+  position: relative;
+  width: 100%;
+  display: flex;
+}
+
+.rec-end-date-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.rec-clear-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  z-index: 2;
+}
+
+.rec-clear-btn:hover {
+  color: #333;
+}
+
+/* Remove date input placeholder handling that doesn't work */
+input[type="date"].rec-input {
+  color: var(--text-primary, #000);
+}
+
+/* Make Add button prominent */
+.rec-add-btn {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--primary, #7F5539);
+  color: white;
+  border: none;
+  font-weight: 500;
+  width: 100%;
+}
+
+/* Five-column form layout for desktop */
+@media (min-width: 769px) {
+  .rec-form-grid {
+    grid-template-columns: repeat(5, 1fr); /* 5 columns for first row */
+    grid-template-rows: auto auto; /* 2 rows */
+    gap: 16px;
+  }
+  
+  /* First row layout */
+  .rec-grid-item:nth-child(1) { /* Start Date */
+    grid-column: 1 / 2;
+    grid-row: 1;
+  }
+  
+  .rec-grid-item:nth-child(2) { /* End Date */
+    grid-column: 2 / 3;
+    grid-row: 1;
+  }
+  
+  .rec-grid-item:nth-child(3) { /* Name */
+    grid-column: 3 / 4;
+    grid-row: 1;
+  }
+  
+  .rec-grid-item:nth-child(4) { /* Category */
+    grid-column: 4 / 5;
+    grid-row: 1;
+  }
+  
+  .rec-grid-item:nth-child(6) { /* Amount */
+    grid-column: 5 / 6;
+    grid-row: 1;
+  }
+  
+  /* Second row layout */
+  .rec-grid-item:nth-child(5) { /* Frequency */
+    grid-column: 1 / 2;
+    grid-row: 2;
+  }
+  
+  .rec-grid-item:nth-child(7) { /* Payment Method */
+    grid-column: 2 / 3;
+    grid-row: 2;
+  }
+  
+  .rec-grid-item.rec-notes-item { /* Notes */
+    grid-column: 3 / 5;
+    grid-row: 2;
+    display: flex; /* Show notes on desktop */
+  }
+  
+  .rec-grid-item.rec-submit-item { /* Add button */
+    grid-column: 5 / 6;
+    grid-row: 2;
+    align-self: flex-end;
+  }
+}
+
+/* ======== TABLE SECTION ======== */
+.rec-table-container {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.rec-table-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+.rec-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rec-status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rec-filter-btn {
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.rec-filter-btn.active {
+  background-color: var(--primary, #7F5539);
+  color: white;
+  border-color: var(--primary, #7F5539);
+}
+
+.rec-filter-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.rec-table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px; /* More compact for mobile */
+}
+
+.rec-table th,
+.rec-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.rec-table th {
+  font-weight: 500;
+  color: #607d8b;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 10;
+}
+
+.rec-table tbody tr {
+  transition: background-color 0.2s;
+}
+
+.rec-table tbody tr:hover {
+  filter: brightness(0.95);
+}
+
+.rec-table tbody tr.rec-editing {
+  box-shadow: 0 0 0 2px var(--primary, #7F5539);
+  position: relative;
+  z-index: 5;
+}
+
+.rec-amount-cell {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.rec-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+.rec-action-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+  color: var(--primary, #7F5539);
+}
+
+.rec-actions-cell {
+  white-space: nowrap;
+}
+
+.rec-save-btn {
+  color: #4caf50;
+}
+
+.rec-cancel-btn {
+  color: #f44336;
+}
+
+.rec-edit-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.rec-noneditable {
+  color: #999;
+  font-style: italic;
+}
+
+/* Mobile optimizations for table */
+@media (max-width: 768px) {
+  /* Use smaller text and padding in table */
+  .rec-table {
+    font-size: 12px;
+  }
+  
+  .rec-table th,
+  .rec-table td {
+    padding: 6px 4px;
+  }
+  
+  /* Fixed table wrapper CSS - no horizontal scrolling */
+  .rec-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+  }
+  
+  /* Hide start date, payment method and notes columns on mobile */
+  .rec-startdate-cell,
+  .rec-table th:nth-child(1),
+  .rec-payment-cell,
+  .rec-table th:nth-child(6),
+  .rec-notes-cell,
+  .rec-table th:nth-child(9) {
+    display: none;
+  }
+  
+  /* Name column */
+  .rec-name-cell,
+  .rec-table th:nth-child(2) {
+    max-width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Category column */
+  .rec-category-cell,
+  .rec-table th:nth-child(3) {
+    max-width: 70px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Frequency column */
+  .rec-frequency-cell,
+  .rec-table th:nth-child(4) {
+    width: 60px;
+    max-width: 60px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Amount column */
+  .rec-amount-cell,
+  .rec-table th:nth-child(5) {
+    width: 50px;
+    white-space: nowrap;
+  }
+  
+  /* End date column */
+  .rec-enddate-cell,
+  .rec-table th:nth-child(7) {
+    width: 70px;
+    white-space: nowrap;
+  }
+  
+  /* Next payment column */
+  .rec-nextpayment-cell,
+  .rec-table th:nth-child(8) {
+    width: 70px;
+    white-space: nowrap;
+  }
+  
+  /* Actions column */
+  .rec-actions-cell,
+  .rec-table th:nth-child(10) {
+    width: 36px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  
+  /* Action button smaller */
+  .rec-action-btn {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .rec-action-btn i {
+    font-size: 18px;
+  }
+  
+  /* Make material icons smaller on mobile */
+  .rec-table .material-icons {
+    font-size: 18px;
+  }
+  
+  /* Filter adjustments for mobile */
+  .rec-filter-btn {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+}
+
+/* Sample table for fallback */
+.rec-sample-table {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.rec-sample-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rec-sample-table th,
+.rec-sample-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+/* ======== DARK MODE SUPPORT ======== */
+body.dark-mode .rec-summary-box,
+body.dark-mode .rec-form-container,
+body.dark-mode .rec-table-container,
+body.dark-mode .rec-sample-table table {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-box-label,
+body.dark-mode .rec-grid-item label,
+body.dark-mode .rec-table th {
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+body.dark-mode .rec-box-value {
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-input,
+body.dark-mode .rec-filter-select,
+body.dark-mode .rec-filter-btn,
+body.dark-mode .rec-edit-input {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-table td,
+body.dark-mode .rec-sample-table td {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-table th {
+  background-color: var(--dark-surface, #1e1e1e);
+}
+
+body.dark-mode .rec-action-btn {
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+body.dark-mode .rec-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Adjust background colors for status rows */
+body.dark-mode .rec-table tbody tr[data-status="Active"] {
+  background-color: rgba(212, 237, 218, 0.15); /* Darker green */
+}
+
+body.dark-mode .rec-table tbody tr[data-status="Expires"] {
+  background-color: rgba(255, 243, 205, 0.15); /* Darker yellow */
+}
+
+body.dark-mode .rec-table tbody tr[data-status="Ended"] {
+  background-color: rgba(248, 215, 218, 0.15); /* Darker pink */
+}
+
+/* Fix color for active filter button */
+body.dark-mode .rec-filter-btn.active {
+  background-color: var(--primary-light, #DDA15E);
+  border-color: var(--primary-light, #DDA15E);
+}
+
+/* ======== DESKTOP STYLES ======== */
+@media (min-width: 769px) {
+  /* Improved summary layout */
+  .rec-box-item {
+    flex: 1; /* Equal width columns on desktop */
+  }
+  
+  .rec-box-label {
+    font-size: 14px;
+  }
+  
+  .rec-box-value {
+    font-size: 22px;
+  }
+  
+  /* Improve filters layout */
+  .rec-filters {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .rec-status-filters {
+    flex: 3;
+  }
+  
+  .rec-category-filter {
+    flex: 1;
+    max-width: 200px;
+  }
+  
+  /* Show all table columns on desktop */
+  .rec-table {
+    font-size: 15px;
+  }
+  
+  .rec-notes-header,
+  .rec-notes-cell,
+  .rec-frequency-cell,
+  .rec-enddate-cell,
+  .rec-payment-cell,
+  .rec-notes-item {
+    display: table-cell;
+  }
+  
+  /* Container width restrictions for larger screens */
+  .rec-form-container,
+  .rec-table-container,
+  .rec-summary-box {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 85%; /* Adjust width to match summary box */
+  }
+}
+
+/* ======== PRINT STYLES ======== */
+@media print {
+  .rec-form-container,
+  .rec-filters,
+  .rec-action-btn {
+    display: none !important;
+  }
+  
+  .rec-summary-box,
+  .rec-table-container {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    break-inside: avoid !important;
+  }
+  
+  .rec-table-wrapper {
+    overflow: visible !important;
+  }
+  
+  .rec-table th,
+  .rec-table td {
+    padding: 8px !important;
+  }
+  
+  /* Show all columns when printing */
+  .rec-notes-header,
+  .rec-notes-cell,
+  .rec-frequency-cell,
+  .rec-enddate-cell,
+  .rec-payment-cell {
+    display: table-cell !important;
+  }
+}
+</style>

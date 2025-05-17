@@ -225,43 +225,43 @@
     const Views = {
       // Switch to a view
       // Switch to a view
-    // Switch to a view
-    switchTo: function (viewName) {
-      if (!viewName) return;
+      // Switch to a view
+      switchTo: function (viewName) {
+        if (!viewName) return;
 
-  // Hide all views
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.remove("active-view");
-  });
-
-  // Show the selected view
-  const targetView = document.getElementById(viewName + "View");
-  if (targetView) {
-    targetView.classList.add("active-view");
-    _currentView = viewName;
-
-    // Update sidebar active state
-    document.querySelectorAll(".sidebar-item").forEach((item) => {
-      item.classList.remove("active");
-    });
-
-    const activeItem = document.querySelector(
-      `.sidebar-item[data-view="${viewName}"]`
-    );
-    if (activeItem) {
-      activeItem.classList.add("active");
-    }
-
-    // Dispatch event when view is activated
-    const event = new CustomEvent('view-activated', {
-      detail: { view: viewName }
+        // Hide all views
+        document.querySelectorAll(".view").forEach((view) => {
+          view.classList.remove("active-view");
         });
-        document.dispatchEvent(event);
 
-        // Load data for the view
-        SimBudget.loadViewData(viewName);
-      }
-    },
+        // Show the selected view
+        const targetView = document.getElementById(viewName + "View");
+        if (targetView) {
+          targetView.classList.add("active-view");
+          _currentView = viewName;
+
+          // Update sidebar active state
+          document.querySelectorAll(".sidebar-item").forEach((item) => {
+            item.classList.remove("active");
+          });
+
+          const activeItem = document.querySelector(
+            `.sidebar-item[data-view="${viewName}"]`
+          );
+          if (activeItem) {
+            activeItem.classList.add("active");
+          }
+
+          // Dispatch event when view is activated
+          const event = new CustomEvent("view-activated", {
+            detail: { view: viewName },
+          });
+          document.dispatchEvent(event);
+
+          // Load data for the view
+          SimBudget.loadViewData(viewName);
+        }
+      },
 
       // Get current view
       getCurrent: function () {
@@ -278,40 +278,37 @@
       Views: Views,
 
       /**
-     * Initialize the application
-     */
-    initialize: function() {
-      if (_initialized) return;
+       * Initialize the application
+       */
+      initialize: function () {
+        if (_initialized) return;
 
-  console.log("Initializing SimBudget...");
+        console.log("Initializing SimBudget...");
 
+        // Set up event listeners
+        this.bindEvents();
 
-  // Set up event listeners
-  this.bindEvents();
+        // Set up month and year selectors
+        this.setupMonthYearSelectors();
 
-  // Set up month and year selectors
-  this.setupMonthYearSelectors();
+        // Check for existing sheet URL
+        this.checkExistingConnection();
 
-  // Check for existing sheet URL
-  this.checkExistingConnection();
+        // Apply settings
+        this.applySettings();
 
-  // Apply settings
-  this.applySettings();
+        // Load user info
+        this.loadUserInfo();
 
-  // Load user info
-  this.loadUserInfo();
+        // Load translations based on saved language preference
+        this.loadTranslations();
 
-  // Load translations based on saved language preference
-  this.loadTranslations();
+        // Load initial budget data
+        this.loadViewData("budget");
 
-  // Load initial budget data
-  this.loadViewData("budget");
-
- 
-
-  _initialized = true;
-  console.log("SimBudget initialized");
-},
+        _initialized = true;
+        console.log("SimBudget initialized");
+      },
 
       /**
        * Load translations based on user preference
@@ -337,40 +334,40 @@
         );
       },
 
-              /**
-         * Apply translations to UI elements
-         */
-        applyTranslations: function () {
-          if (!SimBudget.translations) return;
+      /**
+       * Apply translations to UI elements
+       */
+      applyTranslations: function () {
+        if (!SimBudget.translations) return;
 
-          document.querySelectorAll("[data-translate]").forEach((el) => {
-            const key = el.getAttribute("data-translate");
-            if (key && SimBudget.translations[key]) {
-              el.textContent = SimBudget.translations[key];
-            }
-          });
-
-          document
-            .querySelectorAll("[data-translate-placeholder]")
-            .forEach((el) => {
-              const key = el.getAttribute("data-translate-placeholder");
-              if (key && SimBudget.translations[key]) {
-                el.setAttribute("placeholder", SimBudget.translations[key]);
-              }
-            });
-
-          document.querySelectorAll("[data-translate-title]").forEach((el) => {
-            const key = el.getAttribute("data-translate-title");
-            if (key && SimBudget.translations[key]) {
-              el.setAttribute("title", SimBudget.translations[key]);
-            }
-          });
-
-          if (this._currentBudgetData) {
-            // Force update budget messages with translations
-            this.updateInfoMessage(true);
+        document.querySelectorAll("[data-translate]").forEach((el) => {
+          const key = el.getAttribute("data-translate");
+          if (key && SimBudget.translations[key]) {
+            el.textContent = SimBudget.translations[key];
           }
-        },
+        });
+
+        document
+          .querySelectorAll("[data-translate-placeholder]")
+          .forEach((el) => {
+            const key = el.getAttribute("data-translate-placeholder");
+            if (key && SimBudget.translations[key]) {
+              el.setAttribute("placeholder", SimBudget.translations[key]);
+            }
+          });
+
+        document.querySelectorAll("[data-translate-title]").forEach((el) => {
+          const key = el.getAttribute("data-translate-title");
+          if (key && SimBudget.translations[key]) {
+            el.setAttribute("title", SimBudget.translations[key]);
+          }
+        });
+
+        if (this._currentBudgetData) {
+          // Force update budget messages with translations
+          this.updateInfoMessage(true);
+        }
+      },
       /**
        * Set up month and year selectors
        */
@@ -504,12 +501,12 @@
             const sidebar = document.getElementById("sidebar");
             const contentArea = document.getElementById("contentArea");
 
-             const expensesBtn = document.getElementById("expenses-btn");
-                if (expensesBtn) {
-                  expensesBtn.addEventListener("click", function() {
-                    SimBudget.Views.activate("expense");
-                  });
-                }
+            const expensesBtn = document.getElementById("expenses-btn");
+            if (expensesBtn) {
+              expensesBtn.addEventListener("click", function () {
+                SimBudget.Views.activate("expense");
+              });
+            }
 
             if (sidebar) {
               sidebar.classList.toggle("sb-open");
@@ -522,30 +519,44 @@
           });
         }
 
+        const refreshRecurringBtn = document.getElementById("refreshRecurring");
+        if (refreshRecurringBtn) {
+          refreshRecurringBtn.addEventListener("click", () => {
+            // Force refresh by invalidating cache
+            _cache.invalidate("recurring");
+            this.loadViewData("recurring", true);
+          });
+        }
+
         //refresh categories
 
-          const refreshCategoriesBtn = document.getElementById("refreshCategories");
-  if (refreshCategoriesBtn) {
-    refreshCategoriesBtn.addEventListener("click", () => {
-      // Force refresh by invalidating cache
-      if (window.CategoriesManager && typeof CategoriesManager.refreshCategories === 'function') {
-        CategoriesManager.refreshCategories();
-      } else {
-        console.error("Cannot refresh categories - CategoriesManager not available");
-        Utils.showToast("Cannot refresh categories", "error");
-      }
-    });
-  }
+        const refreshCategoriesBtn =
+          document.getElementById("refreshCategories");
+        if (refreshCategoriesBtn) {
+          refreshCategoriesBtn.addEventListener("click", () => {
+            // Force refresh by invalidating cache
+            if (
+              window.CategoriesManager &&
+              typeof CategoriesManager.refreshCategories === "function"
+            ) {
+              CategoriesManager.refreshCategories();
+            } else {
+              console.error(
+                "Cannot refresh categories - CategoriesManager not available"
+              );
+              Utils.showToast("Cannot refresh categories", "error");
+            }
+          });
+        }
 
-
-      const refreshIncomeBtn = document.getElementById("refreshIncome");
-      if (refreshIncomeBtn) {
-        refreshIncomeBtn.addEventListener("click", () => {
-          // Force refresh by invalidating cache
-          _cache.invalidate("income");
-          this.loadViewData("income", true);
-        });
-      }
+        const refreshIncomeBtn = document.getElementById("refreshIncome");
+        if (refreshIncomeBtn) {
+          refreshIncomeBtn.addEventListener("click", () => {
+            // Force refresh by invalidating cache
+            _cache.invalidate("income");
+            this.loadViewData("income", true);
+          });
+        }
 
         // Mobile sidebar toggle
         const mobileToggle = document.getElementById("mobileSidebarToggle");
@@ -813,6 +824,15 @@
         }
       },
 
+      openSpreadsheet: function () {
+        const urlInput = document.getElementById("budgetSheetUrl");
+        if (urlInput && urlInput.value) {
+          window.open(urlInput.value, "_blank");
+        } else {
+          Utils.showToast("No spreadsheet URL configured", "error");
+        }
+      },
+
       /**
        * Load user info
        */
@@ -970,207 +990,239 @@
        * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
        */
       /**
- * Load data for a specific view with caching
- * @param {string} viewName - Name of the view to load
- * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
- */
-loadViewData: function(viewName, forceRefresh = false) {
-  console.log(`Loading data for ${viewName} view, force refresh: ${forceRefresh}`);
+       * Load data for a specific view with caching
+       * @param {string} viewName - Name of the view to load
+       * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
+       */
+      loadViewData: function (viewName, forceRefresh = false) {
+        console.log(
+          `Loading data for ${viewName} view, force refresh: ${forceRefresh}`
+        );
 
-  // Skip if already loading the same view
-  if (_loadingView === viewName && !forceRefresh) {
-    console.log(`Already loading ${viewName}, skipping duplicate request`);
-    return;
-  }
-
-  // Set loading flag
-  _loadingView = viewName;
-
-  // Check cache first unless force refresh is requested
-  if (!forceRefresh && _cache.isValid(viewName)) {
-    console.log(`Using cached data for ${viewName} view`);
-    this.renderViewFromCache(viewName);
-    // Clear loading flag
-    _loadingView = null;
-    return;
-  }
-
-  // Otherwise load from server
-  switch (viewName) {
-    case "budget":
-      this.loadBudgetData();
-      break;
-    case "expense":
-      this.loadExpenseData();
-      break;
-    case "income":
-  this.loadIncomeData();
-  break;
-
-
-    case "recurring":
-      // TODO: Add recurring data loading
-      _loadingView = null; // Clear flag since not implemented
-      break;
-    case "netWorth":
-      // TODO: Add net worth data loading
-      _loadingView = null; // Clear flag since not implemented
-      break;
-    case "reports":
-      // TODO: Add reports data loading
-      _loadingView = null; // Clear flag since not implemented
-      break;
-    case "categories":
-      // Call your categories loading function
-      this.loadCategoriesData();
-      break;
-    case "settings":
-      // Settings data is loaded inline
-      _loadingView = null; // Clear flag since settings are not loaded via API
-      break;
-    default:
-      console.error(`Unknown view name: ${viewName}`);
-      _loadingView = null; // Clear flag on error
-  }
-},
-
-
-// In Init.html - modify the loadCategoriesData function
-loadCategoriesData: function() {
-  // Get content container
-  const contentArea = document.getElementById("categoriesContent");
-  if (!contentArea) {
-    console.error("Categories content area not found");
-    _loadingView = null;
-    return;
-  }
-  
-  // Get or create categories container
-  let categoriesContainer = document.getElementById("categories-container");
-  if (!categoriesContainer) {
-    categoriesContainer = document.createElement("div");
-    categoriesContainer.id = "categories-container";
-    categoriesContainer.className = "categories-container";
-    contentArea.appendChild(categoriesContainer);
-  }
-  
-  // First check if CategoriesManager is initialized and has data
-  if (window.CategoriesManager && CategoriesManager._initialized && 
-      CategoriesManager._categories && CategoriesManager._categories.length > 0) {
-    console.log("CategoriesManager already initialized, skipping load");
-    _loadingView = null;
-    return;
-  }
-  
-  // Then check local cache before showing loading state
-  const cachedCategories = localStorage.getItem('simbudget_categories');
-  const cachedActiveCategories = localStorage.getItem('simbudget_active_categories');
-  
-  if (cachedCategories && !window._forceCategoriesRefresh) {
-    try {
-      // Use cached data
-      console.log("Using cached categories from localStorage");
-      const parsedCategories = JSON.parse(cachedCategories);
-      let activeList = [];
-      
-      if (cachedActiveCategories) {
-        activeList = JSON.parse(cachedActiveCategories);
-      }
-      
-      // Store in SimBudget cache too
-      _cache.set("categories", parsedCategories);
-      
-      // Initialize manager with cached data
-      if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
-        CategoriesManager.init(parsedCategories, activeList);
-      }
-      
-      // Clear loading flag
-      _loadingView = null;
-      
-      // Optionally refresh in background after a delay
-      setTimeout(() => {
-        if (!window._isViewChanging) {
-          API.getCategories(
-            function(result) {
-              console.log("Background refresh of categories completed");
-              // No UI update needed here unless data changed significantly
-            },
-            function(error) {
-              console.log("Background refresh error (non-critical):", error);
-            },
-            false // Don't force refresh, use server cache
+        // Skip if already loading the same view
+        if (_loadingView === viewName && !forceRefresh) {
+          console.log(
+            `Already loading ${viewName}, skipping duplicate request`
           );
+          return;
         }
-      }, 2000);
-      
-      return;
-    } catch (e) {
-      console.error("Error parsing cached categories:", e);
-      // Fall through to API call on error
-    }
-  }
-  
-  // Show loading state ONLY if we couldn't use cache
-  categoriesContainer.innerHTML = '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
-  
-  // Call API to get categories
-  API.getCategories(
-    function(result) {
-      console.log("Categories data loaded successfully", result);
-      
-      // Cache the result
-      _cache.set("categories", result.categories);
-      
-      // Clear loading flag
-      _loadingView = null;
-      window._forceCategoriesRefresh = false;
-      
-      // Initialize CategoriesManager with data
-      if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
-        CategoriesManager.init(result.categories, result.activeCategories);
-      } else {
-        categoriesContainer.innerHTML = '<div class="categories-error"><i class="material-icons">error</i><p>CategoriesManager not available</p></div>';
-      }
-    },
-    function(error) {
-      console.error("Error loading categories:", error);
-      _loadingView = null;
-      window._forceCategoriesRefresh = false;
-      
-      // Try to use cached data even on error
-      if (cachedCategories) {
-        try {
-          const parsedCategories = JSON.parse(cachedCategories);
-          let activeList = [];
-          
-          if (cachedActiveCategories) {
-            activeList = JSON.parse(cachedActiveCategories);
-          }
-          
-          if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
-            CategoriesManager.init(parsedCategories, activeList);
-            
-            // Show a toast about using cached data due to error
-            if (window.Utils && typeof Utils.showToast === 'function') {
-              Utils.showToast('Using cached categories - ' + error, 'warning');
+
+        // Set loading flag
+        _loadingView = viewName;
+
+        // Check cache first unless force refresh is requested
+        if (!forceRefresh && _cache.isValid(viewName)) {
+          console.log(`Using cached data for ${viewName} view`);
+          this.renderViewFromCache(viewName);
+          // Clear loading flag
+          _loadingView = null;
+          return;
+        }
+
+        // Otherwise load from server
+        switch (viewName) {
+          case "budget":
+            this.loadBudgetData();
+            break;
+          case "expense":
+            this.loadExpenseData();
+            break;
+          case "income":
+            this.loadIncomeData();
+            break;
+          case "recurring":
+            this.loadRecurringData();
+            break;
+
+          case "netWorth":
+            this.loadNetWorthData();
+            break;
+
+          case "reports":
+            // Update this line
+            this.loadReportsSheet();
+            break;
+          case "categories":
+            // Call your categories loading function
+            this.loadCategoriesData();
+            break;
+          case "settings":
+            // Settings data is loaded inline
+            _loadingView = null; // Clear flag since settings are not loaded via API
+            break;
+          default:
+            console.error(`Unknown view name: ${viewName}`);
+            _loadingView = null; // Clear flag on error
+        }
+      },
+
+      // In Init.html - modify the loadCategoriesData function
+      loadCategoriesData: function () {
+        // Get content container
+        const contentArea = document.getElementById("categoriesContent");
+        if (!contentArea) {
+          console.error("Categories content area not found");
+          _loadingView = null;
+          return;
+        }
+
+        // Get or create categories container
+        let categoriesContainer = document.getElementById(
+          "categories-container"
+        );
+        if (!categoriesContainer) {
+          categoriesContainer = document.createElement("div");
+          categoriesContainer.id = "categories-container";
+          categoriesContainer.className = "categories-container";
+          contentArea.appendChild(categoriesContainer);
+        }
+
+        // First check if CategoriesManager is initialized and has data
+        if (
+          window.CategoriesManager &&
+          CategoriesManager._initialized &&
+          CategoriesManager._categories &&
+          CategoriesManager._categories.length > 0
+        ) {
+          console.log("CategoriesManager already initialized, skipping load");
+          _loadingView = null;
+          return;
+        }
+
+        // Then check local cache before showing loading state
+        const cachedCategories = localStorage.getItem("simbudget_categories");
+        const cachedActiveCategories = localStorage.getItem(
+          "simbudget_active_categories"
+        );
+
+        if (cachedCategories && !window._forceCategoriesRefresh) {
+          try {
+            // Use cached data
+            console.log("Using cached categories from localStorage");
+            const parsedCategories = JSON.parse(cachedCategories);
+            let activeList = [];
+
+            if (cachedActiveCategories) {
+              activeList = JSON.parse(cachedActiveCategories);
             }
+
+            // Store in SimBudget cache too
+            _cache.set("categories", parsedCategories);
+
+            // Initialize manager with cached data
+            if (
+              window.CategoriesManager &&
+              typeof CategoriesManager.init === "function"
+            ) {
+              CategoriesManager.init(parsedCategories, activeList);
+            }
+
+            // Clear loading flag
+            _loadingView = null;
+
+            // Optionally refresh in background after a delay
+            setTimeout(() => {
+              if (!window._isViewChanging) {
+                API.getCategories(
+                  function (result) {
+                    console.log("Background refresh of categories completed");
+                    // No UI update needed here unless data changed significantly
+                  },
+                  function (error) {
+                    console.log(
+                      "Background refresh error (non-critical):",
+                      error
+                    );
+                  },
+                  false // Don't force refresh, use server cache
+                );
+              }
+            }, 2000);
+
             return;
+          } catch (e) {
+            console.error("Error parsing cached categories:", e);
+            // Fall through to API call on error
           }
-        } catch (e) {
-          console.error("Error parsing cached categories on error fallback:", e);
         }
-      }
-      
-      // Show error INSIDE container only if we couldn't use cache
-      categoriesContainer.innerHTML = `<div class="categories-error">
+
+        // Show loading state ONLY if we couldn't use cache
+        categoriesContainer.innerHTML =
+          '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
+
+        // Call API to get categories
+        API.getCategories(
+          function (result) {
+            console.log("Categories data loaded successfully", result);
+
+            // Cache the result
+            _cache.set("categories", result.categories);
+
+            // Clear loading flag
+            _loadingView = null;
+            window._forceCategoriesRefresh = false;
+
+            // Initialize CategoriesManager with data
+            if (
+              window.CategoriesManager &&
+              typeof CategoriesManager.init === "function"
+            ) {
+              CategoriesManager.init(
+                result.categories,
+                result.activeCategories
+              );
+            } else {
+              categoriesContainer.innerHTML =
+                '<div class="categories-error"><i class="material-icons">error</i><p>CategoriesManager not available</p></div>';
+            }
+          },
+          function (error) {
+            console.error("Error loading categories:", error);
+            _loadingView = null;
+            window._forceCategoriesRefresh = false;
+
+            // Try to use cached data even on error
+            if (cachedCategories) {
+              try {
+                const parsedCategories = JSON.parse(cachedCategories);
+                let activeList = [];
+
+                if (cachedActiveCategories) {
+                  activeList = JSON.parse(cachedActiveCategories);
+                }
+
+                if (
+                  window.CategoriesManager &&
+                  typeof CategoriesManager.init === "function"
+                ) {
+                  CategoriesManager.init(parsedCategories, activeList);
+
+                  // Show a toast about using cached data due to error
+                  if (window.Utils && typeof Utils.showToast === "function") {
+                    Utils.showToast(
+                      "Using cached categories - " + error,
+                      "warning"
+                    );
+                  }
+                  return;
+                }
+              } catch (e) {
+                console.error(
+                  "Error parsing cached categories on error fallback:",
+                  e
+                );
+              }
+            }
+
+            // Show error INSIDE container only if we couldn't use cache
+            categoriesContainer.innerHTML = `<div class="categories-error">
         <i class="material-icons">error</i>
         <span>Error loading categories: ${error}</span>
       </div>`;
-    },
-    window._forceCategoriesRefresh || false // Only force refresh if flag is set
-  );
-},
+          },
+          window._forceCategoriesRefresh || false // Only force refresh if flag is set
+        );
+      },
 
       /**
        * Render view using cached data
@@ -1251,14 +1303,18 @@ loadCategoriesData: function() {
 
             // ADD QUOTE - minimal change approach
             try {
-              const quoteText = (SimBudget.translations && SimBudget.translations.budget_quote) || 
-              "Budgeting is telling your money where to go, not wondering where it went.";
+              const quoteText =
+                (SimBudget.translations &&
+                  SimBudget.translations.budget_quote) ||
+                "Budgeting is telling your money where to go, not wondering where it went.";
               overlay
-                    .querySelector(".loading-container")
-                    .insertAdjacentHTML(
-                      "beforeend",
-                      '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' + quoteText + '</p>'
-                    );
+                .querySelector(".loading-container")
+                .insertAdjacentHTML(
+                  "beforeend",
+                  '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
+                    quoteText +
+                    "</p>"
+                );
             } catch (e) {
               console.error("Non-critical error adding quote:", e);
             }
@@ -1380,11 +1436,13 @@ loadCategoriesData: function() {
                   ? Utils.getRandomQuote()
                   : "Budgeting is telling your money where to go, not wondering where it went.";
               contentArea
-                  .querySelector(".loading-spinner")
-                  .insertAdjacentHTML(
-                    "afterend",
-                    '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' + quoteText + '</p>'
-                  );
+                .querySelector(".loading-spinner")
+                .insertAdjacentHTML(
+                  "afterend",
+                  '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
+                    quoteText +
+                    "</p>"
+                );
             } catch (e) {
               console.error("Non-critical error adding quote:", e);
             }
@@ -1433,157 +1491,173 @@ loadCategoriesData: function() {
         );
       },
 
-     /**
- * This function remains in init.html even though it's referenced from dashboard.js
- * to maintain original scope access to _currentBudgetData
- */
-updateInfoMessage: function(force = false) {
-  if (!this._currentBudgetData) return;
-  
-  const el = document.getElementById("budget-alert") || 
-             document.getElementById("budget-info-message") || 
-             document.querySelector(".budget-alert");
-  if (!el) return;
-  
-  const budget = this._currentBudgetData;
-  const totalBudgeted = budget.categories.reduce((sum, cat) => 
-    sum + (typeof cat.budgeted === "number" ? cat.budgeted : 0), 0);
-  
-  // Determine message type and parameters
-  let key, msgClass = "info";
-  const formatted = Utils.formatCurrency(totalBudgeted);
-  
-  if (!budget.income) {
-    key = 'budget_no_income_tip';
-    el.setAttribute("data-param1", formatted);
-  } else if (Math.abs(budget.income - totalBudgeted) < 0.01) {
-    key = 'budget_perfect_match';
-    el.setAttribute("data-param1", formatted);
-    msgClass = "success";
-  } else if (budget.income > totalBudgeted) {
-    key = 'budget_under_income';
-    el.setAttribute("data-param1", formatted);
-    el.setAttribute("data-param2", Utils.formatCurrency(budget.income - totalBudgeted));
-  } else {
-    key = 'budget_over_income';
-    el.setAttribute("data-param1", formatted);
-    el.setAttribute("data-param2", Utils.formatCurrency(totalBudgeted - budget.income));
-    msgClass = "warning";
-  }
-  
-  // Set translation attributes
-  el.setAttribute("data-translate", key);
-  
-  // Set initial text content using current translations if available
-  if (SimBudget.translations && SimBudget.translations[key]) {
-    const params = [el.getAttribute("data-param1"), el.getAttribute("data-param2")].filter(Boolean);
-    el.textContent = Utils.formatTranslation(SimBudget.translations[key], params);
-  }
-  
-  // Update class and ensure visibility
-  el.className = (el.classList.contains("budget-alert") ? "budget-alert" : "info-message") + " " + msgClass;
-  el.style.display = "block";
-},
+      /**
+       * This function remains in init.html even though it's referenced from dashboard.js
+       * to maintain original scope access to _currentBudgetData
+       */
+      updateInfoMessage: function (force = false) {
+        if (!this._currentBudgetData) return;
 
+        const el =
+          document.getElementById("budget-alert") ||
+          document.getElementById("budget-info-message") ||
+          document.querySelector(".budget-alert");
+        if (!el) return;
 
+        const budget = this._currentBudgetData;
+        const totalBudgeted = budget.categories.reduce(
+          (sum, cat) =>
+            sum + (typeof cat.budgeted === "number" ? cat.budgeted : 0),
+          0
+        );
 
+        // Determine message type and parameters
+        let key,
+          msgClass = "info";
+        const formatted = Utils.formatCurrency(totalBudgeted);
 
+        if (!budget.income) {
+          key = "budget_no_income_tip";
+          el.setAttribute("data-param1", formatted);
+        } else if (Math.abs(budget.income - totalBudgeted) < 0.01) {
+          key = "budget_perfect_match";
+          el.setAttribute("data-param1", formatted);
+          msgClass = "success";
+        } else if (budget.income > totalBudgeted) {
+          key = "budget_under_income";
+          el.setAttribute("data-param1", formatted);
+          el.setAttribute(
+            "data-param2",
+            Utils.formatCurrency(budget.income - totalBudgeted)
+          );
+        } else {
+          key = "budget_over_income";
+          el.setAttribute("data-param1", formatted);
+          el.setAttribute(
+            "data-param2",
+            Utils.formatCurrency(totalBudgeted - budget.income)
+          );
+          msgClass = "warning";
+        }
 
+        // Set translation attributes
+        el.setAttribute("data-translate", key);
 
-/**
- * Load expense data with reliable grid rendering
- * Always shows the grid with sample data first, then updates with real data if available
- */
-loadExpenseData: function() {
-  console.log("Loading expense view...");
-  
-  const contentArea = document.getElementById("expenseContent");
-  if (!contentArea) {
-    console.error("Expense content area not found");
-    _loadingView = null;
-    return;
-  }
+        // Set initial text content using current translations if available
+        if (SimBudget.translations && SimBudget.translations[key]) {
+          const params = [
+            el.getAttribute("data-param1"),
+            el.getAttribute("data-param2"),
+          ].filter(Boolean);
+          el.textContent = Utils.formatTranslation(
+            SimBudget.translations[key],
+            params
+          );
+        }
 
-  // 1. FIRST create a clean container with unique ID and proper dimensions
-   const containerId = "expense-grid-" + Date.now();
-  contentArea.innerHTML = `
+        // Update class and ensure visibility
+        el.className =
+          (el.classList.contains("budget-alert")
+            ? "budget-alert"
+            : "info-message") +
+          " " +
+          msgClass;
+        el.style.display = "block";
+      },
+
+      /**
+       * Load expense data with reliable grid rendering
+       * Always shows the grid with sample data first, then updates with real data if available
+       */
+      loadExpenseData: function () {
+        console.log("Loading expense view...");
+
+        const contentArea = document.getElementById("expenseContent");
+        if (!contentArea) {
+          console.error("Expense content area not found");
+          _loadingView = null;
+          return;
+        }
+
+        // 1. FIRST create a clean container with unique ID and proper dimensions
+        const containerId = "expense-grid-" + Date.now();
+        contentArea.innerHTML = `
     <div id="${containerId}" class="monthly-grid-container" 
          style="width:100%; height:100%; position:relative; overflow:auto;">
     </div>
   `;
-  
-  // 2. THEN initialize MonthlyGrid with the container
-  //    This will show the grid with sample data immediately
-  if (window.MonthlyGrid) {
-    console.log("Initializing MonthlyGrid with container:", containerId);
-    MonthlyGrid.init(containerId);
-    
-    // 3. FINALLY (optionally) fetch real data
-    //    Grid is already visible, so this is non-blocking
-    if (window.API && typeof API.getExpenseData === 'function') {
-      console.log("Fetching real expense data...");
-      
-      // Show subtle loading indicator
-      const loadingIndicator = document.createElement('div');
-      loadingIndicator.style.position = 'absolute';
-      loadingIndicator.style.top = '10px';
-      loadingIndicator.style.right = '10px';
-      loadingIndicator.style.background = 'rgba(255,255,255,0.8)';
-      loadingIndicator.style.padding = '5px 10px';
-      loadingIndicator.style.borderRadius = '4px';
-      loadingIndicator.style.fontSize = '12px';
-      loadingIndicator.innerHTML = 'Loading data...';
-      document.getElementById(containerId).appendChild(loadingIndicator);
-      
-      API.getExpenseData(
-        function(result) {
-          console.log("Real expense data loaded successfully");
-          
-          // Update grid with real data if available
-          if (result && result.success && result.expenses) {
-            MonthlyGrid.setExpenseData(result.expenses);
+
+        // 2. THEN initialize MonthlyGrid with the container
+        //    This will show the grid with sample data immediately
+        if (window.MonthlyGrid) {
+          console.log("Initializing MonthlyGrid with container:", containerId);
+          MonthlyGrid.init(containerId);
+
+          // 3. FINALLY (optionally) fetch real data
+          //    Grid is already visible, so this is non-blocking
+          if (window.API && typeof API.getExpenseData === "function") {
+            console.log("Fetching real expense data...");
+
+            // Show subtle loading indicator
+            const loadingIndicator = document.createElement("div");
+            loadingIndicator.style.position = "absolute";
+            loadingIndicator.style.top = "10px";
+            loadingIndicator.style.right = "10px";
+            loadingIndicator.style.background = "rgba(255,255,255,0.8)";
+            loadingIndicator.style.padding = "5px 10px";
+            loadingIndicator.style.borderRadius = "4px";
+            loadingIndicator.style.fontSize = "12px";
+            loadingIndicator.innerHTML = "Loading data...";
+            document.getElementById(containerId).appendChild(loadingIndicator);
+
+            API.getExpenseData(
+              function (result) {
+                console.log("Real expense data loaded successfully");
+
+                // Update grid with real data if available
+                if (result && result.success && result.expenses) {
+                  MonthlyGrid.setExpenseData(result.expenses);
+                }
+
+                // Cache the result
+                _cache.set("expense", result.expenses || []);
+
+                // Remove loading indicator
+                loadingIndicator.remove();
+              },
+              function (error) {
+                console.log(
+                  "Using sample data - couldn't load real data:",
+                  error
+                );
+
+                // Update loading indicator to show info message
+                loadingIndicator.style.background = "rgba(255, 248, 225, 0.9)";
+                loadingIndicator.style.border = "1px solid #FFE082";
+                loadingIndicator.innerHTML = "Using sample data";
+
+                // Make indicator disappear after 3 seconds
+                setTimeout(function () {
+                  loadingIndicator.style.opacity = "0";
+                  loadingIndicator.style.transition = "opacity 0.5s";
+
+                  // Remove from DOM after fade out
+                  setTimeout(function () {
+                    loadingIndicator.remove();
+                  }, 500);
+                }, 3000);
+              }
+            );
           }
-          
-          // Cache the result
-          _cache.set("expense", result.expenses || []);
-          
-          // Remove loading indicator
-          loadingIndicator.remove();
-        },
-        function(error) {
-          console.log("Using sample data - couldn't load real data:", error);
-          
-          // Update loading indicator to show info message
-          loadingIndicator.style.background = 'rgba(255, 248, 225, 0.9)';
-          loadingIndicator.style.border = '1px solid #FFE082';
-          loadingIndicator.innerHTML = 'Using sample data';
-          
-          // Make indicator disappear after 3 seconds
-          setTimeout(function() {
-            loadingIndicator.style.opacity = '0';
-            loadingIndicator.style.transition = 'opacity 0.5s';
-            
-            // Remove from DOM after fade out
-            setTimeout(function() {
-              loadingIndicator.remove();
-            }, 500);
-          }, 3000);
+        } else {
+          contentArea.innerHTML =
+            '<div class="error-message">Error: Grid component not available</div>';
+          console.error("MonthlyGrid component not found");
         }
-      );
-    }
-  } else {
-    contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
-    console.error("MonthlyGrid component not found");
-  }
-  
-  // Clear loading flag
-  _loadingView = null;
-}
 
-
-
-
-  
+        // Clear loading flag
+        _loadingView = null;
+      },
     };
   })();
 
@@ -1651,33 +1725,38 @@ loadExpenseData: function() {
   // Expose global cache for debugging
   window._dataCache = _cache;
 
+  // In Init.html - Add this to your initialization function
+  document.addEventListener("language-changed", function () {
+    // Refresh category displays
+    if (
+      window.CategoriesManager &&
+      typeof CategoriesManager.renderCategories === "function"
+    ) {
+      CategoriesManager.renderCategories();
+    }
 
-// In Init.html - Add this to your initialization function
-document.addEventListener('language-changed', function() {
-  // Refresh category displays
-  if (window.CategoriesManager && typeof CategoriesManager.renderCategories === 'function') {
-    CategoriesManager.renderCategories();
-  }
-  
-  // Refresh quick expense dropdown
-  if (window.QuickExpenseEntry && typeof QuickExpenseEntry.updateCategoriesDropdown === 'function') {
-    QuickExpenseEntry.updateCategoriesDropdown();
-  }
-  
-  // Refresh budget table if visible
-  if (SimBudget._currentView === 'budget' && typeof SimBudget.renderBudgetDashboard === 'function') {
-    SimBudget.loadViewData('budget', true);
-  }
-});
+    // Refresh quick expense dropdown
+    if (
+      window.QuickExpenseEntry &&
+      typeof QuickExpenseEntry.updateCategoriesDropdown === "function"
+    ) {
+      QuickExpenseEntry.updateCategoriesDropdown();
+    }
 
-// In settings.js.html - Dispatch event when language changes
-function changeLanguage(langCode) {
-  // Existing code...
-  
-  // Dispatch language change event
-  document.dispatchEvent(new CustomEvent('language-changed'));
-}
-  
+    // Refresh budget table if visible
+    if (
+      SimBudget._currentView === "budget" &&
+      typeof SimBudget.renderBudgetDashboard === "function"
+    ) {
+      SimBudget.loadViewData("budget", true);
+    }
+  });
 
-  
+  // In settings.js.html - Dispatch event when language changes
+  function changeLanguage(langCode) {
+    // Existing code...
+
+    // Dispatch language change event
+    document.dispatchEvent(new CustomEvent("language-changed"));
+  }
 </script>

@@ -44,7 +44,7 @@
           <span class="sb-nav-text" data-translate="net_worth_title">Net Worth</span>
         </a>
       </li>
-      <li class="sb-nav-item" data-view="reports">
+      <li class="sb-nav-item" data-view="reports" style="display: none;">
         <a href="#reports" class="sb-nav-link">
           <i class="material-icons">bar_chart</i>
           <span class="sb-nav-text" data-translate="reports">Reports</span>
@@ -56,8 +56,18 @@
             <span class="sb-nav-text" data-translate="categories">Categories</span>
           </a>
         </li>
+<li class="sb-nav-item">
+  <a href="#" onclick="SimBudget.openSpreadsheet(); return false;" class="sb-nav-link">
+    <i class="material-icons">table_chart</i>
+    <span class="sb-nav-text">Open Spreadsheet</span>
+  </a>
+</li>
+        
     </ul>
   </nav>
+
+  
+      
   
   <!-- Sidebar Footer -->
   <div class="sb-sidebar-footer">
@@ -88,7 +98,7 @@
 </button>
 
 <script>
-/* Sidebar JavaScript remains unchanged */
+
 </script>
 
 <style>

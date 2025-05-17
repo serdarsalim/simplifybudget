@@ -71,17 +71,17 @@
         
         <!-- Recurring View - Initially Hidden -->
         <div id="recurringView" class="view">
-          <div class="view-header">
-            <h1><i class="material-icons">repeat</i> <span data-translate="recurring">Recurring</span></h1>
-            <div class="view-actions">
-              <button id="addRecurring" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_recurring">Add Recurring</span></button>
-            </div>
-          </div>
-          <div id="recurringContent" class="view-content">
-            <!-- Recurring data will be loaded here -->
+        <div class="view-header">
+          <h1><i class="material-icons">repeat</i> <span data-translate="recurring">Recurring</span></h1>
+          <div class="view-actions">
+            <button id="refreshRecurring" class="btn"><i class="material-icons">refresh</i> <span data-translate="refresh">Refresh</span></button>
           </div>
         </div>
-        
+        <div id="recurringContent" class="view-content">
+          <!-- Recurring data will be loaded here by RecurringManager -->
+        </div>
+      </div>
+              
         <!-- Net Worth View - Initially Hidden -->
         <div id="netWorthView" class="view">
           <div class="view-header">
@@ -113,7 +113,7 @@
   <div class="view-header">
     <h1><i class="material-icons">category</i> <span data-translate="categories">Categories</span></h1>
     <div class="view-actions">
-      <button id="refreshCategories" class="btn primary">
+      <button id="refreshCategories" class="btn">
         <i class="material-icons">refresh</i> 
         <span data-translate="refresh">Refresh</span>
       </button>
@@ -170,8 +170,8 @@
     <?!= include('categories.js'); ?> 
      <?!= include('monthlyGrid.js'); ?>
      <?!= include('income.js'); ?>
-
-   
+    <?!= include('recurring.js'); ?>
+   <?!= include('networth.js.html'); ?>
 
 
 

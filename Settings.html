@@ -14,23 +14,36 @@
 
   <!-- ============= GOOGLE SHEET CONFIGURATION ============= -->
   <div class="settings-section">
-    <h2 data-translate="google_sheet_config">Google Sheet Configuration</h2>
-    <div class="form-group">
-      <label for="budgetSheetUrl" data-translate="budget_sheet_url">Budget Spreadsheet URL</label>
-      
-      <div class="input-group">
-        <input type="text" id="budgetSheetUrl" class="settings-input" 
-               data-translate-placeholder="enter_sheet_url" placeholder="Enter your budget spreadsheet URL">
-        <button id="testConnection" class="btn secondary">
-          <span data-translate="test">Save</span>
+  <h2 data-translate="google_sheet_config">Google Sheet Configuration</h2>
+  <div class="form-group">
+    <div class="sheet-config-row">
+      <!-- Template Link (20%) -->
+      <div class="sheet-config-col template-col">
+        <button id="useTemplate" class="btn secondary">
+          <i class="material-icons" style="font-size: 16px; margin-right: 4px;">description</i>
+          <span data-translate="template">Template</span>
         </button>
       </div>
       
-      <p class="help-text" data-translate="sheet_url_help">
-        Enter the URL of your Google Sheet for budget data.
-      </p>
+      <!-- Sheet URL Input (60%) -->
+      <div class="sheet-config-col url-col">
+        <input type="text" id="budgetSheetUrl" class="settings-input" 
+               data-translate-placeholder="enter_sheet_url" placeholder="Enter your budget spreadsheet URL">
+      </div>
+      
+      <!-- Test Button (20%) -->
+      <div class="sheet-config-col test-col">
+        <button id="testConnection" class="btn secondary">
+          <span data-translate="test">Test</span>
+        </button>
+      </div>
     </div>
+    
+    <p class="help-text" data-translate="sheet_url_help">
+      Enter the URL of your Google Sheet for budget data.
+    </p>
   </div>
+</div>
   
   <!-- ============= DISPLAY SETTINGS ============= -->
   <div class="settings-section">
@@ -232,6 +245,7 @@
 /* ============= FORM STYLING ============= */
 .form-group {
   padding: 0 var(--spacing-lg) var(--spacing-lg);
+  margin-right: 20px;
 }
 
 label {
@@ -391,10 +405,7 @@ label {
   border: 1px solid transparent;
 }
 
-.btn.primary {
-  background-color: var(--settings-primary);
-  color: white;
-}
+
 
 .btn.secondary {
   background-color: transparent;
@@ -531,7 +542,7 @@ body.dark-mode .btn.secondary {
   justify-content: flex-end; /* Aligns items to the right */
   gap: var(--spacing-sm);
 }
-
+}
 
 @media (max-width: 480px) {
   .settings-container {
@@ -556,6 +567,61 @@ body.dark-mode .btn.secondary {
   .button-group {
     width: 100%;
     justify-content: space-between;
+  }
+}
+
+/* Add this CSS right before the "/* ============= RESPONSIVE STYLES ============= */
+
+/* Google Sheet Configuration Row Layout */
+/* Google Sheet Configuration Row Layout - FIXED SPACING */
+.sheet-config-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 16px;
+  margin-bottom: var(--spacing-md);
+}
+
+.sheet-config-col.template-col {
+  flex: 0 0 20%;
+  min-width: 80px;
+}
+
+.sheet-config-col.url-col {
+  flex: 0 0 60%;
+}
+
+/* Make sure the input takes the full width of its container */
+.sheet-config-col.url-col .settings-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sheet-config-col.test-col {
+  flex: 0 0 20%;
+  min-width: 80px;
+  text-align: right;
+  padding-right: 10px; /* Add padding to the test button */
+}
+
+.sheet-config-col button {
+  width: 100%;
+  white-space: nowrap;
+}
+
+/* Add these overrides to your existing mobile media query */
+@media (max-width: 480px) {
+  .sheet-config-row {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+  
+  .sheet-config-col.template-col,
+  .sheet-config-col.url-col,
+  .sheet-config-col.test-col {
+    flex: 0 0 100%;
+    width: 100%;
+    text-align: left;
   }
 }
 

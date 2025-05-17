@@ -1,0 +1,1364 @@
+<!-- networth.js.html -->
+<script>
+/**
+ * NetWorthManager - Net Worth management component for SimBudget
+ */
+var NetWorthManager = (function() {
+  // Private variables
+  let _initialized = false;
+  let _netWorthData = {
+    summary: {},
+    liquidAssets: [],
+    investments: [],
+    physicalAssets: [],
+    debts: []
+  };
+  let _currentMonth = '';
+  let _currentYear = '';
+  let _showTransferDetails = false;
+  
+  // DOM element cache
+  const _elements = {};
+  
+  /**
+   * Get an element by ID with caching
+   */
+  function getElement(id) {
+    if (!_elements[id]) {
+      _elements[id] = document.getElementById(id);
+    }
+    return _elements[id];
+  }
+  
+  /**
+   * Initialize the Net Worth Manager
+   */
+  function init(containerId) {
+    if (_initialized && !containerId) {
+      console.log('NetWorthManager already initialized');
+      return;
+    }
+    
+    console.log('Initializing Net Worth Manager...', containerId);
+    
+    // Find container element
+    const container = containerId ? 
+      document.getElementById(containerId) : 
+      getElement('netWorthContent');
+    
+    if (!container) {
+      console.error('Net Worth container not found');
+      return;
+    }
+    
+    // Store container in elements cache
+    _elements['netWorthContent'] = container;
+    
+    // Set default current month/year
+    const now = new Date();
+    _currentMonth = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(now);
+    _currentYear = now.getFullYear();
+    
+    // Load sample data for immediate display
+    loadSampleData();
+    
+    // Render the net worth view
+    renderNetWorthView();
+    
+    // Set up event handlers
+    bindEvents();
+    
+    _initialized = true;
+    console.log('Net Worth Manager initialized');
+  }
+  
+  /**
+   * Load sample data for initial display
+   */
+  function loadSampleData() {
+    console.log('Loading sample net worth data');
+    
+    // Sample summary data
+    _netWorthData.summary = {
+      totalNetWorth: 127690,
+      totalAssets: 131050,
+      totalDebts: 3360,
+      previousNetWorth: 128640,
+      change: -950
+    };
+    
+    // Sample liquid assets
+    _netWorthData.liquidAssets = [
+      { id: 'la1', type: 'Bank Account', name: 'Revolut', amount: 1400, previousAmount: 1400, change: '', changeAmount: 0 },
+      { id: 'la2', type: 'Bank Account', name: 'CIMB', amount: 2900, previousAmount: 2900, change: '', changeAmount: 0 },
+      { id: 'la3', type: 'Bank Account', name: 'Ziraat', amount: 2000, previousAmount: 2000, change: '', changeAmount: 0 },
+      { id: 'la4', type: 'Bank Account', name: 'N26', amount: 1250, previousAmount: 1250, change: '', changeAmount: 0 },
+      { id: 'la5', type: 'Bank Account', name: 'Sparkasse', amount: 2300, previousAmount: 2300, change: '', changeAmount: 0 },
+      { id: 'la6', type: 'Cash', name: 'USD & EUR', amount: 5500, previousAmount: 5500, change: '', changeAmount: 0 }
+    ];
+    
+    // Sample investments
+    _netWorthData.investments = [
+      { id: 'inv1', type: 'Crypto', name: 'Bitstamp', amount: 13750, previousAmount: 13750, change: '', changeAmount: 0 },
+      { id: 'inv2', type: 'Stocks', name: 'BIST', amount: 18500, previousAmount: 18500, change: '', changeAmount: 0 },
+      { id: 'inv3', type: 'Stocks', name: 'Trading212', amount: 4650, previousAmount: 4650, change: '', changeAmount: 0 },
+      { id: 'inv4', type: 'Stocks', name: 'eToro', amount: 45000, previousAmount: 45000, change: '', changeAmount: 0 }
+    ];
+    
+    // Sample physical assets
+    _netWorthData.physicalAssets = [
+      { id: 'pa1', type: 'Vehicles', name: 'BMW 530e', amount: 19000, previousAmount: 22000, change: '', changeAmount: 0 }
+    ];
+    
+    // Sample debts
+    _netWorthData.debts = [
+      { id: 'debt1', type: 'Loan', name: 'Car Loan', amount: 3360, previousAmount: 3360, change: '', changeAmount: 0 }
+    ];
+  }
+  
+  /**
+   * Bind all event handlers
+   */
+  function bindEvents() {
+    console.log('Binding Net Worth events');
+    
+    // Toggle transfer details button
+    const toggleDetailsBtn = getElement('toggleTransferDetails');
+    if (toggleDetailsBtn) {
+      toggleDetailsBtn.addEventListener('click', function() {
+        _showTransferDetails = !_showTransferDetails;
+        renderNetWorthView();
+      });
+    }
+    
+    // "Copy from Previous" button
+    const copyFromPrevBtn = getElement('copyFromPrevious');
+    if (copyFromPrevBtn) {
+      copyFromPrevBtn.addEventListener('click', function() {
+        // In a real implementation, this would fetch the previous month's data
+        // For now, we're working with sample data
+        alert('Data copied from previous month. Ready to edit for current month.');
+      });
+    }
+    
+    // Save button
+    const saveBtn = getElement('saveNetWorthBtn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        saveNetWorthData();
+      });
+    }
+    
+    // Add asset buttons for each category
+    ['addLiquidAsset', 'addInvestment', 'addPhysicalAsset', 'addDebt'].forEach(btnId => {
+      const btn = getElement(btnId);
+      if (btn) {
+        btn.addEventListener('click', function() {
+          const category = btnId.replace('add', '');
+          showAddAssetModal(category);
+        });
+      }
+    });
+  }
+  
+  /**
+   * Show modal for adding a new asset
+   */
+  function showAddAssetModal(category) {
+    console.log('Showing add asset modal for', category);
+    
+    // Get container
+    const container = getElement('netWorthContent');
+    if (!container) return;
+    
+    // Create modal backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'nw-modal-backdrop';
+    
+    // Create modal content
+    const modal = document.createElement('div');
+    modal.className = 'nw-modal';
+    
+    // Set title based on category
+    let title = 'Add New Asset';
+    let typeOptions = '';
+    
+    switch(category) {
+      case 'LiquidAsset':
+        title = 'Add Liquid Asset';
+        typeOptions = `
+          <option value="Bank Account">Bank Account</option>
+          <option value="Cash">Cash</option>
+          <option value="Money Market">Money Market</option>
+          <option value="Other">Other Liquid Asset</option>
+        `;
+        break;
+      case 'Investment':
+        title = 'Add Investment';
+        typeOptions = `
+          <option value="Stocks">Stocks</option>
+          <option value="Crypto">Crypto</option>
+          <option value="ETF">ETF</option>
+          <option value="Bond">Bond</option>
+          <option value="Other">Other Investment</option>
+        `;
+        break;
+      case 'PhysicalAsset':
+        title = 'Add Physical Asset';
+        typeOptions = `
+          <option value="Vehicle">Vehicle</option>
+          <option value="Real Estate">Real Estate</option>
+          <option value="Collection">Collection</option>
+          <option value="Electronics">Electronics</option>
+          <option value="Other">Other Physical Asset</option>
+        `;
+        break;
+      case 'Debt':
+        title = 'Add Debt';
+        typeOptions = `
+          <option value="Credit Card">Credit Card</option>
+          <option value="Loan">Loan</option>
+          <option value="Mortgage">Mortgage</option>
+          <option value="Other">Other Debt</option>
+        `;
+        break;
+    }
+    
+    // Create modal HTML
+    modal.innerHTML = `
+      <div class="nw-modal-header">
+        <h3>${title}</h3>
+        <button class="nw-modal-close">&times;</button>
+      </div>
+      <div class="nw-modal-body">
+        <form class="nw-form" id="addAssetForm">
+          <div class="nw-form-group">
+            <label for="assetType">Type</label>
+            <select id="assetType" class="nw-input" required>
+              <option value="">-- Select Type --</option>
+              ${typeOptions}
+            </select>
+          </div>
+          <div class="nw-form-group">
+            <label for="assetName">Name</label>
+            <input type="text" id="assetName" class="nw-input" required placeholder="e.g., Revolut, Bitcoin">
+          </div>
+          <div class="nw-form-group">
+            <label for="assetAmount">Current Value</label>
+            <div class="nw-amount-wrapper">
+              <span class="nw-currency">${getCurrencySymbol()}</span>
+              <input type="number" id="assetAmount" class="nw-input nw-amount" required step="0.01" min="0">
+            </div>
+          </div>
+          <div class="nw-form-group">
+            <label for="assetNotes">Notes (Optional)</label>
+            <input type="text" id="assetNotes" class="nw-input">
+          </div>
+        </form>
+      </div>
+      <div class="nw-modal-footer">
+        <button class="nw-btn nw-btn-secondary" id="cancelAddAsset">Cancel</button>
+        <button class="nw-btn nw-btn-primary" id="confirmAddAsset">Add ${category.replace('PhysicalAsset', 'Asset')}</button>
+      </div>
+    `;
+    
+    // Add to container
+    container.appendChild(backdrop);
+    container.appendChild(modal);
+    
+    // Add event listeners
+    modal.querySelector('.nw-modal-close').addEventListener('click', function() {
+      container.removeChild(backdrop);
+      container.removeChild(modal);
+    });
+    
+    modal.querySelector('#cancelAddAsset').addEventListener('click', function() {
+      container.removeChild(backdrop);
+      container.removeChild(modal);
+    });
+    
+    modal.querySelector('#confirmAddAsset').addEventListener('click', function() {
+      // Get form values
+      const type = modal.querySelector('#assetType').value;
+      const name = modal.querySelector('#assetName').value;
+      const amount = parseFloat(modal.querySelector('#assetAmount').value);
+      const notes = modal.querySelector('#assetNotes').value;
+      
+      // Basic validation
+      if (!type || !name || isNaN(amount)) {
+        alert('Please fill in all required fields');
+        return;
+      }
+      
+      // Create new asset object
+      const newAsset = {
+        id: `new-${Date.now()}`,
+        type: type,
+        name: name,
+        amount: amount,
+        previousAmount: 0, // New asset has no previous value
+        change: 'New',
+        changeAmount: amount,
+        notes: notes
+      };
+      
+      // Add to appropriate category
+      switch(category) {
+        case 'LiquidAsset':
+          _netWorthData.liquidAssets.push(newAsset);
+          break;
+        case 'Investment':
+          _netWorthData.investments.push(newAsset);
+          break;
+        case 'PhysicalAsset':
+          _netWorthData.physicalAssets.push(newAsset);
+          break;
+        case 'Debt':
+          _netWorthData.debts.push(newAsset);
+          break;
+      }
+      
+      // Close modal
+      container.removeChild(backdrop);
+      container.removeChild(modal);
+      
+      // Re-render
+      renderNetWorthView();
+      
+      // Show success message
+      showMessage(`${type}: ${name} added successfully`, 'success');
+    });
+  }
+  
+  /**
+   * Save net worth data
+   */
+  function saveNetWorthData() {
+    console.log('Saving net worth data');
+    
+    // In a real implementation, this would send data to the server/API
+    // For now, show a success message
+    showMessage('Net worth data saved successfully', 'success');
+  }
+  
+  /**
+   * Show a status message
+   */
+  function showMessage(message, type = 'info') {
+    const messageContainer = getElement('netWorthMessage');
+    if (!messageContainer) return;
+    
+    // Set message content and type
+    messageContainer.textContent = message;
+    messageContainer.className = `nw-message nw-${type}-message`;
+    
+    // Show the message
+    messageContainer.style.display = 'block';
+    
+    // Hide after delay
+    setTimeout(() => {
+      messageContainer.style.display = 'none';
+    }, 3000);
+  }
+  
+  /**
+   * Get currency symbol from settings
+   */
+  function getCurrencySymbol() {
+    // Use the Utils function if available, otherwise default to €
+    if (typeof Utils !== 'undefined' && Utils.getCurrencySymbol) {
+      return Utils.getCurrencySymbol();
+    }
+    return '€';
+  }
+  
+  /**
+   * Format currency
+   */
+  function formatCurrency(amount) {
+    // Use the Utils function if available
+    if (typeof Utils !== 'undefined' && Utils.formatCurrency) {
+      return Utils.formatCurrency(amount);
+    }
+    
+    // Simple default formatter
+    const symbol = getCurrencySymbol();
+    return `${symbol}${Math.abs(amount).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+  }
+  
+  /**
+   * Calculate change percentage
+   */
+  function calculateChangePercentage(current, previous) {
+    if (!previous || previous === 0) return '';
+    const change = (current - previous) / Math.abs(previous) * 100;
+    return `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
+  }
+  
+  /**
+   * Render the net worth view with all components
+   */
+  function renderNetWorthView() {
+    console.log('Rendering Net Worth view');
+    
+    const container = getElement('netWorthContent');
+    if (!container) return;
+    
+    // Create HTML structure
+    container.innerHTML = `
+      <!-- Status message container -->
+      <div id="netWorthMessage" class="nw-message" style="display: none;"></div>
+      
+      <!-- Summary Cards -->
+      <div class="nw-summary-row">
+        <div class="nw-summary-box">
+          <div class="nw-box-content">
+            <div class="nw-box-item">
+              <div class="nw-box-label">Net Worth</div>
+              <div class="nw-box-value">${formatCurrency(_netWorthData.summary.totalNetWorth)}</div>
+              <div class="nw-box-change ${_netWorthData.summary.change >= 0 ? 'nw-positive' : 'nw-negative'}">
+                (${formatCurrency(_netWorthData.summary.change)})
+              </div>
+            </div>
+            <div class="nw-box-item">
+              <div class="nw-box-label">Total Assets</div>
+              <div class="nw-box-value">${formatCurrency(_netWorthData.summary.totalAssets)}</div>
+            </div>
+            <div class="nw-box-item">
+              <div class="nw-box-label">Total Debts</div>
+              <div class="nw-box-value">${formatCurrency(_netWorthData.summary.totalDebts)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Controls -->
+      <div class="nw-controls">
+        <div class="nw-toggle-container">
+          <label class="nw-toggle-label">
+            <input type="checkbox" id="toggleTransferDetails" ${_showTransferDetails ? 'checked' : ''}>
+            <span class="nw-toggle-text">Show Transfer Details</span>
+          </label>
+        </div>
+        <div class="nw-action-buttons">
+          <button id="copyFromPrevious" class="nw-btn nw-btn-secondary">
+            <i class="material-icons">content_copy</i> Copy from Previous
+          </button>
+          <button id="saveNetWorthBtn" class="nw-btn nw-btn-primary">
+            <i class="material-icons">save</i> Save
+          </button>
+        </div>
+      </div>
+      
+      <!-- Liquid Assets Section -->
+      <div class="nw-section">
+        <div class="nw-section-header">
+          <h3 class="nw-section-title">Liquid Assets</h3>
+          <button id="addLiquidAsset" class="nw-btn-icon">
+            <i class="material-icons">add_circle</i>
+          </button>
+        </div>
+        ${renderAssetTable('liquidAssets')}
+      </div>
+      
+      <!-- Investments Section -->
+      <div class="nw-section">
+        <div class="nw-section-header">
+          <h3 class="nw-section-title">Investments</h3>
+          <button id="addInvestment" class="nw-btn-icon">
+            <i class="material-icons">add_circle</i>
+          </button>
+        </div>
+        ${renderAssetTable('investments')}
+      </div>
+      
+      <!-- Physical Assets Section -->
+      <div class="nw-section">
+        <div class="nw-section-header">
+          <h3 class="nw-section-title">Physical Assets</h3>
+          <button id="addPhysicalAsset" class="nw-btn-icon">
+            <i class="material-icons">add_circle</i>
+          </button>
+        </div>
+        ${renderAssetTable('physicalAssets')}
+      </div>
+      
+      <!-- Debts Section -->
+      <div class="nw-section">
+        <div class="nw-section-header">
+          <h3 class="nw-section-title">Debts</h3>
+          <button id="addDebt" class="nw-btn-icon">
+            <i class="material-icons">add_circle</i>
+          </button>
+        </div>
+        ${renderAssetTable('debts')}
+      </div>
+    `;
+    
+    // Re-bind events
+    bindEvents();
+    
+    // Set up editable fields
+    setupEditableFields();
+  }
+  
+  /**
+   * Render asset table for a category
+   */
+  function renderAssetTable(category) {
+    if (!_netWorthData[category] || _netWorthData[category].length === 0) {
+      return `
+        <div class="nw-empty-state">
+          <p>No ${category.replace(/([A-Z])/g, ' $1').toLowerCase()} found. Click the + button to add.</p>
+        </div>
+      `;
+    }
+    
+    // Determine if this is the debts section to handle negative values
+    const isDebt = category === 'debts';
+    
+    return `
+      <div class="nw-table-container">
+        <table class="nw-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Name</th>
+              <th>Previous</th>
+              <th>Current</th>
+              ${_showTransferDetails ? '<th>Change</th><th>Amount</th>' : ''}
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${_netWorthData[category].map(item => `
+              <tr data-id="${item.id}">
+                <td class="nw-type-cell">${item.type}</td>
+                <td class="nw-name-cell">${item.name}</td>
+                <td class="nw-prev-cell">${formatCurrency(isDebt ? -item.previousAmount : item.previousAmount)}</td>
+                <td class="nw-current-cell">
+                  <div class="nw-editable" data-field="amount" data-id="${item.id}" data-category="${category}">
+                    ${formatCurrency(isDebt ? -item.amount : item.amount)}
+                  </div>
+                </td>
+                ${_showTransferDetails ? `
+                  <td class="nw-change-cell">
+                    <select class="nw-change-select" data-id="${item.id}" data-category="${category}">
+                      <option value="" ${item.change === '' ? 'selected' : ''}>-</option>
+                      <option value="Deposit" ${item.change === 'Deposit' ? 'selected' : ''}>Deposit</option>
+                      <option value="Withdrawal" ${item.change === 'Withdrawal' ? 'selected' : ''}>Withdrawal</option>
+                      <option value="Transfer" ${item.change === 'Transfer' ? 'selected' : ''}>Transfer</option>
+                      <option value="Interest" ${item.change === 'Interest' ? 'selected' : ''}>Interest</option>
+                      <option value="Fee" ${item.change === 'Fee' ? 'selected' : ''}>Fee</option>
+                      <option value="New" ${item.change === 'New' ? 'selected' : ''}>New</option>
+                    </select>
+                  </td>
+                  <td class="nw-change-amount-cell">
+                    <div class="nw-editable" data-field="changeAmount" data-id="${item.id}" data-category="${category}">
+                      ${item.changeAmount ? formatCurrency(item.changeAmount) : '-'}
+                    </div>
+                  </td>
+                ` : ''}
+                <td class="nw-actions-cell">
+                  <button class="nw-btn-icon nw-delete-btn" data-id="${item.id}" data-category="${category}">
+                    <i class="material-icons">delete</i>
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+  
+  /**
+   * Set up editable fields after rendering
+   */
+  function setupEditableFields() {
+    // Get all editable fields
+    const editables = document.querySelectorAll('.nw-editable');
+    
+    editables.forEach(editable => {
+      // Make field editable on click
+      editable.addEventListener('click', function() {
+        const field = this.getAttribute('data-field');
+        const id = this.getAttribute('data-id');
+        const category = this.getAttribute('data-category');
+        const item = findItemById(id, category);
+        
+        if (!item) return;
+        
+        // Get current value
+        const currentValue = field === 'amount' ? item.amount : item.changeAmount;
+        
+        // Replace with input field
+        const currencySymbol = getCurrencySymbol();
+        this.innerHTML = `
+          <div class="nw-edit-wrapper">
+            <span class="nw-edit-currency">${currencySymbol}</span>
+            <input type="number" class="nw-edit-input" value="${currentValue}" step="0.01" min="0">
+          </div>
+        `;
+        
+        // Focus the input
+        const input = this.querySelector('input');
+        input.focus();
+        input.select();
+        
+        // Handle blur event
+        input.addEventListener('blur', function() {
+          const newValue = parseFloat(this.value);
+          
+          if (!isNaN(newValue)) {
+            // Update data
+            if (field === 'amount') {
+              item.amount = newValue;
+            } else {
+              item.changeAmount = newValue;
+            }
+            
+            // Update display
+            const isDebt = category === 'debts';
+            editable.innerHTML = formatCurrency(isDebt && field === 'amount' ? -newValue : newValue);
+          } else {
+            // Revert to original value
+            const isDebt = category === 'debts';
+            editable.innerHTML = formatCurrency(isDebt && field === 'amount' ? -currentValue : currentValue);
+          }
+        });
+        
+        // Handle Enter key
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            this.blur();
+          }
+        });
+      });
+    });
+    
+    // Set up change select handlers
+    const changeSelects = document.querySelectorAll('.nw-change-select');
+    
+    changeSelects.forEach(select => {
+      select.addEventListener('change', function() {
+        const id = this.getAttribute('data-id');
+        const category = this.getAttribute('data-category');
+        const item = findItemById(id, category);
+        
+        if (!item) return;
+        
+        // Update data
+        item.change = this.value;
+      });
+    });
+    
+    // Set up delete buttons
+    const deleteButtons = document.querySelectorAll('.nw-delete-btn');
+    
+    deleteButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const category = this.getAttribute('data-category');
+        
+        if (confirm('Are you sure you want to delete this item?')) {
+          // Find index of the item
+          const itemIndex = _netWorthData[category].findIndex(item => item.id === id);
+          
+          if (itemIndex !== -1) {
+            // Remove the item
+            _netWorthData[category].splice(itemIndex, 1);
+            
+            // Re-render
+            renderNetWorthView();
+            
+            // Show message
+            showMessage('Item deleted successfully', 'success');
+          }
+        }
+      });
+    });
+  }
+  
+  /**
+   * Find an item by ID in a category
+   */
+  function findItemById(id, category) {
+    return _netWorthData[category].find(item => item.id === id);
+  }
+  
+  /**
+   * Set net worth data from external source
+   */
+  function setNetWorthData(data) {
+    console.log('Setting net worth data from external source');
+    
+    if (!data) return;
+    
+    // Update data
+    if (data.summary) _netWorthData.summary = data.summary;
+    if (data.liquidAssets) _netWorthData.liquidAssets = data.liquidAssets;
+    if (data.investments) _netWorthData.investments = data.investments;
+    if (data.physicalAssets) _netWorthData.physicalAssets = data.physicalAssets;
+    if (data.debts) _netWorthData.debts = data.debts;
+    
+    // Re-render
+    renderNetWorthView();
+  }
+  
+  // Public API
+  return {
+    init: init,
+    renderNetWorthView: renderNetWorthView,
+    setNetWorthData: setNetWorthData
+  };
+})();
+
+// Expose globally without auto-initialization
+window.NetWorthManager = NetWorthManager;
+
+/**
+ * Load net worth data with simplified reliable rendering
+ */
+SimBudget.loadNetWorthData = function() {
+  console.log("Loading net worth view...");
+  
+  const contentArea = document.getElementById("netWorthContent");
+  if (!contentArea) {
+    console.error("Net Worth content area not found");
+    _loadingView = null;
+    return;
+  }
+
+  // Show simple loading state
+  contentArea.innerHTML = `
+    <div class="nw-loading">
+      <div class="loading-spinner"></div>
+      <p class="nw-loading-text">Loading net worth data...</p>
+    </div>
+  `;
+  
+  // Initialize NetWorthManager directly - this will replace the loading state
+  setTimeout(() => {
+    if (window.NetWorthManager && typeof NetWorthManager.init === 'function') {
+      console.log("Initializing NetWorthManager");
+      // Explicitly pass the container ID to ensure proper rendering
+      NetWorthManager.init('netWorthContent');
+      
+      // After UI is shown with sample data, try to fetch real data in background
+      if (window.API && typeof API.getNetWorthData === 'function') {
+        console.log("Fetching real net worth data in background...");
+        
+        API.getNetWorthData(
+          function(result) {
+            console.log("Real net worth data loaded successfully");
+            
+            // Update UI with real data if available
+            if (result && result.success && result.netWorth) {
+              NetWorthManager.setNetWorthData(result.netWorth);
+            }
+            
+            // Cache the result
+            if (window._cache && typeof _cache.set === 'function') {
+              _cache.set("netWorth", result.netWorth || {});
+            }
+          },
+          function(error) {
+            console.log("Using sample data - couldn't load real data:", error);
+            // Just log the error - user already sees sample data
+          }
+        );
+      }
+    } else {
+      contentArea.innerHTML = '<div class="error-message">Error: Net Worth Manager component not available</div>';
+      console.error("NetWorthManager component not found");
+    }
+    
+    // Clear loading flag
+    _loadingView = null;
+  }, 300); // Slightly longer timeout to ensure DOM is ready
+};
+</script>
+
+<style>
+/* ==============================================================
+   NET WORTH MANAGEMENT - COMPLETELY ISOLATED CSS WITH 'nw-' PREFIX
+   ==============================================================
+   All classes use the 'nw-' prefix to avoid conflicts.
+   Mobile-first approach with desktop adjustments after.
+*/
+
+/* ======== LOADING ======== */
+.nw-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.nw-loading-text {
+  margin-top: 16px;
+  color: var(--text-secondary, #666);
+}
+
+/* ======== MESSAGES ======== */
+.nw-message {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.nw-success-message {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #2e7d32;
+}
+
+.nw-error-message {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #d32f2f;
+}
+
+.nw-info-message {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: #1976d2;
+}
+
+/* ======== SUMMARY BOX ======== */
+.nw-summary-row {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.nw-summary-box {
+  margin-top: 15px;
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+.nw-box-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.nw-box-item {
+  flex: 1;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.nw-box-label {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin-bottom: 4px;
+}
+
+.nw-box-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary, #7F5539);
+}
+
+.nw-box-change {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.nw-positive {
+  color: #4caf50;
+}
+
+.nw-negative {
+  color: #f44336;
+}
+
+/* ======== CONTROLS ======== */
+.nw-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.nw-toggle-container {
+  margin-right: 8px;
+}
+
+.nw-toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.nw-toggle-text {
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+.nw-action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* ======== SECTIONS ======== */
+.nw-section {
+  background-color: #ffffff;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.nw-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.nw-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.nw-empty-state {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary, #666);
+}
+
+/* ======== TABLE ======== */
+.nw-table-container {
+  overflow-x: auto;
+}
+
+.nw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.nw-table th,
+.nw-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.nw-table th {
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 1;
+}
+
+.nw-type-cell {
+  width: 15%;
+  white-space: nowrap;
+}
+
+.nw-name-cell {
+  width: 20%;
+}
+
+.nw-prev-cell,
+.nw-current-cell {
+  width: 15%;
+  text-align: right;
+}
+
+.nw-change-cell {
+  width: 15%;
+}
+
+.nw-change-amount-cell {
+  width: 15%;
+  text-align: right;
+}
+
+.nw-actions-cell {
+  width: 10%;
+  text-align: center;
+}
+
+.nw-editable {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.nw-editable:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.nw-edit-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.nw-edit-currency {
+  margin-right: 2px;
+}
+
+.nw-edit-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  text-align: right;
+  font-size: 14px;
+}
+
+.nw-change-select {
+  width: 100%;
+  padding: 4px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+/* ======== BUTTONS ======== */
+.nw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.nw-btn i {
+  margin-right: 8px;
+}
+
+.nw-btn-primary {
+  background-color: var(--primary, #7F5539);
+  color: white;
+}
+
+.nw-btn-primary:hover {
+  background-color: var(--primary-dark, #6B463C);
+  transform: translateY(-1px);
+}
+
+.nw-btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--primary, #7F5539);
+  color: var(--primary, #7F5539);
+}
+
+.nw-btn-secondary:hover {
+  background-color: rgba(127, 85, 57, 0.05);
+  transform: translateY(-1px);
+}
+
+.nw-btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--primary, #7F5539);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.nw-btn-icon:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.nw-delete-btn {
+  color: var(--error, #f44336);
+}
+
+/* ======== MODAL ======== */
+.nw-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.nw-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 500px;
+  z-index: 1001;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.nw-modal-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nw-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.nw-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+}
+
+.nw-modal-body {
+  padding: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.nw-modal-footer {
+  padding: 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.nw-form-group {
+  margin-bottom: 16px;
+}
+
+.nw-form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.nw-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.nw-amount-wrapper {
+  position: relative;
+}
+
+.nw-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary, #666);
+}
+
+.nw-amount {
+  padding-left: 24px;
+}
+
+/* ======== DARK MODE SUPPORT ======== */
+body.dark-mode .nw-summary-box,
+body.dark-mode .nw-section {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .nw-box-label,
+body.dark-mode .nw-section-title {
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+body.dark-mode .nw-box-value {
+  color: var(--primary-light, #DDA15E);
+}
+
+body.dark-mode .nw-table th {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+body.dark-mode .nw-table td {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .nw-section-header {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .nw-editable:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .nw-btn-secondary {
+  border-color: var(--primary-light, #DDA15E);
+  color: var(--primary-light, #DDA15E);
+}
+
+body.dark-mode .nw-btn-secondary:hover {
+  background-color: rgba(221, 161, 94, 0.1);
+}
+
+body.dark-mode .nw-modal {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .nw-modal-header,
+body.dark-mode .nw-modal-footer {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .nw-input {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+/* ======== RESPONSIVE DESIGN ======== */
+@media (max-width: 768px) {
+  .nw-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .nw-action-buttons {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .nw-summary-box .nw-box-content {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+  
+  .nw-box-item {
+    padding: 0 4px;
+  }
+  
+  .nw-box-value {
+    font-size: 16px;
+  }
+  
+  .nw-box-change {
+    font-size: 12px;
+  }
+  
+  /* Optimize table for mobile */
+  .nw-table {
+    font-size: 13px;
+  }
+  
+  .nw-table th,
+  .nw-table td {
+    padding: 8px 4px;
+  }
+  
+  /* Hide certain columns on smaller screens */
+  .nw-change-cell,
+  .nw-change-amount-cell,
+  .nw-table th:nth-child(5),
+  .nw-table th:nth-child(6) {
+    display: none;
+  }
+  
+  /* Only show when transfer details toggle is on */
+  .nw-showTransferDetails .nw-change-cell,
+  .nw-showTransferDetails .nw-change-amount-cell,
+  .nw-showTransferDetails .nw-table th:nth-child(5),
+  .nw-showTransferDetails .nw-table th:nth-child(6) {
+    display: table-cell;
+  }
+}
+
+@media (min-width: 769px) {
+  .nw-summary-box,
+  .nw-section {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  .nw-box-label {
+    font-size: 14px;
+  }
+  
+  .nw-box-value {
+    font-size: 22px;
+  }
+  
+  .nw-box-change {
+    font-size: 16px;
+  }
+  
+  .nw-table {
+    font-size: 15px;
+  }
+  
+  .nw-table th,
+  .nw-table td {
+    padding: 12px 16px;
+  }
+}
+
+/* ======== PRINT STYLES ======== */
+@media print {
+  .nw-summary-box,
+  .nw-section {
+    box-shadow: none;
+    border: 1px solid #ccc;
+    break-inside: avoid;
+  }
+  
+  .nw-controls,
+  .nw-btn-icon,
+  .nw-add-btn {
+    display: none;
+  }
+  
+  .nw-table th,
+  .nw-table td {
+    padding: 8px;
+  }
+  
+  /* Show all columns when printing */
+  .nw-change-cell,
+  .nw-change-amount-cell,
+  .nw-table th:nth-child(5),
+  .nw-table th:nth-child(6) {
+    display: table-cell;
+  }
+}
+</style>

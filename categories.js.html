@@ -183,21 +183,27 @@ function init(categories, activeCategories) {
    * @param {Array} activeCategories - Active categories array 
    * @return {Array} Processed categories
    */
-  function processCategories(categories, activeCategories) {
+    function processCategories(categories, activeCategories) {
     console.log('Processing categories data:', categories);
     console.log('Active categories data:', activeCategories);
     
-    // Map raw data to category objects
+    // CRITICAL FIX: Check if data is already in object format vs. string format
+    if (categories.length > 0 && typeof categories[0] === 'object' && 'name' in categories[0]) {
+        console.log('Categories already in object format, using directly');
+        return categories;
+    }
+    
+    // Original processing for string arrays
     return categories
-      .filter(cat => typeof cat === 'string' && cat.trim() !== '') // Filter out empty categories
-      .map(cat => {
+        .filter(cat => typeof cat === 'string' && cat.trim() !== '')
+        .map(cat => {
         return {
-          name: cat,
-          active: Array.isArray(activeCategories) && activeCategories.includes(cat),
-          original: cat // Keep original data for reference
+            name: cat,
+            active: Array.isArray(activeCategories) && activeCategories.includes(cat),
+            original: cat
         };
-      });
-  }
+        });
+    }
   
   /**
    * Render categories to the UI
