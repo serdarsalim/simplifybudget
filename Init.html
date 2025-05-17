@@ -505,11 +505,11 @@
             const contentArea = document.getElementById("contentArea");
 
              const expensesBtn = document.getElementById("expenses-btn");
-  if (expensesBtn) {
-    expensesBtn.addEventListener("click", function() {
-      SimBudget.Views.activate("expense");
-    });
-  }
+                if (expensesBtn) {
+                  expensesBtn.addEventListener("click", function() {
+                    SimBudget.Views.activate("expense");
+                  });
+                }
 
             if (sidebar) {
               sidebar.classList.toggle("sb-open");
@@ -538,7 +538,14 @@
   }
 
 
-
+      const refreshIncomeBtn = document.getElementById("refreshIncome");
+      if (refreshIncomeBtn) {
+        refreshIncomeBtn.addEventListener("click", () => {
+          // Force refresh by invalidating cache
+          _cache.invalidate("income");
+          this.loadViewData("income", true);
+        });
+      }
 
         // Mobile sidebar toggle
         const mobileToggle = document.getElementById("mobileSidebarToggle");
@@ -997,9 +1004,10 @@ loadViewData: function(viewName, forceRefresh = false) {
       this.loadExpenseData();
       break;
     case "income":
-      // TODO: Add income data loading
-      _loadingView = null; // Clear flag since not implemented
-      break;
+  this.loadIncomeData();
+  break;
+
+
     case "recurring":
       // TODO: Add recurring data loading
       _loadingView = null; // Clear flag since not implemented
@@ -1481,14 +1489,7 @@ updateInfoMessage: function(force = false) {
 
 
 
- 
-      /**
-       * Load expense data
-       */
-    /**
- * Load expense data
- */
-// Debug version of loadExpenseData function - add these logging statements
+
 /**
  * Load expense data with reliable grid rendering
  * Always shows the grid with sample data first, then updates with real data if available
@@ -1504,10 +1505,10 @@ loadExpenseData: function() {
   }
 
   // 1. FIRST create a clean container with unique ID and proper dimensions
-  const containerId = "expense-grid-" + Date.now();
+   const containerId = "expense-grid-" + Date.now();
   contentArea.innerHTML = `
     <div id="${containerId}" class="monthly-grid-container" 
-         style="width:100%; min-height:500px; position:relative; overflow:auto;">
+         style="width:100%; height:100%; position:relative; overflow:auto;">
     </div>
   `;
   

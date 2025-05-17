@@ -56,12 +56,12 @@
             </div>
           </div>
         
-        <!-- Income View - Initially Hidden -->
+       <!-- Income View - Initially Hidden -->
         <div id="incomeView" class="view">
           <div class="view-header">
             <h1><i class="material-icons">payments</i> <span data-translate="income_title">Income</span></h1>
             <div class="view-actions">
-              <button id="addIncome" class="btn primary"><i class="material-icons">add</i> <span data-translate="add_income">Add Income</span></button>
+              <button id="refreshIncome" class="btn"><i class="material-icons">refresh</i> <span data-translate="refresh">Refresh</span></button>
             </div>
           </div>
           <div id="incomeContent" class="view-content">
@@ -168,7 +168,9 @@
     <?!= include('settings.js'); ?>
     <?!= include('transactionEntry.js'); ?>
     <?!= include('categories.js'); ?> 
-   <?!= include('monthlyGrid.js'); ?>
+     <?!= include('monthlyGrid.js'); ?>
+     <?!= include('income.js'); ?>
+
    
 
 

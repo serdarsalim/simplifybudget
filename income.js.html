@@ -1,0 +1,985 @@
+<!-- income.js.html -->
+<script>
+/**
+ * IncomeManager - Income management component for SimBudget
+ */
+var IncomeManager = (function() {
+  // Private variables
+  let _initialized = false;
+  let _incomeData = [];
+  
+  // DOM element cache
+  const _elements = {};
+  
+  /**
+   * Get an element by ID with caching
+   */
+  function getElement(id) {
+    if (!_elements[id]) {
+      _elements[id] = document.getElementById(id);
+    }
+    return _elements[id];
+  }
+  
+  /**
+   * Initialize the Income Manager
+   */
+  function init(containerId) {
+    if (_initialized && !containerId) {
+      return;
+    }
+    
+    console.log('Initializing Income Manager...', containerId);
+    
+    // Find container element
+    const container = containerId ? 
+      document.getElementById(containerId) : 
+      getElement('incomeContent');
+    
+    if (!container) {
+      console.error('Income container not found');
+      return;
+    }
+    
+    // Store container in elements cache
+    _elements['incomeContent'] = container;
+    
+    // Load sample data for immediate display
+    loadSampleData();
+    
+    // Render the income view
+    renderIncomeView();
+    
+    // Set up event handlers
+    bindEvents();
+    
+    _initialized = true;
+    console.log('Income Manager initialized');
+  }
+  
+  /**
+   * Load sample data for initial display
+   */
+  function loadSampleData() {
+    const incomeSources = [
+      'Salary', 'Freelance', 'Capital Gains', 'Savings Withdrawal', 
+      'Gift', 'Refund', 'Dividend', 'Rental Income', 'Other'
+    ];
+    
+    const today = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(today.getMonth() - 6);
+    
+    const accounts = ['Revolut', 'Checking', 'Savings', 'Investment'];
+    
+    // Generate sample transactions
+    _incomeData = [];
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(
+        sixMonthsAgo.getTime() + Math.random() * (today.getTime() - sixMonthsAgo.getTime())
+      );
+      
+      const sourceIndex = Math.floor(Math.random() * incomeSources.length);
+      const accountIndex = Math.floor(Math.random() * accounts.length);
+      const amount = Math.floor(Math.random() * 4500) + 500;
+      
+      _incomeData.push({
+        id: `income-${i}-${Date.now()}`,
+        date: date,
+        amount: amount,
+        name: `${incomeSources[sourceIndex]} ${i+1}`,
+        account: accounts[accountIndex],
+        source: incomeSources[sourceIndex],
+        notes: `Sample income entry ${i+1}`
+      });
+    }
+    
+    // Sort by date (newest first)
+    _incomeData.sort((a, b) => b.date - a.date);
+  }
+  
+  /**
+   * Bind event handlers
+   */
+  function bindEvents() {
+    // Add income form submission
+    const addIncomeForm = getElement('addIncomeForm');
+    if (addIncomeForm) {
+      addIncomeForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        addIncomeEntry();
+      });
+    }
+    
+    // Show more button
+    const showMoreBtn = getElement('showMoreIncomeBtn');
+    if (showMoreBtn) {
+      showMoreBtn.addEventListener('click', function() {
+        showMoreIncomeEntries();
+      });
+    }
+    
+    // Set date to today
+    const dateInput = getElement('incomeDate');
+    if (dateInput) {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      dateInput.value = `${year}-${month}-${day}`;
+    }
+  }
+  
+  /**
+   * Add a new income entry from form data
+   */
+  function addIncomeEntry() {
+    const dateInput = getElement('incomeDate');
+    const amountInput = getElement('incomeAmount');
+    const nameInput = getElement('incomeName');
+    const accountSelect = getElement('incomeAccount');
+    const sourceSelect = getElement('incomeSource');
+    const notesInput = getElement('incomeNotes');
+    
+    // Basic validation
+    if (!dateInput || !amountInput || !nameInput || !accountSelect || !sourceSelect) {
+      console.error('Form inputs missing');
+      return;
+    }
+    
+    const date = new Date(dateInput.value);
+    const amount = parseFloat(amountInput.value);
+    const name = nameInput.value.trim();
+    const account = accountSelect.value;
+    const source = sourceSelect.value;
+    const notes = notesInput ? notesInput.value.trim() : '';
+    
+    // Validate required fields
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount');
+      amountInput.focus();
+      return;
+    }
+    
+    if (name === '') {
+      alert('Please enter a name');
+      nameInput.focus();
+      return;
+    }
+    
+    // Create new income entry
+    const newEntry = {
+      id: `income-new-${Date.now()}`,
+      date: date,
+      amount: amount,
+      name: name,
+      account: account,
+      source: source,
+      notes: notes
+    };
+    
+    // Add to local data
+    _incomeData.unshift(newEntry); // Add to beginning of array
+    
+    // Reset form
+    amountInput.value = '';
+    nameInput.value = '';
+    notesInput.value = '';
+    
+    // Re-render
+    renderIncomeView();
+    
+    // Show success message
+    showMessage('Income entry added successfully', 'success');
+  }
+  
+  /**
+   * Show more income entries
+   */
+  function showMoreIncomeEntries() {
+    const incomeTable = getElement('incomeTable');
+    const tbody = incomeTable.querySelector('tbody');
+    
+    // Get current number of visible entries
+    const visibleEntries = tbody.querySelectorAll('tr').length;
+    
+    // Show 10 more entries
+    const entriesToShow = Math.min(visibleEntries + 10, _incomeData.length);
+    
+    // Re-render the table with more entries
+    renderIncomeTable(entriesToShow);
+    
+    // Hide show more button if all entries are displayed
+    if (entriesToShow >= _incomeData.length) {
+      getElement('showMoreIncomeBtn').style.display = 'none';
+    }
+  }
+  
+  /**
+   * Show a status message
+   */
+  function showMessage(message, type = 'info') {
+    const messageContainer = getElement('incomeMessage');
+    if (!messageContainer) return;
+    
+    // Set message content and type
+    messageContainer.textContent = message;
+    messageContainer.className = `inc-message inc-${type}-message`;
+    
+    // Show the message
+    messageContainer.style.display = 'block';
+    
+    // Hide after delay
+    setTimeout(() => {
+      messageContainer.style.display = 'none';
+    }, 3000);
+  }
+  
+  /**
+   * Calculate income summary statistics
+   */
+  function calculateIncomeSummary() {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    // Filter for current year
+    const currentYearIncome = _incomeData.filter(entry => 
+      entry.date.getFullYear() === currentYear
+    );
+    
+    // Filter for current month
+    const currentMonthIncome = currentYearIncome.filter(entry => 
+      entry.date.getMonth() === currentMonth
+    );
+    
+    // Calculate totals
+    const yearTotal = currentYearIncome.reduce((sum, entry) => sum + entry.amount, 0);
+    const monthTotal = currentMonthIncome.reduce((sum, entry) => sum + entry.amount, 0);
+    
+    // Calculate average monthly income for current year
+    const monthlyTotals = {};
+    currentYearIncome.forEach(entry => {
+      const monthKey = entry.date.getMonth();
+      if (!monthlyTotals[monthKey]) {
+        monthlyTotals[monthKey] = 0;
+      }
+      monthlyTotals[monthKey] += entry.amount;
+    });
+    
+    const monthCount = Object.keys(monthlyTotals).length || 1; // Avoid division by zero
+    const monthlyAverage = yearTotal / monthCount;
+    
+    return {
+      yearTotal: yearTotal,
+      monthTotal: monthTotal,
+      monthlyAverage: monthlyAverage
+    };
+  }
+  
+  /**
+   * Render the income view with all components
+   */
+  function renderIncomeView() {
+    const container = getElement('incomeContent');
+    if (!container) return;
+    
+    // Get summary data
+    const summary = calculateIncomeSummary();
+    
+    // Format currency function
+    const formatCurrency = (amount) => {
+      if (typeof Utils !== 'undefined' && Utils.formatCurrency) {
+        return Utils.formatCurrency(amount);
+      }
+      return '€' + amount.toFixed(2);
+    };
+    
+    // Get currency symbol
+    const currencySymbol = (typeof Utils !== 'undefined' && Utils.getCurrencySymbol) 
+      ? Utils.getCurrencySymbol() 
+      : '€';
+    
+    // Start with empty inner HTML
+    container.innerHTML = `
+      <!-- Status message container -->
+      <div id="incomeMessage" class="inc-message" style="display: none;"></div>
+      
+      <!-- Summary Cards -->
+      <div class="inc-summary-row">
+        <div class="inc-summary-box">
+          <div class="inc-box-content">
+            <div class="inc-box-item">
+              <div class="inc-box-label">Year Total</div>
+              <div class="inc-box-value">${formatCurrency(summary.yearTotal)}</div>
+            </div>
+            <div class="inc-box-item">
+              <div class="inc-box-label">Monthly Average</div>
+              <div class="inc-box-value">${formatCurrency(summary.monthlyAverage)}</div>
+            </div>
+            <div class="inc-box-item">
+              <div class="inc-box-label">This Month</div>
+              <div class="inc-box-value">${formatCurrency(summary.monthTotal)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Add Income Form -->
+      <div class="inc-form-container">
+        <h3 class="inc-section-title">Add New Income</h3>
+        <form id="addIncomeForm" class="inc-form">
+          <div class="inc-form-row inc-row-first">
+            <input type="date" id="incomeDate" required class="inc-input">
+            <div class="inc-amount-wrapper">
+              <span class="inc-currency">${currencySymbol}</span>
+              <input type="number" id="incomeAmount" placeholder="Amount" min="0.01" step="0.01" required class="inc-input inc-amount">
+            </div>
+            <input type="text" id="incomeName" placeholder="Name" required class="inc-input">
+            <select id="incomeAccount" required class="inc-input">
+              <option value="" disabled selected>Account</option>
+              <option value="Revolut">Revolut</option>
+              <option value="Checking">Checking</option>
+              <option value="Savings">Savings</option>
+              <option value="Investment">Investment</option>
+            </select>
+          </div>
+          
+          <div class="inc-form-row inc-row-second">
+            <select id="incomeSource" required class="inc-input">
+              <option value="" disabled selected>Source</option>
+              <option value="Salary">Salary</option>
+              <option value="Freelance">Freelance</option>
+              <option value="Capital Gains">Capital Gains</option>
+              <option value="Savings Withdrawal">Savings Withdrawal</option>
+              <option value="Gift">Gift</option>
+              <option value="Refund">Refund</option>
+              <option value="Dividend">Dividend</option>
+              <option value="Rental Income">Rental Income</option>
+              <option value="Other">Other</option>
+            </select>
+            <input type="text" id="incomeNotes" placeholder="Notes (Optional)" class="inc-input inc-notes">
+            <button type="submit" class="btn primary inc-add-btn">
+              <i class="material-icons">add</i> Add
+            </button>
+          </div>
+        </form>
+      </div>
+      
+      <!-- Income Table Section -->
+      <div class="inc-table-container">
+        <h3 class="inc-section-title">Recent Income</h3>
+        <div class="inc-table-wrapper">
+          <table id="incomeTable" class="inc-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Name</th>
+                <th>Account</th>
+                <th>Source</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Income entries will be populated here -->
+            </tbody>
+          </table>
+        </div>
+        <div class="inc-show-more">
+          <button id="showMoreIncomeBtn" class="btn secondary inc-more-btn">
+            Show More
+          </button>
+        </div>
+      </div>
+    `;
+    
+    // Render income table (initially show 10 entries)
+    renderIncomeTable(10);
+    
+    // Rebind events since we replaced the DOM elements
+    bindEvents();
+  }
+  
+  /**
+   * Render the income table with a specified number of entries
+   */
+  function renderIncomeTable(limit = 10) {
+    const incomeTable = getElement('incomeTable');
+    if (!incomeTable) return;
+    
+    const tbody = incomeTable.querySelector('tbody');
+    if (!tbody) return;
+    
+    // Clear existing rows
+    tbody.innerHTML = '';
+    
+    // Format currency function
+    const formatCurrency = (amount) => {
+      if (typeof Utils !== 'undefined' && Utils.formatCurrency) {
+        return Utils.formatCurrency(amount);
+      }
+      return '€' + amount.toFixed(2);
+    };
+    
+    // Limit entries to display
+    const entriesToShow = _incomeData.slice(0, limit);
+    
+    // Add rows for each entry
+    entriesToShow.forEach(entry => {
+      const row = document.createElement('tr');
+      
+      // Format date
+      const formattedDate = entry.date.toLocaleDateString();
+      
+      // Create row content
+      row.innerHTML = `
+        <td class="inc-date-cell">${formattedDate}</td>
+        <td class="inc-amount-cell">${formatCurrency(entry.amount)}</td>
+        <td class="inc-name-cell">${entry.name}</td>
+        <td class="inc-account-cell">${entry.account}</td>
+        <td class="inc-source-cell">${entry.source}</td>
+        <td class="inc-notes-cell">${entry.notes || ''}</td>
+      `;
+      
+      tbody.appendChild(row);
+    });
+    
+    // Show/hide "Show More" button based on data available
+    const showMoreBtn = getElement('showMoreIncomeBtn');
+    if (showMoreBtn) {
+      showMoreBtn.style.display = limit < _incomeData.length ? 'block' : 'none';
+    }
+  }
+  
+  /**
+   * Set income data from external source
+   */
+  function setIncomeData(incomeData) {
+    if (!incomeData || !Array.isArray(incomeData)) return;
+    
+    console.log('Setting income data:', incomeData.length, 'entries');
+    
+    // Convert API income data to our format
+    _incomeData = incomeData.map(income => ({
+      id: income.id || `income-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      date: income.date instanceof Date ? income.date : new Date(income.date),
+      amount: parseFloat(income.amount),
+      name: income.name || '',
+      account: income.account || 'Revolut',
+      source: income.source || 'Other',
+      notes: income.notes || ''
+    }));
+    
+    // Sort by date (newest first)
+    _incomeData.sort((a, b) => b.date - a.date);
+    
+    // Render with the new data
+    renderIncomeView();
+  }
+  
+  // Public API
+  return {
+    init: init,
+    renderIncomeView: renderIncomeView,
+    setIncomeData: setIncomeData
+  };
+})();
+
+// Expose globally without auto-initialization
+window.IncomeManager = IncomeManager;
+
+/**
+ * Load income data with simplified reliable rendering
+ */
+SimBudget.loadIncomeData = function() {
+  console.log("Loading income view...");
+  
+  const contentArea = document.getElementById("incomeContent");
+  if (!contentArea) {
+    console.error("Income content area not found");
+    _loadingView = null;
+    return;
+  }
+
+  // Show simple loading state
+  contentArea.innerHTML = `
+    <div class="inc-loading">
+      <div class="loading-spinner"></div>
+      <p class="inc-loading-text">Loading income data...</p>
+    </div>
+  `;
+  
+  // Initialize IncomeManager directly - this will replace the loading state
+  setTimeout(() => {
+    if (window.IncomeManager && typeof IncomeManager.init === 'function') {
+      console.log("Initializing IncomeManager");
+      // Explicitly pass the container ID to ensure proper rendering
+      IncomeManager.init('incomeContent');
+      
+      // After UI is shown with sample data, try to fetch real data in background
+      if (window.API && typeof API.getIncomeData === 'function') {
+        console.log("Fetching real income data in background...");
+        
+        API.getIncomeData(
+          function(result) {
+            console.log("Real income data loaded successfully");
+            
+            // Update UI with real data if available
+            if (result && result.success && result.income) {
+              IncomeManager.setIncomeData(result.income);
+            }
+            
+            // Cache the result
+            if (window._cache && typeof _cache.set === 'function') {
+              _cache.set("income", result.income || []);
+            }
+          },
+          function(error) {
+            console.log("Using sample data - couldn't load real data:", error);
+            // Just log the error - user already sees sample data
+          }
+        );
+      }
+    } else {
+      contentArea.innerHTML = '<div class="error-message">Error: Income Manager component not available</div>';
+      console.error("IncomeManager component not found");
+    }
+    
+    // Clear loading flag
+    _loadingView = null;
+  }, 300); // Slightly longer timeout to ensure DOM is ready
+};
+</script>
+
+<style>
+/* ==============================================================
+   INCOME MANAGEMENT - COMPLETELY ISOLATED CSS WITH 'inc-' PREFIX
+   ==============================================================
+   All classes use the 'inc-' prefix to avoid conflicts.
+   Mobile-first approach with desktop adjustments after.
+*/
+
+/* ======== LOADING ======== */
+.inc-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.inc-loading-text {
+  margin-top: 16px;
+  color: var(--text-secondary, #666);
+}
+
+/* ======== MESSAGES ======== */
+.inc-message {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.inc-success-message {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #2e7d32;
+}
+
+.inc-error-message {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #d32f2f;
+}
+
+.inc-info-message {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: #1976d2;
+}
+
+/* ======== SUMMARY BOX ======== */
+.inc-summary-row {
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 2fr 3fr 2fr; /* Center content with side margins */
+}
+
+.inc-summary-box {
+  grid-column: 2; /* Place in middle column */
+  margin-top: 15px; /* Small standard margin for all devices */
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.inc-box-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.inc-box-item {
+  flex: 1;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.inc-box-label {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin-bottom: 4px;
+}
+
+.inc-box-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary, #7F5539);
+}
+
+/* ======== FORM SECTION ======== */
+.inc-form-container {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.inc-section-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.inc-form {
+  width: 100%;
+  gap: 12px;
+}
+
+.inc-form-row {
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+/* First row has 4 columns */
+.inc-row-first {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 0.8fr 0.8fr; /* Date, Name, Amount, Account */
+  gap: 12px;
+}
+
+/* Second row has 3 columns, with Notes taking more space */
+.inc-row-second {
+  display: grid;
+  grid-template-columns: 1fr 2fr 0.8fr; /* Source, Notes (wider), Add button */
+  gap: 12px;
+}
+
+.inc-input {
+  width: 100%;
+  height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px; /* Prevents zoom on iOS */
+}
+
+.inc-amount-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.inc-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+}
+
+.inc-amount {
+  padding-left: 24px;
+}
+
+.inc-add-btn {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* ======== TABLE SECTION ======== */
+.inc-table-container {
+  background-color: #ffffff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.inc-table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+.inc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px; /* More compact for mobile */
+}
+
+.inc-table th,
+.inc-table td {
+  padding: 10px 4px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.inc-table th {
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+
+.inc-amount-cell {
+  font-weight: 500;
+  color: var(--primary, #7F5539);
+  white-space: nowrap;
+}
+
+/* Hide less important columns on mobile */
+.inc-notes-cell, 
+.inc-table th:nth-child(6) {
+  display: none;
+}
+
+.inc-source-cell, 
+.inc-table th:nth-child(5) {
+  display: none;
+}
+
+/* Optimize date display */
+.inc-date-cell {
+  white-space: nowrap;
+}
+
+.inc-show-more {
+  display: flex;
+  justify-content: center;
+}
+
+.inc-more-btn {
+  min-width: 120px;
+  height: 44px;
+}
+
+/* ======== DARK MODE SUPPORT ======== */
+body.dark-mode .inc-summary-box,
+body.dark-mode .inc-form-container,
+body.dark-mode .inc-table-container {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-box-label,
+body.dark-mode .inc-table th {
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+body.dark-mode .inc-box-value,
+body.dark-mode .inc-amount-cell {
+  color: var(--primary-light, #DDA15E);
+}
+
+body.dark-mode .inc-input {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-table td {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+/* ======== MOBILE ADJUSTMENTS ======== */
+@media (max-width: 768px) {
+  /* Reset the layout for mobile */
+  .inc-summary-row {
+    display: block;
+    padding: 0 10px;
+  }
+  
+  .inc-summary-box {
+    grid-column: auto;
+  }
+  
+  .inc-box-content {
+    display: flex;
+    justify-content: space-between;
+  }
+  
+  /* Mobile form layout */
+  .inc-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .inc-form-row,
+  .inc-row-first,
+  .inc-row-second {
+    grid-column: auto; /* Reset grid column */
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 2 columns for mobile */
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  
+  /* Set specific mobile layout for form fields */
+  .inc-row-first {
+    display: grid;
+    grid-template-areas: 
+      "date amount"
+      "name account";
+  }
+  
+  .inc-row-second {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: 
+      "source add";
+  }
+  
+  /* Notes are hidden on mobile */
+  .inc-notes {
+    display: none;
+  }
+  
+  /* Position each field in its grid area */
+  #incomeDate {
+    grid-area: date;
+  }
+  
+  .inc-amount-wrapper {
+    grid-area: amount;
+    grid-column: auto; /* Reset from full-width */
+  }
+  
+  #incomeName {
+    grid-area: name;
+  }
+  
+  #incomeAccount {
+    grid-area: account;
+  }
+  
+  #incomeSource {
+    grid-area: source;
+  }
+  
+  .inc-add-btn {
+    grid-area: add;
+    width: 100%;
+  }
+  
+  /* Make amount box smaller than date */
+  .inc-row-first {
+    grid-template-columns: 3fr 2fr; /* Date wider than amount */
+  }
+  
+  /* Improve table display on mobile */
+  .inc-table {
+    font-size: 13px;
+  }
+  
+  .inc-table th,
+  .inc-table td {
+    padding: 8px 4px;
+  }
+}
+
+@media (min-width: 769px) {
+  /* Increase font size for desktop */
+  .inc-box-label {
+    font-size: 14px;
+  }
+  
+  .inc-box-value {
+    font-size: 22px;
+  }
+  
+  /* Simple margin-based approach for form container */
+  .inc-form-container,
+  .inc-table-container {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 60%; /* Adjust width to match summary box */
+  }
+  
+  /* Improve table display */
+  .inc-table {
+    font-size: 15px;
+  }
+  
+  .inc-table th,
+  .inc-table td {
+    padding: 12px 8px;
+  }
+  
+  /* Show all table columns on desktop */
+  .inc-source-cell, 
+  .inc-table th:nth-child(5) {
+    display: table-cell;
+  }
+  
+  /* Large desktop - show all columns */
+  @media (min-width: 1200px) {
+    .inc-notes-cell, 
+    .inc-table th:nth-child(6) {
+      display: table-cell;
+    }
+  }
+}
+
+/* ======== PRINT STYLES ======== */
+@media print {
+  .income-view {
+    background-color: white !important;
+    color: black !important;
+  }
+  
+  .inc-add-btn, 
+  .inc-more-btn {
+    display: none !important;
+  }
+  
+  .inc-summary-box,
+  .inc-form-container,
+  .inc-table-container {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    break-inside: avoid !important;
+  }
+  
+  .inc-table-wrapper {
+    overflow: visible !important;
+  }
+  
+  .inc-table th,
+  .inc-table td {
+    padding: 8px !important;
+  }
+  
+  /* Show all columns when printing */
+  .inc-notes-cell, 
+  .inc-table th:nth-child(6),
+  .inc-source-cell, 
+  .inc-table th:nth-child(5) {
+    display: table-cell !important;
+  }
+}
+</style>

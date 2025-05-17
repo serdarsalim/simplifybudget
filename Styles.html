@@ -3,13 +3,13 @@
 
 :root {
   /* Colors */
-  --primary: #1976d2;
-  --primary-light: #4791db;
-  --primary-dark: #115293;
-  --secondary: #f50057;
+  --primary: #7F5539;
+  --primary-light: #BC6C25;
+  --primary-dark: #DDA15E;
+  --secondary: #6B705C;
   --success: #4caf50;
   --warning: #ff9800;
-  --error: #f44336;
+  --error: #ea5545;
   --background: #f8f9fa;
   --surface: #ffffff;
   --text-primary: rgba(0, 0, 0, 0.87);
@@ -718,24 +718,35 @@ body.dark-mode .view-header {
 
 
 @media (max-width: 768px) {
-  /* Existing mobile styles */
-  
-  /* Make dashboard header title much smaller on mobile */
-  .view-header h1 {
-    font-size: 10px !important; 
-    white-space: nowrap;
-    font-weight: 400;
-    padding-right: 10px;
+  /* Hide all header text in mobile view */
+  .view-header h1 span {
+    display: none;
   }
   
-  /* Reduce spacing around the header */
+  /* Make all header icons bigger with more padding */
+  .view-header h1 .material-icons {
+    font-size: 28px !important;
+    padding-left: 12px;
+    margin-right: 0;
+    padding-right: 60px
+  }
+  
+  /* Adjust header size for icon-only display */
+  .view-header h1 {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    font-size: inherit !important; 
+    padding: 8px 0;
+  }
+  
+  /* Keep the header spacing clean */
   .view-header {
     padding-bottom: var(--spacing-xs);
     margin-bottom: var(--spacing-xs);
     padding-right: 10px;
   }
 }
-
 /* Loading overlay dark mode styling */
 .loading-overlay {
   background-color: rgba(255, 255, 255, 0.9);

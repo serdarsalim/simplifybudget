@@ -56,6 +56,7 @@ var MonthlyGrid = (function() {
         return;
       }
       _elements['monthly-grid-container'] = defaultContainer;
+
     }
     
     // Load sample data for display
@@ -66,6 +67,17 @@ var MonthlyGrid = (function() {
     
     // Render the grid
     renderGrid();
+
+       // ADD THIS: Prevent body scrolling on mobile
+  if (window.innerWidth <= 768) {
+    document.body.style.overflow = 'hidden';
+    
+    // Allow the grid container to scroll
+    const container = getElement('monthly-grid-container');
+    if (container) {
+      container.style.overflow = 'auto';
+    }
+  }
     
     _initialized = true;
     console.log('Monthly Grid View initialized');
@@ -360,7 +372,7 @@ var MonthlyGrid = (function() {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     
-    // Date column header
+    // Date column header - explicitly add class
     const dateHeader = document.createElement('th');
     dateHeader.className = 'date-header';
     dateHeader.textContent = 'Date';
@@ -371,6 +383,9 @@ var MonthlyGrid = (function() {
       const categoryHeader = document.createElement('th');
       categoryHeader.className = 'category-header';
       categoryHeader.setAttribute('data-category', category.id);
+      
+      // Set tooltip with category name - will show on hover/tap
+      categoryHeader.title = category.name;
       
       // Calculate monthly total for this category
       const monthlyTotal = getMonthTotalForCategory(category.id);
@@ -402,6 +417,7 @@ var MonthlyGrid = (function() {
     // Daily total header
     const totalHeader = document.createElement('th');
     totalHeader.className = 'total-header';
+    totalHeader.title = 'Daily Total'; // Tooltip for mobile
     
     // Calculate monthly grand total
     const grandTotal = getMonthGrandTotal();
@@ -431,6 +447,7 @@ var MonthlyGrid = (function() {
     // Notes header
     const notesHeader = document.createElement('th');
     notesHeader.className = 'notes-header';
+    notesHeader.title = 'Notes'; // Tooltip for mobile
     
     const notesHeaderContent = document.createElement('div');
     notesHeaderContent.className = 'category-header-content';
@@ -873,6 +890,8 @@ var MonthlyGrid = (function() {
     renderGrid();
   }
   
+ 
+
   // Public methods
   return {
     init: init,
@@ -913,17 +932,24 @@ window.MonthlyGrid = MonthlyGrid;
 
 <style>
 /* ======================================================
-   MONTHLY GRID VIEW STYLES
+   MONTHLY GRID VIEW STYLES - FIXED VERSION
    ======================================================
 */
 
 /* ============= MAIN CONTAINER ============= */
-.monthly-grid-view {
+.monthly-grid-container {
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  min-height: 500px;
   position: relative;
+  overflow: auto;
+  padding-bottom: 16px;
+  max-height: calc(100vh - 90px);
+}
+
+/* Special container size for December (31 days) */
+.december-container.monthly-grid-container {
+  max-height: calc(100vh - 70px);
 }
 
 /* ============= GRID HEADER ============= */
@@ -939,6 +965,7 @@ window.MonthlyGrid = MonthlyGrid;
   display: flex;
   align-items: center;
   gap: 12px;
+  background-color: #ffffff;
 }
 
 .month-nav-btn {
@@ -965,23 +992,6 @@ window.MonthlyGrid = MonthlyGrid;
   color: var(--text-primary);
 }
 
-.month-year-selector {
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background-color: var(--surface);
-  color: var(--text-primary);
-  font-size: 14px;
-}
-
-/* ============= GRID CONTAINER ============= */
-.monthly-grid-container {
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: auto;
-  padding-bottom: 16px;
-}
-
 /* ============= GRID TABLE ============= */
 .monthly-grid {
   width: 100%;
@@ -990,17 +1000,50 @@ window.MonthlyGrid = MonthlyGrid;
   min-width: 800px; /* Ensure minimum width for small screens */
 }
 
-/* Headers */
-.monthly-grid th {
-  background-color: var(--surface);
+/* Headers - Double sticky approach with solid backgrounds */
+.monthly-grid thead {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 200;
+}
+
+.monthly-grid th {
+  background-color: #f8f5f5 !important;
   padding: 12px 8px;
   text-align: left;
   font-weight: 500;
   color: var(--text-primary);
   border-bottom: 2px solid var(--border);
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  opacity: 1;
+  position: sticky;
+  top: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.monthly-grid th.total-header {
+  background-color: rgba(244, 67, 54, 0.12);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  z-index: 201;
+}
+
+.monthly-grid th.category-header,
+.monthly-grid th.date-header,
+.monthly-grid th.notes-header {
+  background-color: #f8f5f5;
+}
+
+.monthly-grid th.date-header {
+  width: 62px !important;
+  min-width: 62px !important;
+  max-width: 62px !important;
+  text-align: center !important;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+}
+
+.monthly-grid th:last-child {
+  border-right: none;
 }
 
 .date-header {
@@ -1013,6 +1056,8 @@ window.MonthlyGrid = MonthlyGrid;
 
 .total-header {
   width: 110px;
+  text-align: center;
+  background-color: rgba(244, 67, 54, 0.12) !important;
 }
 
 .notes-header {
@@ -1046,15 +1091,14 @@ window.MonthlyGrid = MonthlyGrid;
 }
 
 /* Day rows and cells */
-.day-row:nth-child(even) {
-  background-color: rgba(0, 0, 0, 0.02);
+.day-row {
+  background-color: #ffffff;
 }
 
 .day-row:hover {
   background-color: rgba(169, 99, 34, 0.05);
 }
 
-/* Weekend highlighting */
 .weekend-row {
   background-color: rgba(255, 249, 219, 0.3) !important;
 }
@@ -1063,7 +1107,6 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(255, 249, 219, 0.5) !important;
 }
 
-/* Today highlighting */
 .today-row {
   background-color: rgba(255, 235, 156, 0.3) !important;
 }
@@ -1074,21 +1117,19 @@ window.MonthlyGrid = MonthlyGrid;
 
 .today-cell {
   font-weight: 500;
-  border-left: 2px solid rgba(255, 193, 7, 0.5);
-  border-right: 2px solid rgba(255, 193, 7, 0.5);
+
 }
 
-/* Cell padding reduced to 4px */
 .monthly-grid td {
   padding: 4px;
   border-bottom: 1px solid var(--border);
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
   height: 45px;
   vertical-align: middle;
 }
 
-/* Date cell */
-.date-cell {
-  font-weight: 500;
+.monthly-grid td:last-child {
+  border-right: none;
 }
 
 .date-container {
@@ -1106,7 +1147,6 @@ window.MonthlyGrid = MonthlyGrid;
   color: var(--text-secondary);
 }
 
-/* Grid cells */
 .grid-cell {
   cursor: pointer;
   transition: background-color 0.2s;
@@ -1116,7 +1156,6 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(169, 99, 34, 0.1);
 }
 
-/* Enhanced cell content with color coding by amount */
 .cell-content {
   display: flex;
   align-items: center;
@@ -1124,23 +1163,22 @@ window.MonthlyGrid = MonthlyGrid;
   gap: 4px;
   padding: 6px 4px;
   border-radius: 4px;
-  color: white;
+  color: black;
   font-weight: 500;
 }
 
-/* Color coding by amount - now more matte with black text */
 .amount-small {
-  background-color: rgba(76, 175, 80, 0.3); /* Light matte green for small amounts < 10 */
+  background-color: rgba(76, 175, 80, 0.3);
   color: black;
 }
 
 .amount-medium {
-  background-color: rgba(255, 152, 0, 0.3); /* Light matte orange/yellow for medium amounts 10-20 */
+  background-color: rgba(255, 152, 0, 0.3);
   color: black;
 }
 
 .amount-large {
-  background-color: rgba(244, 67, 54, 0.3); /* Light matte red for large amounts > 20 */
+  background-color: rgba(244, 67, 54, 0.3);
   color: black;
 }
 
@@ -1154,17 +1192,21 @@ window.MonthlyGrid = MonthlyGrid;
   color: rgba(0, 0, 0, 0.7);
 }
 
-/* Total cells */
 .total-cell {
   font-weight: 600;
   color: var(--primary);
+  text-align: center;
+  background-color: rgba(244, 67, 54, 0.08);
 }
 
 .total-amount {
   font-size: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
 }
 
-/* Notes cells */
 .notes-cell {
   position: relative;
 }
@@ -1177,7 +1219,7 @@ window.MonthlyGrid = MonthlyGrid;
   transition: border-color 0.2s;
   outline: none;
   font-size: 13px;
-  background-color: rgba(241, 241, 241, 0.5); /* Light gray background */
+  background-color: rgba(241, 241, 241, 0.5);
 }
 
 .notes-content:hover, .notes-content:focus {
@@ -1189,7 +1231,6 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(255, 255, 255, 0.9);
 }
 
-/* Error message */
 .grid-error {
   padding: 20px;
   text-align: center;
@@ -1222,7 +1263,7 @@ window.MonthlyGrid = MonthlyGrid;
   width: 100%;
   height: 100%;
   z-index: 1000;
-  display: none; /* Changed to display: none initially */
+  display: none;
   opacity: 0;
   align-items: center;
   justify-content: center;
@@ -1230,7 +1271,7 @@ window.MonthlyGrid = MonthlyGrid;
 }
 
 .transaction-modal.visible {
-  display: flex; /* Show with flex when visible */
+  display: flex;
   opacity: 1;
 }
 
@@ -1299,7 +1340,6 @@ window.MonthlyGrid = MonthlyGrid;
   overflow-y: auto;
 }
 
-/* Transaction list */
 .transactions-list {
   display: flex;
   flex-direction: column;
@@ -1379,7 +1419,6 @@ window.MonthlyGrid = MonthlyGrid;
   font-style: italic;
 }
 
-/* Add transaction button */
 .modal-actions {
   display: flex;
   justify-content: center;
@@ -1404,19 +1443,47 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: var(--primary-dark);
 }
 
-/* ============= DARK MODE ============= */
+/* Dark mode */
 body.dark-mode .monthly-grid th {
-  background-color: var(--dark-surface);
+  background-color: #334960 !important;
   color: var(--dark-text-primary);
-  border-color: var(--dark-border);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-right-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .empty-transactions {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .monthly-grid th.total-header {
+  background-color: #ffcbcf !important; /* Solid background for dark mode */
+  backdrop-filter: none !important; /* Remove any backdrop filter */
+  -webkit-backdrop-filter: none !important;
+  background-clip: padding-box !important; /* Prevent bleed-through */
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3) !important; /* Stronger shadow for dark mode */
+  z-index: 210 !important; /* Higher z-index to ensure it's on top */
 }
 
 body.dark-mode .monthly-grid td {
-  border-color: var(--dark-border);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-right-color: rgba(255, 255, 255, 0.05);
+  background-color: transparent;
 }
 
-body.dark-mode .day-row:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
+/* Fix day names in dark mode */
+body.dark-mode .day-name {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .day-number {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+body.dark-mode .day-row {
+  background-color: var(--dark-surface);
 }
 
 body.dark-mode .day-row:hover {
@@ -1424,19 +1491,19 @@ body.dark-mode .day-row:hover {
 }
 
 body.dark-mode .weekend-row {
-  background-color: rgba(255, 249, 219, 0.1) !important;
+  background-color: rgba(255, 249, 219, 0.05) !important;
 }
 
 body.dark-mode .weekend-row:hover {
-  background-color: rgba(255, 249, 219, 0.15) !important;
+  background-color: rgba(255, 249, 219, 0.1) !important;
 }
 
 body.dark-mode .today-row {
-  background-color: rgba(255, 235, 156, 0.1) !important;
+  background-color: rgba(255, 235, 156, 0.08) !important;
 }
 
 body.dark-mode .today-row:hover {
-  background-color: rgba(255, 235, 156, 0.15) !important;
+  background-color: rgba(255, 235, 156, 0.12) !important;
 }
 
 body.dark-mode .today-cell {
@@ -1444,8 +1511,16 @@ body.dark-mode .today-cell {
   border-right: 2px solid rgba(255, 193, 7, 0.3);
 }
 
+body.dark-mode .total-header {
+  background-color: rgba(244, 67, 54, 0.15) !important;
+}
+
+body.dark-mode .total-cell {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
 body.dark-mode .grid-cell:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 body.dark-mode .notes-content {
@@ -1460,6 +1535,25 @@ body.dark-mode .notes-content:focus {
 
 body.dark-mode .notes-content:focus {
   background-color: rgba(40, 40, 40, 0.9);
+}
+
+body.dark-mode .amount-small {
+  background-color: rgba(76, 175, 80, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+body.dark-mode .amount-medium {
+  background-color: rgba(255, 152, 0, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+body.dark-mode .amount-large {
+  background-color: rgba(244, 67, 54, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+body.dark-mode .transaction-count {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 body.dark-mode .modal-card {
@@ -1488,62 +1582,145 @@ body.dark-mode .transaction-account {
   border-color: var(--dark-border);
 }
 
+/* Fix for progress bars in dark mode */
+body.dark-mode .progress-bar-container {
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  overflow: visible !important;
+}
+
+body.dark-mode .progress-bar {
+  background-color: rgb(109, 234, 113) !important;
+  box-shadow: 0 0 5px rgb(109, 234, 113) !important;
+  visibility: visible !important;
+}
+
+body.dark-mode .progress-bar.over-budget {
+  background-color: #f44336 !important;
+  box-shadow: 0 0 5px rgba(244, 67, 54, 0.7) !important;
+}
+
+body.dark-mode .progress-percentage {
+  color: rgba(255, 255, 255, 0.9) !important;
+  opacity: 1 !important;
+}
+
 /* ============= RESPONSIVE DESIGN ============= */
 @media (max-width: 768px) {
-  .date-header {
-    width: 70px;
+  /* Ensure the quick expense button positioning isn't affected */
+  .quick-expense-btn {
+    position: fixed !important;
+    right: 20px !important;
+    bottom: 15px !important;
+    left: auto !important; /* This is crucial - prevent left positioning */
+  }
+  
+  .monthly-grid-container {
+    max-height: calc(100vh - 180px);
+  }
+  
+  .category-emoji {
+    font-size: 20px;
+    padding: 4px 0;
+  }
+  
+  .category-name {
+    display: none;
   }
   
   .category-header {
-    min-width: 100px;
+    min-width: 48px !important;
+    width: 48px !important;
+    padding: 8px 4px !important;
   }
   
-  .notes-header {
-    width: 150px;
+  .category-header:active .category-emoji {
+    transform: scale(1.2);
+    transition: transform 0.1s;
   }
   
+  .monthly-grid th.date-header, 
+  .monthly-grid td.date-cell {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+  }
+  
+  .day-name {
+    font-size: 10px;
+  }
+  
+  /* Transaction modal adjustments for mobile */
   .transaction-row {
     grid-template-columns: 70px 1fr 100px 40px;
     gap: 8px;
   }
-  
-  .monthly-grid td {
-    padding: 4px;
-    height: 40px;
-  }
-  
-  .day-number {
-    font-size: 14px;
-  }
-  
-  .day-name {
-    font-size: 11px;
-  }
 }
 
 @media (max-width: 480px) {
-  .grid-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  /* Ensure the quick expense button stays at bottom right */
+  .quick-expense-btn {
+    position: fixed !important;
+    bottom: 15px !important;
+    right: 20px !important;
+    left: auto !important;
+    z-index: 9997 !important; /* Ensure proper z-index */
   }
   
-  .month-selector {
-    width: 100%;
-    justify-content: space-between;
+  .notes-header, .notes-cell {
+    display: none;
   }
   
-  .month-year-selector {
-    width: 100%;
+  .monthly-grid td, .monthly-grid th {
+    padding: 2px !important;
   }
   
-  .transaction-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
+  .category-header, .total-header {
+    min-width: 40px !important;
+    width: 40px !important;
   }
   
-  .transaction-actions {
-    justify-content: flex-end;
+  .amount {
+    font-size: 12px;
+  }
+  
+  .transaction-count {
+    display: none;
   }
 }
+
+/* Specific adjustments for smaller height screens */
+@media screen and (max-height: 800px) {
+  .budget-table th,
+  .budget-table td {
+    padding: 6px 6px !important;
+    font-size: 13px;
+  }
+  
+  .category-name, .budget-value, .actual-value {
+    font-size: 13px;
+  }
+  
+  .progress-percentage {
+    font-size: 9px;
+  }
+  
+  .progress-bar-container {
+    height: 5px;
+    margin-bottom: 1px;
+  }
+  
+  .budget-alert {
+    padding: 8px 12px;
+    font-size: 16px;
+  }
+}
+
+/* Ensure visibility classes don't affect other elements */
+.hidden {
+  display: none !important;
+}
+
+
+
+
 </style>

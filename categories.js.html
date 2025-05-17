@@ -291,7 +291,7 @@ function init(categories, activeCategories) {
     // Create label with category name
     const label = document.createElement('label');
     label.htmlFor = `category-toggle-${index}`;
-     label.className = 'category-name';
+     label.className = 'category-name-cat';
      label.textContent = Utils.translateCategory(category.name);
    
 
@@ -611,7 +611,7 @@ window.updateAllCategoryDropdowns = function() {
 }
 
 /* Category name label */
-.category-name {
+.category-name-cat {
   font-size: 14px;
   font-weight: 500;
   flex: 1;
@@ -689,7 +689,7 @@ body.dark-mode .category-card.save-error {
   border-color: #e57373;
 }
 
-body.dark-mode .category-name {
+body.dark-mode .category-name-cat {
   color: #ffffff;
 }
 
@@ -716,7 +716,7 @@ body.dark-mode .saving-indicator .spinner {
     padding: 6px;
   }
   
-  .category-name {
+  .category-name-cat {
     font-size: 12px;
   }
 }
