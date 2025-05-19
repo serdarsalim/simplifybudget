@@ -9,8 +9,194 @@ var MonthlyGrid = (function() {
   let _isLoading = false;
   let _currencySymbol = '€'; // Default currency, will be updated from settings
   
+  // ENHANCED: Smart caching system
+  let _expenseCache = new Map(); // In-memory cache for current session
+  let _prefetchQueue = new Set(); // Track ongoing prefetch operations
+  const CACHE_PREFIX = 'monthlyGrid_expenses_';
+  const CACHE_VERSION = '1.0';
+  const MAX_CACHE_MONTHS = 6; // Limit cache size
+  
   // DOM element cache for performance
   const _elements = {};
+  
+  /**
+   * Generate cache key for a specific month/year
+   */
+  function getCacheKey(month, year) {
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+  
+  /**
+   * Get expense data from cache (memory first, then localStorage)
+   */
+  function getCachedExpenses(month, year) {
+    const key = getCacheKey(month, year);
+    
+    // Check in-memory cache first
+    if (_expenseCache.has(key)) {
+      console.log(`Found expenses in memory cache for ${month}/${year}`);
+      return _expenseCache.get(key);
+    }
+    
+    // Check localStorage cache
+    try {
+      const storageKey = CACHE_PREFIX + key;
+      const cached = localStorage.getItem(storageKey);
+      if (cached) {
+        const data = JSON.parse(cached);
+        
+        // Check cache version and expiry (24 hours)
+        if (data.version === CACHE_VERSION && 
+            Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
+          
+          console.log(`Found expenses in localStorage cache for ${month}/${year}`);
+          
+          // Store in memory cache for faster access
+          _expenseCache.set(key, data.expenses);
+          
+          return data.expenses;
+        } else {
+          // Cache expired, remove it
+          localStorage.removeItem(storageKey);
+          console.log(`Cache expired for ${month}/${year}, removed`);
+        }
+      }
+    } catch (error) {
+      console.warn('Error reading from localStorage cache:', error);
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Store expense data in cache (both memory and localStorage)
+   */
+  function setCachedExpenses(month, year, expenses) {
+    const key = getCacheKey(month, year);
+    
+    // Store in memory cache
+    _expenseCache.set(key, expenses);
+    
+    // Store in localStorage with metadata
+    try {
+      const storageKey = CACHE_PREFIX + key;
+      const data = {
+        version: CACHE_VERSION,
+        timestamp: Date.now(),
+        month: month,
+        year: year,
+        expenses: expenses
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(data));
+      console.log(`Cached expenses for ${month}/${year} in localStorage`);
+      
+      // Clean up old cache entries if we exceed the limit
+      cleanupCache();
+      
+    } catch (error) {
+      console.warn('Error writing to localStorage cache:', error);
+    }
+  }
+  
+  /**
+   * Clean up old cache entries to prevent storage bloat
+   */
+  function cleanupCache() {
+    try {
+      const keys = [];
+      
+      // Find all cache keys in localStorage
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_PREFIX)) {
+          keys.push(key);
+        }
+      }
+      
+      // If we have too many cached months, remove the oldest ones
+      if (keys.length > MAX_CACHE_MONTHS) {
+        // Sort by timestamp (oldest first)
+        const sortedKeys = keys.map(key => {
+          try {
+            const data = JSON.parse(localStorage.getItem(key));
+            return { key, timestamp: data.timestamp || 0 };
+          } catch {
+            return { key, timestamp: 0 };
+          }
+        }).sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Remove the oldest entries
+        const toRemove = sortedKeys.slice(0, keys.length - MAX_CACHE_MONTHS);
+        toRemove.forEach(item => {
+          localStorage.removeItem(item.key);
+          console.log(`Cleaned up old cache entry: ${item.key}`);
+        });
+      }
+    } catch (error) {
+      console.warn('Error during cache cleanup:', error);
+    }
+  }
+  
+  /**
+   * Prefetch expenses for a specific month in the background
+   */
+  function prefetchMonth(month, year) {
+    const key = getCacheKey(month, year);
+    
+    // Skip if already cached or currently being fetched
+    if (getCachedExpenses(month, year) || _prefetchQueue.has(key)) {
+      return Promise.resolve();
+    }
+    
+    console.log(`Prefetching expenses for ${month}/${year}...`);
+    _prefetchQueue.add(key);
+    
+    return new Promise((resolve) => {
+      if (!window.API || typeof API.getExpenseData !== 'function') {
+        _prefetchQueue.delete(key);
+        resolve();
+        return;
+      }
+      
+      API.getExpenseData(
+        month,
+        year,
+        function(result) {
+          _prefetchQueue.delete(key);
+          
+          if (result && result.success && result.expenses) {
+            console.log(`Successfully prefetched ${result.expenses.length} expenses for ${month}/${year}`);
+            setCachedExpenses(month, year, result.expenses);
+          } else {
+            console.log(`Prefetch failed for ${month}/${year}:`, result ? result.error : 'Unknown error');
+          }
+          
+          resolve();
+        },
+        function(error) {
+          _prefetchQueue.delete(key);
+          console.log(`Prefetch error for ${month}/${year}:`, error);
+          resolve();
+        }
+      );
+    });
+  }
+  
+  /**
+   * Get previous month/year
+   */
+  function getPreviousMonth(month, year) {
+    let prevMonth = month - 1;
+    let prevYear = year;
+    
+    if (prevMonth < 0) {
+      prevMonth = 11;
+      prevYear = year - 1;
+    }
+    
+    return { month: prevMonth, year: prevYear };
+  }
   
   /**
    * Get an element by ID with caching
@@ -95,7 +281,7 @@ var MonthlyGrid = (function() {
     // Set up event handlers
     bindEvents();
     
-    // Load real data from spreadsheet
+    // Load real data from spreadsheet (with smart caching)
     loadRealExpenseData();
     
     // Prevent body scrolling on mobile
@@ -114,21 +300,55 @@ var MonthlyGrid = (function() {
   }
   
   /**
-   * Load real expense data from spreadsheet for current month
+   * ENHANCED: Load real expense data with smart caching and prefetching
    */
-  function loadRealExpenseData() {
+  function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
     if (_isLoading) {
       console.log('Already loading expense data, skipping...');
-      return;
+      return Promise.resolve();
     }
     
+    // Check cache first for instant loading
+    const cachedExpenses = getCachedExpenses(month, year);
+    if (cachedExpenses) {
+      console.log(`Loading from cache: ${cachedExpenses.length} expenses for ${month}/${year}`);
+      
+      // Load categories first, then process cached data
+      return loadActiveCategories()
+        .then(categories => {
+          processRealExpenseData(cachedExpenses);
+          renderGrid();
+          
+          // Start prefetching previous month in background
+          const prev = getPreviousMonth(month, year);
+          setTimeout(() => {
+            prefetchMonth(prev.month, prev.year);
+          }, 100);
+          
+          return Promise.resolve();
+        })
+        .catch(error => {
+          console.error('Error loading categories for cached data:', error);
+          // Fall back to fresh fetch
+          return fetchFreshExpenseData(month, year);
+        });
+    }
+    
+    // Not in cache, fetch fresh data
+    return fetchFreshExpenseData(month, year);
+  }
+  
+  /**
+   * Fetch fresh expense data from the server
+   */
+  function fetchFreshExpenseData(month, year) {
     _isLoading = true;
     
     // Debug logging
-    const currentDate = new Date(_currentYear, _currentMonth, 1);
+    const currentDate = new Date(year, month, 1);
     const monthName = currentDate.toLocaleString('default', { month: 'long' });
-  
-    // Show loading indicator
+    
+    // Show loading indicator only for fresh fetches
     showLoadingIndicator();
     
     // Clear existing data
@@ -136,25 +356,21 @@ var MonthlyGrid = (function() {
     _categories = [];
     
     // STEP 1: Load active categories first
-    loadActiveCategories()
+    return loadActiveCategories()
       .then(categories => {
-        console.log('Categories loaded, now loading expenses...');
+        console.log('Categories loaded, now fetching fresh expenses...');
         
-        // STEP 2: Load expenses for the current month
+        // STEP 2: Load expenses for the specified month
         if (!window.API || typeof API.getExpenseData !== 'function') {
           throw new Error('API.getExpenseData function not found. Check API.html file.');
         }
         
-        // Ensure parameters are numbers
-        const monthParam = parseInt(_currentMonth);
-        const yearParam = parseInt(_currentYear);
-        
-        console.log('Calling API.getExpenseData with params:', monthParam, yearParam);
+        console.log(`Fetching fresh data for ${month}/${year}...`);
         
         return new Promise((resolve, reject) => {
           API.getExpenseData(
-            monthParam,
-            yearParam,
+            month,
+            year,
             function(result) {
               console.log('SUCCESS: API returned:', result);
               
@@ -182,23 +398,35 @@ var MonthlyGrid = (function() {
         });
       })
       .then(expenses => {
-        console.log('Processing ' + expenses.length + ' expenses...');
+        console.log('Processing ' + expenses.length + ' fresh expenses...');
         
-        // STEP 3: Process the expense data (no category creation)
+        // Cache the fresh data
+        setCachedExpenses(month, year, expenses);
+        
+        // STEP 3: Process the expense data
         processRealExpenseData(expenses);
         
-        // STEP 4: Render the grid with real data
+        // STEP 4: Render the grid with fresh data
         renderGrid();
         
-        console.log(`SUCCESS: Loaded ${_transactions.length} transactions for ${_currentMonth}/${_currentYear}`);
+        console.log(`SUCCESS: Loaded ${_transactions.length} transactions for ${month}/${year}`);
         hideLoadingIndicator();
         _isLoading = false;
+        
+        // Start prefetching previous month in background
+        const prev = getPreviousMonth(month, year);
+        setTimeout(() => {
+          prefetchMonth(prev.month, prev.year);
+        }, 500);
+        
+        return Promise.resolve();
       })
       .catch(error => {
         console.error('FAILED: Error loading expense data:', error);
         showErrorMessage('Failed to load data: ' + error);
         hideLoadingIndicator();
         _isLoading = false;
+        return Promise.reject(error);
       });
   }
   
@@ -592,6 +820,14 @@ var MonthlyGrid = (function() {
   function refresh() {
     console.log('Refreshing monthly grid...');
     _isLoading = false; // Reset loading flag
+    
+    // Clear cache for current month to force fresh fetch
+    const key = getCacheKey(_currentMonth, _currentYear);
+    _expenseCache.delete(key);
+    
+    const storageKey = CACHE_PREFIX + key;
+    localStorage.removeItem(storageKey);
+    
     loadRealExpenseData();
   }
 
@@ -748,13 +984,15 @@ var MonthlyGrid = (function() {
     }
   }
   
+  /**
+   * ENHANCED: Navigate month with smart caching
+   */
   function navigateMonth(change) {
     // Prevent navigation while loading
     if (_isLoading) {
       console.log('Navigation blocked - already loading data');
       return;
     }
-    
     
     _currentMonth += change;
     
@@ -766,12 +1004,11 @@ var MonthlyGrid = (function() {
       _currentYear--;
     }
     
-    
     updateMonthYearDisplay();
     
-    // Reload data for new month
-    console.log('Month changed to:', _currentMonth, '/', _currentYear, '- reloading data...');
-    loadRealExpenseData();
+    // Load data for new month (will use cache if available)
+    console.log(`Month changed to: ${_currentMonth}/${_currentYear} - loading with smart cache...`);
+    loadRealExpenseData(_currentMonth, _currentYear);
   }
   
   function updateMonthYearDisplay() {
@@ -1484,15 +1721,42 @@ var MonthlyGrid = (function() {
     renderGrid();
   }
 
+  /**
+   * Clear cache for testing or troubleshooting
+   */
+  function clearCache() {
+    console.log('Clearing all expense cache...');
+    
+    // Clear in-memory cache
+    _expenseCache.clear();
+    
+    // Clear localStorage cache
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(CACHE_PREFIX)) {
+          keys.push(key);
+        }
+      }
+      
+      keys.forEach(key => localStorage.removeItem(key));
+      console.log(`Cleared ${keys.length} cache entries from localStorage`);
+    } catch (error) {
+      console.warn('Error clearing localStorage cache:', error);
+    }
+  }
+
   // Public methods
   return {
     init: init,
     renderGrid: renderGrid,
     setExpenseData: setExpenseData,
     refresh: refresh,
-    updateCurrency: updateCurrency,  // Add this for external updates
+    updateCurrency: updateCurrency,
     openTransactionModal: openTransactionModal,
-    unbindEvents: unbindEvents
+    unbindEvents: unbindEvents,
+    clearCache: clearCache  // For debugging
   };
 })();
 
