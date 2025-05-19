@@ -480,7 +480,6 @@ getCategories: function(successCallback, errorCallback, forceRefresh) {
 
 
 getExpenseData: function(month, year, successCallback, errorCallback) {
-  console.log("API.getExpenseData: Starting call for month " + month + "/" + year);
   
   // Handle case where month/year are not provided (callbacks as first params)
   if (typeof month === 'function') {
@@ -488,24 +487,19 @@ getExpenseData: function(month, year, successCallback, errorCallback) {
     successCallback = month;
     month = undefined;
     year = undefined;
-    console.log("API.getExpenseData: No month/year provided, using current");
   } else {
     // *** CRITICAL FIX: Properly handle 0 (January) ***
     // Don't treat month=0 as falsy since 0 = January
     if (month !== undefined && month !== null) {
       month = parseInt(month);
-      console.log("API.getExpenseData: Parsed month:", month);
     }
     if (year !== undefined && year !== null) {
       year = parseInt(year);
-      console.log("API.getExpenseData: Parsed year:", year);
     }
-    console.log("API.getExpenseData: Final parameters - month:", month, "year:", year);
   }
   
   if (typeof google === 'undefined' || !google.script || !google.script.run) {
     const error = 'Google Apps Script runtime not available';
-    console.error("API.getExpenseData:", error);
     errorCallback(error);
     return;
   }
@@ -522,11 +516,9 @@ getExpenseData: function(month, year, successCallback, errorCallback) {
     return;
   }
   
-  console.log("API.getExpenseData: About to call server with month=" + month + ", year=" + year);
   
   google.script.run
     .withSuccessHandler(function(result) {
-      console.log("API.getExpenseData: Raw server response:", result);
       
       if (result === null || result === undefined) {
         const error = 'Server returned null/undefined. Check if getExpenseData() function exists in Code.gs';
@@ -549,7 +541,6 @@ getExpenseData: function(month, year, successCallback, errorCallback) {
         return;
       }
       
-      console.log("API.getExpenseData: SUCCESS - " + (result.expenses ? result.expenses.length : 0) + " expenses for " + month + "/" + year);
       successCallback(result);
     })
     .withFailureHandler(function(error) {
@@ -560,7 +551,6 @@ getExpenseData: function(month, year, successCallback, errorCallback) {
     })
     .getExpenseData(month, year); // *** FIX: Explicitly pass both parameters ***
   
-  console.log("API.getExpenseData: Server call initiated with parameters:", month, year);
 },
 
 

@@ -834,17 +834,23 @@ body.dark-mode .subscription-list-header {
     position: relative !important;
   }
   
-  /* Fix category names */
-  .category-name {
+
+  /* Add this to your mobile media query section around line 815-820 */
+@media (max-width: 768px) {
+  /* Ensure dashboard category names are ALWAYS visible on mobile */
+  .budget-table .category-name {
+    display: block !important;
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
-    display: block !important;
     font-size: 13px !important;
     padding: 0 !important;
     margin: 0 !important;
     line-height: inherit !important;
   }
+}
+
+
   
   /* Fix progress cell specifically */
   .progress-cell {

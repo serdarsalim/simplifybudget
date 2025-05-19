@@ -127,15 +127,7 @@ var MonthlyGrid = (function() {
     // Debug logging
     const currentDate = new Date(_currentYear, _currentMonth, 1);
     const monthName = currentDate.toLocaleString('default', { month: 'long' });
-    console.log('=== MONTH DEBUG ===');
-    console.log('UI should show:', monthName, _currentYear);
-    console.log('_currentMonth value:', _currentMonth, '(0=Jan, 11=Dec)');
-    console.log('Sending to server: month=' + _currentMonth + ', year=' + _currentYear);
-    console.log('Expected server data: ' + monthName + ' ' + _currentYear);
-    console.log('==================');
-    
-    console.log('Loading real expense data for month:', _currentMonth, 'year:', _currentYear);
-    
+  
     // Show loading indicator
     showLoadingIndicator();
     
@@ -403,10 +395,8 @@ var MonthlyGrid = (function() {
     
     // Check if it's an ISO string (from server API)
     if (dateStr.includes('T') && (dateStr.includes('Z') || dateStr.includes('+'))) {
-      console.log(`Parsing ISO date: "${dateStr}"`);
       const date = new Date(dateStr);
       if (!isNaN(date.getTime())) {
-        console.log(`ISO parsed: "${dateStr}" -> Day: ${date.getDate()}, Month: ${date.getMonth()}, Year: ${date.getFullYear()}`);
         return date;
       }
     }
@@ -451,15 +441,11 @@ var MonthlyGrid = (function() {
         return null;
       }
       
-      console.log(`Parsed "${dateStr}" -> Day: ${date.getDate()}, Month: ${date.getMonth()}, Year: ${date.getFullYear()}`);
       return date;
     }
     
-    // Fallback: try standard Date parsing
-    console.log(`Trying fallback parsing for: "${dateStr}"`);
     const fallbackDate = new Date(dateStr);
     if (!isNaN(fallbackDate.getTime())) {
-      console.log(`Fallback parsed: "${dateStr}" -> Day: ${fallbackDate.getDate()}, Month: ${fallbackDate.getMonth()}, Year: ${fallbackDate.getFullYear()}`);
       return fallbackDate;
     }
     
@@ -471,7 +457,6 @@ var MonthlyGrid = (function() {
    * Process real expense data from spreadsheet (expenses only, no categories)
    */
   function processRealExpenseData(expenses) {
-    console.log('Processing expense data:', expenses.length, 'items');
     
     const processedTransactions = [];
     
@@ -488,14 +473,12 @@ var MonthlyGrid = (function() {
       
       if (expense.date instanceof Date) {
         expenseDate = expense.date;
-        console.log(`Expense ${index}: Date is already Date object:`, expense.date.toDateString());
       } else if (expense.date) {
         // Try our custom parser first
         expenseDate = parseSpreadsheetDate(expense.date);
         
         if (!expenseDate) {
           // Fallback to standard Date parsing
-          console.log(`Expense ${index}: Custom parsing failed, trying standard Date() for:`, expense.date);
           expenseDate = new Date(expense.date);
           
           if (isNaN(expenseDate.getTime())) {
@@ -504,7 +487,6 @@ var MonthlyGrid = (function() {
           }
         }
         
-        console.log(`Expense ${index}: Successfully parsed "${expense.date}" -> ${expenseDate.toDateString()} (Day: ${expenseDate.getDate()})`);
       } else {
         console.warn('No date for expense', index, ':', expense);
         return;
@@ -533,16 +515,12 @@ var MonthlyGrid = (function() {
       };
       
       processedTransactions.push(transaction);
-      console.log(`Processed: ${transaction.description} - ${formatCurrency(amount)} on ${expenseDate.toDateString()} [${cleanCategory}] (Day: ${expenseDate.getDate()})`);
     });
     
     // Store processed transactions (categories are loaded separately)
     _transactions = processedTransactions;
-    
-    console.log(`FINAL: Processed ${_transactions.length} transactions`);
-    console.log('Sample transactions with days:');
+ 
     _transactions.slice(0, 5).forEach(tx => {
-      console.log(`  - Day ${tx.date.getDate()}: ${tx.description} in "${tx.category}" on ${tx.date.toDateString()}`);
     });
     
     // Additional debugging: Check for transactions all on the same day
@@ -649,7 +627,6 @@ var MonthlyGrid = (function() {
       };
       
       prevMonth.addEventListener('click', prevMonth._monthlyGridHandler);
-      console.log('Bound previous month handler');
     } else {
       console.error('prevMonth button not found in DOM');
     }
@@ -667,7 +644,6 @@ var MonthlyGrid = (function() {
       };
       
       nextMonth.addEventListener('click', nextMonth._monthlyGridHandler);
-      console.log('Bound next month handler');
     } else {
       console.error('nextMonth button not found in DOM');
     }
@@ -721,7 +697,6 @@ var MonthlyGrid = (function() {
       nextMonth._monthlyGridHandler = null;
     }
     
-    console.log('Unbound MonthlyGrid navigation handlers');
   }
   
   function handleDocumentClick(e) {
@@ -744,7 +719,6 @@ var MonthlyGrid = (function() {
     if (addBtn && (e.target === addBtn || addBtn.contains(e.target))) {
       e.preventDefault();
       e.stopPropagation();
-      console.log('Add transaction button clicked - single event');
       addTransactionRow();
       return;
     }
@@ -781,7 +755,6 @@ var MonthlyGrid = (function() {
       return;
     }
     
-    console.log('BEFORE navigation: month=' + _currentMonth + ', year=' + _currentYear);
     
     _currentMonth += change;
     
@@ -793,7 +766,6 @@ var MonthlyGrid = (function() {
       _currentYear--;
     }
     
-    console.log('AFTER navigation: month=' + _currentMonth + ', year=' + _currentYear);
     
     updateMonthYearDisplay();
     
@@ -808,7 +780,6 @@ var MonthlyGrid = (function() {
       const monthName = new Date(_currentYear, _currentMonth, 1)
         .toLocaleString('default', { month: 'long' });
       
-      console.log('DISPLAY UPDATE: Setting display to', monthName, _currentYear, '(internal month index:', _currentMonth, ')');
       
       monthYearDisplay.textContent = `${monthName} ${_currentYear}`;
     }
@@ -887,9 +858,7 @@ var MonthlyGrid = (function() {
       
       const matches = dayMatches && monthMatches && yearMatches && categoryMatches;
       
-      if (matches) {
-        console.log(`Found transaction: ${tx.description} on day ${day} in category ${categoryId}`);
-      }
+ 
       
       return matches;
     });
@@ -1189,6 +1158,10 @@ var MonthlyGrid = (function() {
     return tbody;
   }
 
+  /**
+   * ENHANCED: Open transaction modal with blazing fast entry
+   * Always shows an empty transaction row for quick entry
+   */
   function openTransactionModal(day, categoryId) {
     if (_isClosingModal) return;
     
@@ -1238,17 +1211,28 @@ var MonthlyGrid = (function() {
     if (transactionsList) {
       transactionsList.innerHTML = '';
       
+      // First, add existing transactions if any
       if (transactions.length > 0) {
         transactions.forEach(tx => {
           const item = createTransactionItem(tx);
           transactionsList.appendChild(item);
         });
-      } else {
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-transactions';
-        emptyState.textContent = 'No transactions for this day/category. Add one below!';
-        transactionsList.appendChild(emptyState);
       }
+      
+      // ALWAYS add an empty transaction row for quick entry
+      const emptyTransaction = createEmptyTransaction(day, categoryId);
+      const emptyItem = createTransactionItem(emptyTransaction);
+      emptyItem.classList.add('new-transaction', 'ready-for-input');
+      transactionsList.appendChild(emptyItem);
+      
+      // Auto-focus the amount field for blazing fast entry
+      setTimeout(() => {
+        const amountField = emptyItem.querySelector('.transaction-amount');
+        if (amountField) {
+          amountField.focus();
+          amountField.select(); // Select any placeholder text
+        }
+      }, 100);
     }
     
     modal.setAttribute('data-day', day);
@@ -1258,8 +1242,24 @@ var MonthlyGrid = (function() {
     
     setTimeout(() => {
       modal.classList.add('visible');
-      console.log('Modal should now be visible');
     }, 10);
+  }
+  
+  /**
+   * Create an empty transaction object for quick entry
+   */
+  function createEmptyTransaction(day, categoryId) {
+    const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    
+    return {
+      id: newId,
+      date: new Date(_currentYear, _currentMonth, parseInt(day)),
+      category: categoryId,
+      amount: 0,
+      description: '',
+      account: 'Main Account',
+      notes: ''
+    };
   }
   
   function createTransactionItem(tx) {
@@ -1323,6 +1323,19 @@ var MonthlyGrid = (function() {
         updateTransactionTotal();
         renderGrid();
       });
+      
+      // Add to global transactions array when amount is entered
+      amountInput.addEventListener('change', function() {
+        if (parseFloat(this.value) > 0) {
+          // Check if this transaction is already in the array
+          const existingIndex = _transactions.findIndex(transaction => transaction.id === tx.id);
+          if (existingIndex === -1) {
+            // Not in array yet, add it
+            _transactions.push(tx);
+            console.log('Added new transaction to global array:', tx);
+          }
+        }
+      });
     }
     
     const descriptionInput = item.querySelector('.transaction-description');
@@ -1330,12 +1343,31 @@ var MonthlyGrid = (function() {
       descriptionInput.addEventListener('input', function() {
         tx.description = this.value;
       });
+      
+      // Move to next field when Enter is pressed
+      descriptionInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const accountSelect = item.querySelector('.transaction-account');
+          if (accountSelect) {
+            accountSelect.focus();
+          }
+        }
+      });
     }
     
     const accountSelect = item.querySelector('.transaction-account');
     if (accountSelect) {
       accountSelect.addEventListener('change', function() {
         tx.account = this.value;
+      });
+      
+      // Close modal when Enter is pressed on account select
+      accountSelect.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          closeTransactionModal();
+        }
       });
     }
   }
@@ -1396,7 +1428,7 @@ var MonthlyGrid = (function() {
   }
   
   function addTransactionRow() {
-    console.log('Adding single new transaction row');
+    console.log('Adding additional transaction row');
     
     const transactionsList = getElement('transactions-list');
     const modal = getElement('transaction-modal');
@@ -1414,35 +1446,22 @@ var MonthlyGrid = (function() {
       return;
     }
     
-    const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    console.log('Creating single transaction with ID:', newId);
-    
-    const newTx = {
-      id: newId,
-      date: new Date(_currentYear, _currentMonth, parseInt(day)),
-      category: categoryId,
-      amount: 0,
-      description: '',
-      account: 'Main Account'
-    };
-    
-    _transactions.push(newTx);
-    
+    // Create another empty transaction
+    const newTx = createEmptyTransaction(day, categoryId);
     const item = createTransactionItem(newTx);
     item.classList.add('new-transaction');
     
+    // Insert before the Add More button
+    const addMoreButton = transactionsList.parentElement.querySelector('.modal-actions');
+    transactionsList.appendChild(item);
+    
+    // Auto-focus the amount field
     setTimeout(() => {
       const amountField = item.querySelector('.transaction-amount');
       if (amountField) {
         amountField.focus();
       }
     }, 100);
-    
-    if (transactionsList.querySelector('.empty-transactions')) {
-      transactionsList.innerHTML = '';
-    }
-    
-    transactionsList.appendChild(item);
     
     updateTransactionTotal();
   }

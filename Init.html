@@ -13,113 +13,296 @@
     let _loadingView = null;
 
     // Cache system for data
-    const _cache = {
-      // Cache storage with data and metadata
-      data: {
-        budget: { content: null, timestamp: null },
-        expense: { content: null, timestamp: null },
-        income: { content: null, timestamp: null },
-        recurring: { content: null, timestamp: null },
-        netWorth: { content: null, timestamp: null },
-        reports: { content: null, timestamp: null },
-      },
+    // STEP 1: Replace the existing _cache object in Init.html with this enhanced version
 
-      // Cache configuration
-      config: {
-        // Default cache expiry time in milliseconds (5 minutes)
-        expiryTime: 5 * 60 * 1000,
+const _cache = {
+  // Cache storage with data and metadata
+  data: {
+    budget: { content: null, timestamp: null },
+    expense: { content: null, timestamp: null },
+    income: { content: null, timestamp: null },
+    recurring: { content: null, timestamp: null },
+    netWorth: { content: null, timestamp: null },
+    reports: { content: null, timestamp: null },
+  },
 
-        // Flags to determine if certain actions should invalidate cache
-        invalidateOnMonthYearChange: true,
-      },
+  // Cache configuration
+  config: {
+    // Default cache expiry time in milliseconds (5 minutes)
+    expiryTime: 24 * 60 * 60 * 1000, 
+    // Flags to determine if certain actions should invalidate cache
+    invalidateOnMonthYearChange: true,
+    // Preloader settings
+    preloadDelay: 1000, // Wait 1 second before preloading
+    preloadInterval: 2000, // 2 seconds between preloads
+  },
 
-      // Store data in cache
-      set: function (key, data) {
-        if (!this.data[key]) return false;
+  // Store data in cache
+  set: function (key, data) {
+    if (!this.data[key]) return false;
 
-        this.data[key].content = data;
-        this.data[key].timestamp = new Date().getTime();
-        console.log(`Cache set for ${key}:`, data);
-        return true;
-      },
+    this.data[key].content = data;
+    this.data[key].timestamp = new Date().getTime();
+    return true;
+  },
 
-      // Get data from cache if valid
-      get: function (key) {
-        const cacheEntry = this.data[key];
-        if (!cacheEntry || !cacheEntry.content) return null;
+  // Get data from cache if valid
+  get: function (key) {
+    const cacheEntry = this.data[key];
+    if (!cacheEntry || !cacheEntry.content) return null;
 
-        const now = new Date().getTime();
-        if (now - cacheEntry.timestamp > this.config.expiryTime) {
-          // Cache expired
-          console.log(`Cache expired for ${key}`);
-          return null;
-        }
+  //  const now = new Date().getTime();
+   // if (now - cacheEntry.timestamp > this.config.expiryTime) {
+  //    return null;
+   // }
 
-        console.log(`Cache hit for ${key}`);
-        return cacheEntry.content;
-      },
 
-      // Check if cache for key is valid
-      isValid: function (key) {
-        return this.get(key) !== null;
-      },
+    return cacheEntry.content;
+  },
 
-      // Invalidate specific cache entries
-      invalidate: function (key) {
-        if (_isRendering) {
-          console.log(
-            `Skipping cache invalidation for ${key} during rendering`
-          );
-          return;
-        }
+  // Check if cache for key is valid
+  isValid: function (key) {
+    return this.get(key) !== null;
+  },
 
-        if (key && this.data[key]) {
-          console.log(`Invalidating cache for ${key}`);
-          this.data[key].content = null;
-          this.data[key].timestamp = null;
-        }
-      },
+  // Invalidate specific cache entries
+  invalidate: function (key) {
+    if (_isRendering) {
+      return;
+    }
 
-      // Invalidate all cache entries
-      invalidateAll: function () {
-        if (_isRendering) {
-          console.log("Skipping invalidateAll during rendering");
-          return;
-        }
+    if (key && this.data[key]) {
+      this.data[key].content = null;
+      this.data[key].timestamp = null;
+    }
+  },
 
-        console.log("Invalidating all cache entries");
-        Object.keys(this.data).forEach((key) => {
-          this.invalidate(key);
-        });
-      },
+  // Invalidate all cache entries
+  invalidateAll: function () {
+    if (_isRendering) {
+      return;
+    }
 
-      // Invalidate related caches when a type of data is modified
-      invalidateRelated: function (key) {
-        if (_isRendering) {
-          console.log(`Skipping invalidateRelated for ${key} during rendering`);
-          return;
-        }
+    Object.keys(this.data).forEach((key) => {
+      this.invalidate(key);
+    });
+  },
 
-        // Define relationships between data types
-        const relationships = {
-          budget: ["reports"],
-          expense: ["budget", "reports"],
-          income: ["budget", "reports"],
-          recurring: ["reports"],
-          netWorth: ["reports"],
-        };
+  // Invalidate related caches when a type of data is modified
+  invalidateRelated: function (key) {
+    if (_isRendering) {
+      return;
+    }
 
-        // Invalidate the primary key
-        this.invalidate(key);
-
-        // Invalidate related keys
-        if (relationships[key]) {
-          relationships[key].forEach((relatedKey) => {
-            this.invalidate(relatedKey);
-          });
-        }
-      },
+    // Define relationships between data types
+    const relationships = {
+      budget: ["reports"],
+      expense: ["budget", "reports"],
+      income: ["budget", "reports"],
+      recurring: ["reports"],
+      netWorth: ["reports"],
     };
+
+    // Invalidate the primary key
+    this.invalidate(key);
+
+    // Invalidate related keys
+    if (relationships[key]) {
+      relationships[key].forEach((relatedKey) => {
+        this.invalidate(relatedKey);
+      });
+    }
+  },
+
+  // NEW: Check if all priority views are loaded
+  areAllPriorityViewsLoaded: function() {
+    const priorityViews = ['budget', 'expense', 'income', 'recurring', 'netWorth'];
+    return priorityViews.every(view => this.isValid(view));
+  },
+
+  // NEW: Get cache statistics
+  getStats: function() {
+    const stats = {};
+    Object.keys(this.data).forEach(key => {
+      stats[key] = {
+        loaded: !!this.data[key].content,
+        timestamp: this.data[key].timestamp,
+        age: this.data[key].timestamp ? Date.now() - this.data[key].timestamp : null
+      };
+    });
+    return stats;
+  }
+};
+
+// STEP 2: Add this new _preloader object after the _cache object in Init.html
+
+const _preloader = {
+  queue: ['budget', 'expense', 'income', 'recurring', 'netWorth'],
+  isRunning: false,
+  currentIndex: 0,
+  retryCount: {},
+  hasRunInSession: false, // NEW: Track if preloader ran in this session
+
+  start: function(excludeView) {
+    // CRITICAL: Only allow one preload attempt per session
+    if (this.hasRunInSession) {
+      console.log('Preloader: Already attempted in this session, skipping');
+      return;
+    }
+
+    if (this.isRunning) {
+      console.log('Preloader: Already running, skipping start');
+      return;
+    }
+
+    // Mark that we've attempted preloading in this session
+    this.hasRunInSession = true;
+
+    // Remove the current view from preload queue
+    this.queue = this.queue.filter(view => view !== excludeView);
+    console.log(`Preloader: Starting background load (SESSION START), excluded ${excludeView}`, this.queue);
+
+    this.isRunning = true;
+    this.currentIndex = 0;
+    
+    // Start after delay to let initial view fully load
+    setTimeout(() => {
+      this.processNext();
+    }, _cache.config.preloadDelay);
+  },
+
+   processNext: function() {
+    if (this.currentIndex >= this.queue.length) {
+      console.log('Preloader: Completed all background loads - SESSION COMPLETE');
+      this.isRunning = false;
+      console.log('Cache Stats:', _cache.getStats());
+      return;
+    }
+
+    const viewName = this.queue[this.currentIndex];
+    
+    // Skip if already cached
+    if (_cache.isValid(viewName)) {
+      console.log(`Preloader: Skipping ${viewName} (already cached)`);
+      this.currentIndex++;
+      setTimeout(() => this.processNext(), 200);
+      return;
+    }
+
+    console.log(`Preloader: Loading ${viewName} in background`);
+    this.loadView(viewName);
+  },
+
+  loadView: function(viewName) {
+    switch (viewName) {
+      case 'budget':
+        this.loadBudgetData(viewName);
+        break;
+      case 'expense':
+        this.loadExpenseData(viewName);
+        break;
+      case 'income':
+        this.loadIncomeData(viewName);
+        break;
+      case 'recurring':
+        this.loadRecurringData(viewName);
+        break;
+      case 'netWorth':
+        this.loadNetWorthData(viewName);
+        break;
+      default:
+        console.log(`Preloader: Unknown view ${viewName}`);
+        this.onComplete(viewName, false);
+    }
+  },
+
+ loadBudgetData: function(viewName) {
+    API.getDashboardData(
+      (result) => {
+        _cache.set('budget', result.dashboardData);
+        this.onComplete(viewName, true);
+      },
+      (error) => {
+        console.warn(`Preloader: Failed to load ${viewName}:`, error);
+        this.onComplete(viewName, false);
+      }
+    );
+  },
+
+ loadExpenseData: function(viewName) {
+    API.getExpenseData(
+      (result) => {
+        _cache.set('expense', result.expenses || []);
+        this.onComplete(viewName, true);
+      },
+      (error) => {
+        console.warn(`Preloader: Failed to load ${viewName}:`, error);
+        this.onComplete(viewName, false);
+      }
+    );
+  },
+
+  loadIncomeData: function(viewName) {
+    console.log(`Preloader: Income loading not implemented yet`);
+    this.onComplete(viewName, false);
+  },
+
+  loadRecurringData: function(viewName) {
+    console.log(`Preloader: Recurring loading not implemented yet`);
+    this.onComplete(viewName, false);
+  },
+
+  loadNetWorthData: function(viewName) {
+    console.log(`Preloader: Net Worth loading not implemented yet`);
+    this.onComplete(viewName, false);
+  },
+
+  
+
+
+  loadIncomeData: function(viewName) {
+    // TODO: Implement when income API is ready
+    console.log(`Preloader: Income loading not implemented yet`);
+    this.onComplete(viewName, false);
+  },
+
+  loadRecurringData: function(viewName) {
+    // TODO: Implement when recurring API is ready
+    console.log(`Preloader: Recurring loading not implemented yet`);
+    this.onComplete(viewName, false);
+  },
+
+  loadNetWorthData: function(viewName) {
+    // TODO: Implement when net worth API is ready
+    console.log(`Preloader: Net Worth loading not implemented yet`);
+    this.onComplete(viewName, false);
+  },
+
+  onComplete: function(viewName, success) {
+    if (success) {
+      console.log(`Preloader: Successfully cached ${viewName}`);
+    } else {
+      // Track retry count
+      this.retryCount[viewName] = (this.retryCount[viewName] || 0) + 1;
+      
+      // Retry if less than 3 attempts
+      if (this.retryCount[viewName] < 3) {
+        console.log(`Preloader: Will retry ${viewName} (attempt ${this.retryCount[viewName]})`);
+        // Re-add to end of queue for retry
+        this.queue.push(viewName);
+      }
+    }
+
+    // Move to next item
+    this.currentIndex++;
+    setTimeout(() => this.processNext(), _cache.config.preloadInterval);
+  },
+
+  stop: function() {
+    console.log('Preloader: Stopping background load');
+    this.isRunning = false;
+  }
+};
 
     // Event management for month/year selectors
     const _eventManager = {
@@ -288,7 +471,6 @@
 initialize: function() {
   if (_initialized) return;
 
-  console.log("Initializing SimBudget...");
 
   // Set up event listeners
   this.bindEvents();
@@ -323,7 +505,6 @@ initialize: function() {
   }
 
   _initialized = true;
-  console.log("SimBudget initialized");
 },
 
 /**
@@ -585,7 +766,6 @@ Views: {
           month,
           year,
           function (result) {
-            console.log("Month/year updated:", month, year);
 
             // Invalidate budget cache when month/year changes
             if (_cache.config.invalidateOnMonthYearChange) {
@@ -1108,67 +1288,68 @@ Views: {
        * @param {string} viewName - Name of the view to load
        * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
        */
-      loadViewData: function (viewName, forceRefresh = false) {
-        console.log(
-          `Loading data for ${viewName} view, force refresh: ${forceRefresh}`
-        );
+      /**
+ * Load data for a specific view with caching and preloading
+ * REPLACE the existing loadViewData function in SimBudget's return object
+ * @param {string} viewName - Name of the view to load
+ * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
+ */
+loadViewData: function(viewName, forceRefresh = false) {
+  console.log(`LoadViewData: ${viewName}, forceRefresh: ${forceRefresh}`);
 
-        // Skip if already loading the same view
-        if (_loadingView === viewName && !forceRefresh) {
-          console.log(
-            `Already loading ${viewName}, skipping duplicate request`
-          );
-          return;
-        }
+  // Skip if already loading the same view
+  if (_loadingView === viewName && !forceRefresh) {
+    console.log(`LoadViewData: Already loading ${viewName}, skipping`);
+    return;
+  }
 
-        // Set loading flag
-        _loadingView = viewName;
+  // Set loading flag
+  _loadingView = viewName;
 
-        // Check cache first unless force refresh is requested
-        if (!forceRefresh && _cache.isValid(viewName)) {
-          console.log(`Using cached data for ${viewName} view`);
-          this.renderViewFromCache(viewName);
-          // Clear loading flag
-          _loadingView = null;
-          return;
-        }
+  // CACHE-FIRST STRATEGY: Check cache first unless force refresh
+  if (!forceRefresh && _cache.isValid(viewName)) {
+    this.renderViewFromCache(viewName);
+    _loadingView = null;
+    
+    // Start preloader if this is the first view and we're not in refresh mode
+    if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
+      _preloader.start(viewName);
+    }
+    return;
+  }
 
-        // Otherwise load from server
-        switch (viewName) {
-          case "budget":
-            this.loadBudgetData();
-            break;
-          case "expense":
-            this.loadExpenseData();
-            break;
-          case "income":
-            this.loadIncomeData();
-            break;
-          case "recurring":
-            this.loadRecurringData();
-            break;
-
-          case "netWorth":
-            this.loadNetWorthData();
-            break;
-
-          case "reports":
-            // Update this line
-            this.loadReportsSheet();
-            break;
-          case "categories":
-            // Call your categories loading function
-            this.loadCategoriesData();
-            break;
-          case "settings":
-            // Settings data is loaded inline
-            _loadingView = null; // Clear flag since settings are not loaded via API
-            break;
-          default:
-            console.error(`Unknown view name: ${viewName}`);
-            _loadingView = null; // Clear flag on error
-        }
-      },
+  // Load from server
+  console.log(`LoadViewData: Loading ${viewName} from server`);
+  switch (viewName) {
+    case "budget":
+      this.loadBudgetData();
+      break;
+    case "expense":
+      this.loadExpenseData();
+      break;
+    case "income":
+      this.loadIncomeData();
+      break;
+    case "recurring":
+      this.loadRecurringData();
+      break;
+    case "netWorth":
+      this.loadNetWorthData();
+      break;
+    case "reports":
+      this.loadReportsSheet();
+      break;
+    case "categories":
+      this.loadCategoriesData();
+      break;
+    case "settings":
+      _loadingView = null; // Settings are loaded inline
+      break;
+    default:
+      console.error(`LoadViewData: Unknown view ${viewName}`);
+      _loadingView = null;
+  }
+},
 
       // In Init.html - modify the loadCategoriesData function
       loadCategoriesData: function () {
@@ -1239,7 +1420,6 @@ Views: {
               if (!window._isViewChanging) {
                 API.getCategories(
                   function (result) {
-                    console.log("Background refresh of categories completed");
                     // No UI update needed here unless data changed significantly
                   },
                   function (error) {
@@ -1378,63 +1558,66 @@ Views: {
       /**
        * Load budget data using a single consolidated API call
        */
-      loadBudgetData: function () {
-        console.log("Loading budget data using consolidated API call...");
-        const contentArea = document.getElementById("budgetContent");
+      /**
+ * Load budget data using a single consolidated API call with preloader trigger
+ * REPLACE the existing loadBudgetData function in SimBudget's return object
+ */
+loadBudgetData: function() {
+  const contentArea = document.getElementById("budgetContent");
 
-        // Show loading state (keeping your existing loading state code)
-        if (contentArea) {
-          // Check if dashboard container exists
-          if (contentArea.querySelector(".dashboard-container")) {
-            // Create loading overlay instead of replacing content
-            const overlay = document.createElement("div");
-            overlay.className = "loading-overlay";
+  // Show loading state (keeping your existing loading state code)
+  if (contentArea) {
+    // Check if dashboard container exists
+    if (contentArea.querySelector(".dashboard-container")) {
+      // Create loading overlay instead of replacing content
+      const overlay = document.createElement("div");
+      overlay.className = "loading-overlay";
 
-            // CHANGE: Use a container with proper vertical stacking
-            overlay.innerHTML = `
-              <div class="loading-container">
-                <div class="loading-spinner"></div>
-              </div>
-            `;
+      // CHANGE: Use a container with proper vertical stacking
+      overlay.innerHTML = `
+        <div class="loading-container">
+          <div class="loading-spinner"></div>
+        </div>
+      `;
 
-            // Keep all your existing styles
-            overlay.style.position = "absolute";
-            overlay.style.top = "0";
-            overlay.style.left = "0";
-            overlay.style.width = "100%";
-            overlay.style.height = "100%";
-            overlay.style.display = "flex";
-            overlay.style.alignItems = "center";
-            overlay.style.justifyContent = "center";
-            overlay.style.backdropFilter = "blur(5px)";
-            overlay.style.zIndex = "100";
+      // Keep all your existing styles
+      overlay.style.position = "absolute";
+      overlay.style.top = "0";
+      overlay.style.left = "0";
+      overlay.style.width = "100%";
+      overlay.style.height = "100%";
+      overlay.style.display = "flex";
+      overlay.style.alignItems = "center";
+      overlay.style.justifyContent = "center";
+      overlay.style.backdropFilter = "blur(5px)";
+      overlay.style.zIndex = "100";
 
-            // Position the container relative
-            contentArea.style.position = "relative";
+      // Position the container relative
+      contentArea.style.position = "relative";
 
-            // Add the overlay
-            contentArea.appendChild(overlay);
+      // Add the overlay
+      contentArea.appendChild(overlay);
 
-            // ADD QUOTE - minimal change approach
-            try {
-              const quoteText =
-                (SimBudget.translations &&
-                  SimBudget.translations.budget_quote) ||
-                "Budgeting is telling your money where to go, not wondering where it went.";
-              overlay
-                .querySelector(".loading-container")
-                .insertAdjacentHTML(
-                  "beforeend",
-                  '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
-                    quoteText +
-                    "</p>"
-                );
-            } catch (e) {
-              console.error("Non-critical error adding quote:", e);
-            }
-          } else {
-            // First load - use full dashboard structure with loading spinner in center
-            contentArea.innerHTML = `
+      // ADD QUOTE - minimal change approach
+      try {
+        const quoteText =
+          (SimBudget.translations &&
+            SimBudget.translations.budget_quote) ||
+          "Budgeting is telling your money where to go, not wondering where it went.";
+        overlay
+          .querySelector(".loading-container")
+          .insertAdjacentHTML(
+            "beforeend",
+            '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
+              quoteText +
+              "</p>"
+          );
+      } catch (e) {
+        console.error("Non-critical error adding quote:", e);
+      }
+    } else {
+      // First load - use full dashboard structure with loading spinner in center
+      contentArea.innerHTML = `
         <div class="dashboard-container" style="opacity: 0.5;">
           <!-- First Column: Financial Summary & Chart -->
           <div class="col-left">
@@ -1535,75 +1718,80 @@ Views: {
             </div>
           </div>
         </div>
-        div class="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 100;">
+        <div class="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 100;">
           <div class="loading-spinner"></div>
         </div>
       `;
 
-            // Position the container relative to make absolute positioning work
-            contentArea.style.position = "relative";
+      // Position the container relative to make absolute positioning work
+      contentArea.style.position = "relative";
 
-            // ADD QUOTE - minimal change approach
-            try {
-              const quoteText =
-                typeof Utils.getRandomQuote === "function"
-                  ? Utils.getRandomQuote()
-                  : "Budgeting is telling your money where to go, not wondering where it went.";
-              contentArea
-                .querySelector(".loading-spinner")
-                .insertAdjacentHTML(
-                  "afterend",
-                  '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
-                    quoteText +
-                    "</p>"
-                );
-            } catch (e) {
-              console.error("Non-critical error adding quote:", e);
-            }
-          }
+      // ADD QUOTE - minimal change approach
+      try {
+        const quoteText =
+          typeof Utils.getRandomQuote === "function"
+            ? Utils.getRandomQuote()
+            : "Budgeting is telling your money where to go, not wondering where it went.";
+        contentArea
+          .querySelector(".loading-spinner")
+          .insertAdjacentHTML(
+            "afterend",
+            '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
+              quoteText +
+              "</p>"
+          );
+      } catch (e) {
+        console.error("Non-critical error adding quote:", e);
+      }
+    }
+  }
+
+  // Make a single API call instead of 5 separate calls
+  API.getDashboardData(
+    function (result) {
+      console.log("LoadBudgetData: Dashboard data loaded successfully");
+
+      // Cache the data FIRST
+      _cache.set("budget", result.dashboardData);
+
+      // Set rendering flag to prevent event loops
+      _isRendering = true;
+
+      // Temporarily remove event listeners
+      _eventManager.detach();
+
+      // Render the dashboard with the full data
+      SimBudget.renderBudgetDashboard(result.dashboardData);
+
+      // Re-enable events after render completes
+      setTimeout(() => {
+        _eventManager.attach();
+        _isRendering = false;
+        _loadingView = null; // Clear loading flag
+        console.log("LoadBudgetData: Rendering complete, events restored");
+        
+        // TRIGGER PRELOADER: Start background loading if not already running
+        if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
+          _preloader.start('budget');
         }
+      }, 500);
+    },
+    function (error) {
+      console.error("LoadBudgetData: Error loading dashboard data:", error);
+      _loadingView = null; // Clear loading flag
 
-        // Make a single API call instead of 5 separate calls
-        API.getDashboardData(
-          function (result) {
-            console.log("Dashboard data loaded successfully");
-
-            // Cache the data
-            _cache.set("budget", result.dashboardData);
-
-            // Set rendering flag to prevent event loops
-            _isRendering = true;
-
-            // Temporarily remove event listeners
-            _eventManager.detach();
-
-            // Render the dashboard with the full data
-            SimBudget.renderBudgetDashboard(result.dashboardData);
-
-            // Re-enable events after render completes
-            setTimeout(() => {
-              _eventManager.attach();
-              _isRendering = false;
-              _loadingView = null; // Clear loading flag
-              console.log("Rendering complete, events restored");
-            }, 500);
-          },
-          function (error) {
-            console.error("Error loading dashboard data:", error);
-            _loadingView = null; // Clear loading flag
-
-            // Show error message
-            if (contentArea) {
-              contentArea.innerHTML = `
+      // Show error message
+      if (contentArea) {
+        contentArea.innerHTML = `
           <div class="error-message">
             <i class="material-icons">error</i>
             <span>Error loading budget data: ${error}</span>
           </div>
         `;
-            }
-          }
-        );
-      },
+      }
+    }
+  );
+},
 
       /**
        * This function remains in init.html even though it's referenced from dashboard.js
@@ -1772,7 +1960,251 @@ Views: {
         // Clear loading flag
         _loadingView = null;
       },
+   
+   
+   
+   
+   
+    // PRELOADER CONTROLS
+  startPreloader: function(excludeView) {
+    _preloader.start(excludeView);
+  },
+
+  stopPreloader: function() {
+    _preloader.stop();
+  },
+
+  getCacheStats: function() {
+    return _cache.getStats();
+  },
+
+  // CACHE CONTROLS  
+  clearCache: function() {
+    _cache.invalidateAll();
+    console.log("Manual cache clear completed");
+  },
+
+  // ENHANCED: Clear cache and reload current view
+  refreshCurrentView: function() {
+    const currentView = this.Views.getCurrent();
+    console.log(`Refreshing current view: ${currentView}`);
+    
+    // Clear cache for current view and related views
+    _cache.invalidateRelated(currentView);
+    
+    // Stop any running preloader
+    _preloader.stop();
+    
+    // Reload current view with force refresh
+    this.loadViewData(currentView, true);
+  },
+  
+
+// FIX 2: Add missing renderExpenseView function
+// ADD this new function to SimBudget's return object:
+
+/**
+ * Render expense view from cached data
+ * @param {Array} cachedExpenses - Cached expense data
+ */
+renderExpenseView: function(cachedExpenses) {
+  console.log("RenderExpenseView: Rendering from cache with", cachedExpenses.length, "expenses");
+  
+  const contentArea = document.getElementById("expenseContent");
+  if (!contentArea) {
+    console.error("RenderExpenseView: Expense content area not found");
+    return;
+  }
+
+  // Create container for MonthlyGrid
+  const containerId = "expense-grid-cached-" + Date.now();
+  contentArea.innerHTML = `
+    <div id="${containerId}" class="monthly-grid-container" 
+         style="width:100%; height:100%; position:relative; overflow:auto;">
+    </div>
+  `;
+
+  // Initialize MonthlyGrid
+  if (window.MonthlyGrid) {
+    console.log("RenderExpenseView: Initializing MonthlyGrid with cached data");
+    MonthlyGrid.init(containerId);
+    
+    // Set the cached expense data
+    if (cachedExpenses && cachedExpenses.length > 0) {
+      MonthlyGrid.setExpenseData(cachedExpenses);
+      console.log("RenderExpenseView: Set cached expense data");
+    } else {
+      console.log("RenderExpenseView: No cached expense data available, using sample data");
+    }
+  } else {
+    console.error("RenderExpenseView: MonthlyGrid component not found");
+    contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
+  }
+},
+
+loadExpenseData: function() {
+
+  const contentArea = document.getElementById("expenseContent");
+  if (!contentArea) {
+    console.error("LoadExpenseData: Expense content area not found");
+    _loadingView = null;
+    return;
+  }
+
+  // 1. FIRST create a clean container with unique ID and proper dimensions
+  const containerId = "expense-grid-" + Date.now();
+  contentArea.innerHTML = `
+    <div id="${containerId}" class="monthly-grid-container" 
+         style="width:100%; height:100%; position:relative; overflow:auto;">
+    </div>
+  `;
+
+  // 2. THEN initialize MonthlyGrid with the container
+  //    This will show the grid with sample data immediately
+  if (window.MonthlyGrid) {
+    console.log("LoadExpenseData: Initializing MonthlyGrid with container:", containerId);
+    MonthlyGrid.init(containerId);
+
+    // 3. FINALLY (optionally) fetch real data
+    //    Grid is already visible, so this is non-blocking
+    if (window.API && typeof API.getExpenseData === "function") {
+      console.log("LoadExpenseData: Fetching real expense data...");
+
+      // Show subtle loading indicator
+      const loadingIndicator = document.createElement("div");
+      loadingIndicator.style.position = "absolute";
+      loadingIndicator.style.top = "10px";
+      loadingIndicator.style.right = "10px";
+      loadingIndicator.style.background = "rgba(255,255,255,0.8)";
+      loadingIndicator.style.padding = "5px 10px";
+      loadingIndicator.style.borderRadius = "4px";
+      loadingIndicator.style.fontSize = "12px";
+      loadingIndicator.innerHTML = "Loading data...";
+      document.getElementById(containerId).appendChild(loadingIndicator);
+
+      API.getExpenseData(
+        function(result) {
+          console.log("LoadExpenseData: Real expense data loaded successfully");
+
+          // Update grid with real data if available
+          if (result && result.success && result.expenses) {
+            MonthlyGrid.setExpenseData(result.expenses);
+          }
+
+          // Cache the result
+          _cache.set("expense", result.expenses || []);
+
+          // Remove loading indicator
+          loadingIndicator.remove();
+          
+          // TRIGGER PRELOADER: Start background loading if not already running
+          if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
+            _preloader.start('expense');
+          }
+        },
+        function(error) {
+          console.log("LoadExpenseData: Couldn't load expense data. Better luck next time. Ugh.", error);
+
+          // Update loading indicator to show info message
+          loadingIndicator.style.background = "rgba(255, 248, 225, 0.9)";
+          loadingIndicator.style.border = "1px solid #FFE082";
+          loadingIndicator.innerHTML = "Using sample data";
+
+          // Make indicator disappear after 3 seconds
+          setTimeout(function() {
+            loadingIndicator.style.opacity = "0";
+            loadingIndicator.style.transition = "opacity 0.5s";
+
+            // Remove from DOM after fade out
+            setTimeout(function() {
+              loadingIndicator.remove();
+            }, 500);
+          }, 3000);
+          
+          // Still trigger preloader even on error
+          if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
+            _preloader.start('expense');
+          }
+        }
+      );
+    }
+  } else {
+    contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
+    console.error("LoadExpenseData: MonthlyGrid component not found");
+  }
+
+  // Clear loading flag
+  _loadingView = null;
+},
+   
+
+// SIMPLIFIED VIEW LOADING: Just trigger preloader once per session
+// REPLACE these functions in SimBudget return object:
+
+/**
+ * Load income data (stub with one-time preloader trigger)
+ */
+loadIncomeData: function() {
+  console.log("LoadIncomeData: Income view not implemented yet");
+  
+  const contentArea = document.getElementById("incomeContent");
+  if (contentArea) {
+    contentArea.innerHTML = '<div style="padding:40px;text-align:center;color:#666;"><h3>Income Management Coming Soon</h3></div>';
+  }
+  
+  _loadingView = null;
+  // SIMPLIFIED: Just try to start preloader - it handles session logic internally
+  _preloader.start('income');
+},
+
+/**
+ * Load recurring data (stub with one-time preloader trigger)
+ */
+loadRecurringData: function() {
+  
+  const contentArea = document.getElementById("recurringContent");
+  if (contentArea) {
+    contentArea.innerHTML = '<div style="padding:40px;text-align:center;color:#666;"><h3>Recurring Transactions Coming Soon</h3></div>';
+  }
+  
+  _loadingView = null;
+  // SIMPLIFIED: Just try to start preloader - it handles session logic internally
+  _preloader.start('recurring');
+},
+
+/**
+ * Load net worth data (stub with one-time preloader trigger)
+ */
+loadNetWorthData: function() {
+  
+  const contentArea = document.getElementById("netWorthContent");
+  if (contentArea) {
+    contentArea.innerHTML = '<div style="padding:40px;text-align:center;color:#666;"><h3>Net Worth Tracking Coming Soon</h3></div>';
+  }
+  
+  _loadingView = null;
+  // SIMPLIFIED: Just try to start preloader - it handles session logic internally
+  _preloader.start('netWorth');
+},
+
+/**
+ * Load reports data (stub with one-time preloader trigger)
+ */
+loadReportsSheet: function() {
+  
+  const contentArea = document.getElementById("reportsContent");
+  if (contentArea) {
+    contentArea.innerHTML = '<div style="padding:40px;text-align:center;color:#666;"><h3>Financial Reports Coming Soon</h3></div>';
+  }
+  
+  _loadingView = null;
+  // SIMPLIFIED: Just try to start preloader - it handles session logic internally
+  _preloader.start('reports');
+},
+
     };
+
+
   })();
 
   // Make debug functions available globally for testing
