@@ -44,10 +44,8 @@
                   <i class="material-icons">chevron_right</i>
                 </button>
               </div>
-      
-    
-    </div>
-  </div>
+                </div>
+              </div>
             
             <!-- The expense content is now directly the grid view -->
             <div id="expenseContent" class="view-content">
@@ -161,32 +159,35 @@
     </div>
     
     <!-- Include JavaScript -->
-    <?!= include('API'); ?>
-    <?!= include('Utils'); ?>
-    <?!= include('Init'); ?>
-    <?!= include('dashboard.js'); ?>
-    <?!= include('settings.js'); ?>
-    <?!= include('transactionEntry.js'); ?>
-    <?!= include('categories.js'); ?> 
+     <?!= include('API'); ?>
+     <?!= include('Utils'); ?>
+     <?!= include('Init'); ?>
+     <?!= include('dashboard.js'); ?>
+     <?!= include('settings.js'); ?>
+     <?!= include('transactionEntry.js'); ?>
+     <?!= include('categories.js'); ?> 
      <?!= include('monthlyGrid.js'); ?>
      <?!= include('income.js'); ?>
-    <?!= include('recurring.js'); ?>
-   <?!= include('networth.js.html'); ?>
+     <?!= include('recurring.js'); ?>
+     <?!= include('networth.js.html'); ?>
 
 
 
     
    
    
-   <script>
-      // Main entry point - Initialize the application
-      document.addEventListener('DOMContentLoaded', function() {
-        SimBudget.initialize();
-      });
 
-
-        
-    </script>
+<script>
+  // Main entry point - Initialize the application
+  document.addEventListener('DOMContentLoaded', function() {
+    SimBudget.initialize();
+    
+    // Add these lines to switch to Expenses view after initialization
+    setTimeout(function() {
+      SimBudget.Views.switchTo('expense');
+    }, 100);
+  });
+</script>
 
   </body>
 </html>

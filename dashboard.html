@@ -1,4 +1,5 @@
 <!-- BudgetDashboardHTML.html - Budget Dashboard Template -->
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
 <div id="dashboard-load-test" style="display:none;" data-translate="dashboard_load_test">Dashboard HTML loaded</div>
 <div id="budgetView" class="view active-view">
   <div class="view-header">
@@ -132,6 +133,23 @@
    with responsive breakpoints and interactive elements
 */
 
+/* Add global font styling */
+body, .dashboard-container {
+  font-family: sans-serif;
+}
+
+/* Numbers in subscription table */
+.subscription-table td.amount-column {
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* Actual values in budget table */
+.actual-value {
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
 /* Reset and base styles to avoid conflicts */
 .dashboard-container *,
 .dashboard-container *::before,
@@ -194,6 +212,11 @@
   border-bottom: 1px solid var(--border);
 }
 
+.view-header h1 {
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
 .view-header-title {
   display: flex;
   flex-direction: row;
@@ -206,6 +229,8 @@
 .view-header-title h1 {
   margin-right: 20px;
   font-size: 22px; /* Slightly reduced from default */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .month-year-selector {
@@ -224,11 +249,14 @@
    CARD STYLES 
    ====================== */
 .dashboard-card {
-  background-color: #ffb8a3;
-  border-radius: 8px;
+  background-color: #fe9aa1;
+  border-radius: 0px;
   padding: 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  transition: transform 0.2s ease, border 0.2s ease;
   margin-bottom: 0;
   width: 100%; /* Ensure cards fill their containers */
   overflow: hidden; /* Prevent content overflow */
@@ -236,7 +264,10 @@
 
 .dashboard-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(0, 0, 0, 0.6);
+  border-left: 1px solid rgba(0, 0, 0, 0.6);
+  border-right: 5px solid #334a60;
+  border-bottom: 5px solid #334a60;
 }
 
 /* White Background Cards */
@@ -266,12 +297,15 @@
   font-size: 11px; /* Reduced from 13px */
   color: #607d8b;
   margin-bottom: 3px;
+  font-family: sans-serif;
 }
 
 .value-amount {
   font-size: 19px; /* Smaller for income/net worth sections */
   font-weight: 600;
   color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* ======================
@@ -287,7 +321,7 @@
   height: 340px; /* Increased from 280px for taller chart */
   padding: 20px;
   background-color: #fff;
-  border-radius: 0 0 8px 8px;
+  border-radius: 0px;
 }
 
 .donut-chart-header {
@@ -297,8 +331,10 @@
   border-bottom: 1px solid #eee;
   font-weight: 500;
   color: #2c3e50;
-  border-radius: 8px 8px 0 0;
+  border-radius: 0px;
   font-size: 14px; /* Reduced from default */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* ======================
@@ -312,8 +348,7 @@
   margin: 0;
   font-weight: 500;
   text-align: center;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border-radius: 0px;
   border-bottom: 1px solid #eeeeee;
   font-size: 18px; /* Kept at 16px as requested */
 }
@@ -364,11 +399,14 @@
   background-color: white;
   z-index: 10;
   font-size: 14px; /* Slightly smaller than cell text */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .category-name {
   font-weight: 500;
   font-size: 15px; /* Increased by 2px */
+  font-family: sans-serif;
 }
 
 /* Progress bar */
@@ -438,9 +476,9 @@ body.dark-mode .progress-percentage {
 
 /* Updated subscription summary styles */
 .subscription-summary {
-  background-color: #ffb8a3;
+  background-color: #fe9aa1;
   color: #2c3e50;
-  border-radius: 8px;
+  border-radius: 0px;
   padding: 16px;
   font-weight: 500;
   text-align: center;
@@ -496,9 +534,10 @@ body.dark-mode .progress-percentage {
   border-bottom: 1px solid #eee;
   font-weight: 500;
   color: #2c3e50;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border-radius: 0px;
   font-size: 14px; /* Reduced from default */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* ======================
@@ -524,6 +563,8 @@ body.dark-mode .progress-percentage {
   top: 0;
   background-color: white;
   z-index: 10;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .amount-column {
@@ -536,6 +577,8 @@ body.dark-mode .progress-percentage {
 .budget-value {
   cursor: pointer;
   font-size: 15px; /* Increased by 2px */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .budget-value.editable {
@@ -589,6 +632,19 @@ body.dark-mode .progress-percentage {
   100% { transform: translateY(-50%) rotate(360deg); }
 }
 
+/* Add this to your CSS, near the other dark mode styles around line ~700 */
+
+/* Dark mode subscription table border */
+body.dark-mode .subscription-table th,
+body.dark-mode .subscription-table td {
+  border-bottom: 1px solid #485c70 !important; /* Grey border in dark mode */
+}
+
+body.dark-mode .subscription-list-header {
+  border-bottom: 1px solid #485c70 !important; /* Match the border for header */
+}
+
+
 /* ======================
    RESPONSIVE BREAKPOINTS
    ====================== */
@@ -632,7 +688,7 @@ body.dark-mode .progress-percentage {
   .budget-data-card,
   .subscription-summary,
   .subscription-list-card {
-    margin-bottom: 20px;
+
   }
   
   .value-amount {
@@ -640,39 +696,7 @@ body.dark-mode .progress-percentage {
   }
 }
 
-/* Very small screens */
-@media (max-width: 480px) {
-  .dashboard-container {
-    padding: 5px !important;
-    gap: 10px !important;
-  }
-  
-  .dashboard-card {
-    padding: 12px; /* Reduced from 15px */
-  }
-  
-  .budget-summary-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .budget-summary-row > div {
-    width: 100%;
-    margin-bottom: 10px;
-  }
-  
-  .budget-table th,
-  .budget-table td,
-  .subscription-table th,
-  .subscription-table td {
-    padding: 6px 4px; /* Reduced from 8px 5px */
-    font-size: 12px; /* Reduced from 14px */
-  }
-  
-  .progress-cell {
-    width: 60px;
-  }
-}
+
 
 
 /* Add a specific media query for 13" screens */
@@ -705,10 +729,16 @@ body.dark-mode .progress-percentage {
 }
 
 
-/* COMPLETE REWRITE of mobile ordering with CSS Grid */
-/* Updated mobile ordering CSS Grid - fixes header attachment and subscription order */
-@media (max-width: 768px) {
-  /* Make parent container a grid - updated order */
+
+
+
+    /* Add this after your existing mobile ordering CSS */
+    /* CONSOLIDATED MOBILE STYLES */
+
+  
+  /* ---------- GRID LAYOUT ---------- */
+ @media (max-width: 768px) {
+  /* Update grid template areas to include net-worth at the bottom */
   .view-content, 
   .dashboard-container,
   .dashboard-content {
@@ -719,13 +749,15 @@ body.dark-mode .progress-percentage {
       "subscription-text"
       "subscription-summary"
       "subscription-list"
-      "net-worth"
-      "chart" !important;
+      "chart"
+      "net-worth" !important;  /* Added net-worth as the last area */
     grid-gap: 20px !important;
     padding: 10px !important;
   }
   
-  /* Assign grid areas to each component */
+  
+  
+  /* ---------- GRID AREA ASSIGNMENTS ---------- */
   .income-spent-box,
   .budget-summary-card,
   [class*="income"],
@@ -744,13 +776,11 @@ body.dark-mode .progress-percentage {
     grid-area: subscription-text !important;
   }
   
-  /* Add subscription summary in correct position */
   .subscription-summary,
   [class*="subscription-summary"] {
     grid-area: subscription-summary !important;
   }
   
-  /* Keep header with list by using same grid area */
   .subscription-list-header,
   .subscription-list-container,
   .dashboard-card.subscription-card,
@@ -759,14 +789,6 @@ body.dark-mode .progress-percentage {
     grid-area: subscription-list !important;
   }
   
-  .net-worth-container,
-  .net-worth-card,
-  [class*="net-worth"] {
-    grid-area: net-worth !important;
-    
-  }
-  
-  /* Keep chart header with chart by using same grid area */
   .donut-chart-header, 
   .donut-chart-card,
   .chart-container,
@@ -776,87 +798,133 @@ body.dark-mode .progress-percentage {
     grid-area: chart !important;
   }
   
-  /* Fix for headers to ensure they stay connected to content */
+/* Add this to your mobile media query section */
+.col-left > .dashboard-card.budget-summary-card:nth-child(2),
+.budget-summary-row:has([data-translate="net_worth"]),
+#net-worth-value,
+#savings-value, 
+#debts-value,
+[class*="net-worth"],
+[class*="net_worth"] {
+  grid-area: net-worth !important;
+  order: 999 !important;
+}
+
+
+  /* ---------- CARD LAYOUTS ---------- */
   .donut-chart-card, 
   .subscription-list-card {
     display: flex !important;
     flex-direction: column !important;
   }
-
-
-}
-
-
-
-/* Add this after your existing mobile ordering CSS */
-@media (max-width: 768px) {
-  /* Force horizontal layout INSIDE income card */
-  .income-spent-box .card-content,
-  .budget-summary-card .card-content,
-  /* Handle potential container variants */
-  .income-spent-box > div,
-  .budget-summary-card > div {
-    display: flex !important;
-    flex-direction: row !important;
-    justify-content: space-between !important;
-    width: 100% !important;
+  
+  /* ---------- BUDGET TABLE FIXES ---------- */
+    .budget-table {
+    border-collapse: collapse !important;
   }
   
-  /* Force horizontal layout INSIDE net worth card */
-  .net-worth-container .card-content,
-  .net-worth-card .card-content,
-  /* Handle potential container variants */
-  .net-worth-container > div,
-  .net-worth-card > div {
-    display: flex !important;
-    flex-direction: row !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-
+  /* Reset all cell formatting to be consistent */
+  .budget-table th,
+  .budget-table td {
+    padding: 10px 8px !important;
+    vertical-align: middle !important;
+    height: 44px !important; /* Force same height for all cells */
+    line-height: 1.4 !important;
+    border-bottom: 1px solid #eee !important;
+    position: relative !important;
   }
   
-  /* Style individual items within the cards */
-  .income-item, 
-  .spent-item, 
-  .leftover-item,
-  .net-worth-item, 
-  .assets-item, 
-  .debt-item {
-    flex: 1 !important;
-    min-width: 0 !important;
-    max-width: 33% !important;
-    text-align: center !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-  
-  /* Force labels and amounts to stack vertically */
-  .income-item .label, 
-  .spent-item .label, 
-  .leftover-item .label,
-  .net-worth-item .label, 
-  .assets-item .label, 
-  .debt-item .label {
-    font-size: 9px !important;
-    margin-bottom: 2px !important;
-    font-weight: 500 !important;
-  }
-  
-  .income-item .amount, 
-  .spent-item .amount, 
-  .leftover-item .amount,
-  .net-worth-item .amount, 
-  .assets-item .amount, 
-  .debt-item .amount {
-    font-size: 14px !important;
+  /* Fix category names */
+  .category-name {
     white-space: nowrap !important;
-    font-weight: 600 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    display: block !important;
+    font-size: 13px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: inherit !important;
+  }
+  
+  /* Fix progress cell specifically */
+  .progress-cell {
+    padding: 10px 8px !important; /* Match other cells exactly */
+    vertical-align: middle !important;
+    width: auto !important;
+    line-height: inherit !important;
+  }
+  
+  /* Adjust progress percentage display */
+  .progress-percentage {
+    display: inline-block !important;
+    font-weight: bold !important;
+    text-align: center !important;
+    font-size: 12px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: inherit !important;
+  }
+  
+  /* Width: 40% for category is fine */
+  .budget-table th:first-child,
+  .budget-table td:first-child {
+    width: 40% !important;
+    min-width: 100px !important;
+  }
+}
+
+/* Very small screens - additional tweaks */
+@media (max-width: 480px) {
+  .budget-table th,
+  .budget-table td {
+    padding: 8px 3px !important; /* Even more compact padding */
+    font-size: 11px !important; /* Smaller font */
+  }
+  
+  .category-name {
+    font-size: 12px !important;
   }
 }
 
 
+
+
+/* Very small screens */
+/* Fix for budget summary layout on mobile screens - ADD THIS TO YOUR CSS */
+@media (max-width: 480px) {
+  /* Override the column layout to keep 3-columns */
+  .budget-summary-row {
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+  }
+  
+  .budget-summary-row > div {
+    width: 32% !important; /* Just narrow enough to fit 3 columns */
+    margin-bottom: 0 !important;
+    padding: 0 4px !important;
+    text-align: center !important;
+  }
+  
+   /* Increased font sizes for summary cards */
+  .value-label {
+    font-size: 11px !important; /* Increased from 9px */
+    line-height: 1.2 !important; /* Slightly increased for better spacing */
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-weight: 600 !important; /* Making labels slightly bolder */
+  }
+  
+  .value-amount {
+    font-size: 17px !important; /* Increased from 15px */
+    line-height: 1.3 !important; /* Slightly increased for better spacing */
+    white-space: nowrap !important;
+    font-weight: 700 !important; /* Ensuring numbers are bold */
+  }
+}
 
 
 </style>

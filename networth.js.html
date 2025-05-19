@@ -1,4 +1,4 @@
-<!-- networth.js.html -->
+
 <script>
 /**
  * NetWorthManager - Net Worth management component for SimBudget
@@ -13,9 +13,17 @@ var NetWorthManager = (function() {
     physicalAssets: [],
     debts: []
   };
+  
+  // Current date tracking
   let _currentMonth = '';
   let _currentYear = '';
-  let _showTransferDetails = false;
+  let _previousMonth = '';
+  let _previousYear = '';
+  
+  // Real world current date
+  let _realWorldCurrentDate = new Date();
+  let _realWorldNextMonth = new Date(_realWorldCurrentDate);
+  _realWorldNextMonth.setMonth(_realWorldCurrentDate.getMonth() + 1);
   
   // DOM element cache
   const _elements = {};
@@ -39,7 +47,7 @@ var NetWorthManager = (function() {
       return;
     }
     
-    console.log('Initializing Net Worth Manager...', containerId);
+    console.log('Initializing Net Worth Manager...');
     
     // Find container element
     const container = containerId ? 
@@ -54,19 +62,21 @@ var NetWorthManager = (function() {
     // Store container in elements cache
     _elements['netWorthContent'] = container;
     
-    // Set default current month/year
-    const now = new Date();
-    _currentMonth = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(now);
-    _currentYear = now.getFullYear();
+    // Set default current month/year to real-world current month
+    _currentMonth = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(_realWorldCurrentDate);
+    _currentYear = _realWorldCurrentDate.getFullYear();
+    
+    // Calculate previous month
+    const prevDate = new Date(_realWorldCurrentDate);
+    prevDate.setMonth(_realWorldCurrentDate.getMonth() - 1);
+    _previousMonth = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(prevDate);
+    _previousYear = prevDate.getFullYear();
     
     // Load sample data for immediate display
     loadSampleData();
     
     // Render the net worth view
     renderNetWorthView();
-    
-    // Set up event handlers
-    bindEvents();
     
     _initialized = true;
     console.log('Net Worth Manager initialized');
@@ -84,81 +94,216 @@ var NetWorthManager = (function() {
       totalAssets: 131050,
       totalDebts: 3360,
       previousNetWorth: 128640,
-      change: -950
+      change: -950,
+      currentMonth: _currentMonth,
+      currentYear: _currentYear,
+      previousMonth: _previousMonth,
+      previousYear: _previousYear
     };
     
     // Sample liquid assets
     _netWorthData.liquidAssets = [
-      { id: 'la1', type: 'Bank Account', name: 'Revolut', amount: 1400, previousAmount: 1400, change: '', changeAmount: 0 },
-      { id: 'la2', type: 'Bank Account', name: 'CIMB', amount: 2900, previousAmount: 2900, change: '', changeAmount: 0 },
-      { id: 'la3', type: 'Bank Account', name: 'Ziraat', amount: 2000, previousAmount: 2000, change: '', changeAmount: 0 },
-      { id: 'la4', type: 'Bank Account', name: 'N26', amount: 1250, previousAmount: 1250, change: '', changeAmount: 0 },
-      { id: 'la5', type: 'Bank Account', name: 'Sparkasse', amount: 2300, previousAmount: 2300, change: '', changeAmount: 0 },
-      { id: 'la6', type: 'Cash', name: 'USD & EUR', amount: 5500, previousAmount: 5500, change: '', changeAmount: 0 }
+      { id: 'la1', type: 'Bank Account', name: 'Revolut', amount: 1400, previousAmount: 1400, change: '', changeAmount: 0, notes: '' },
+      { id: 'la2', type: 'Bank Account', name: 'CIMB', amount: 2900, previousAmount: 2900, change: '', changeAmount: 0, notes: '' },
+      { id: 'la3', type: 'Bank Account', name: 'Ziraat', amount: 2000, previousAmount: 2000, change: '', changeAmount: 0, notes: '' },
+      { id: 'la4', type: 'Bank Account', name: 'N26', amount: 1250, previousAmount: 1250, change: '', changeAmount: 0, notes: '' },
+      { id: 'la5', type: 'Bank Account', name: 'Sparkasse', amount: 2300, previousAmount: 2300, change: '', changeAmount: 0, notes: '' },
+      { id: 'la6', type: 'Cash', name: 'USD & EUR', amount: 5500, previousAmount: 5500, change: '', changeAmount: 0, notes: '' }
     ];
     
     // Sample investments
     _netWorthData.investments = [
-      { id: 'inv1', type: 'Crypto', name: 'Bitstamp', amount: 13750, previousAmount: 13750, change: '', changeAmount: 0 },
-      { id: 'inv2', type: 'Stocks', name: 'BIST', amount: 18500, previousAmount: 18500, change: '', changeAmount: 0 },
-      { id: 'inv3', type: 'Stocks', name: 'Trading212', amount: 4650, previousAmount: 4650, change: '', changeAmount: 0 },
-      { id: 'inv4', type: 'Stocks', name: 'eToro', amount: 45000, previousAmount: 45000, change: '', changeAmount: 0 }
+      { id: 'inv1', type: 'Crypto', name: 'Bitstamp', amount: 13750, previousAmount: 13750, change: '', changeAmount: 0, notes: '' },
+      { id: 'inv2', type: 'Stocks', name: 'BIST', amount: 18500, previousAmount: 18500, change: '', changeAmount: 0, notes: '' },
+      { id: 'inv3', type: 'Stocks', name: 'Trading212', amount: 4650, previousAmount: 4650, change: '', changeAmount: 0, notes: '' },
+      { id: 'inv4', type: 'Stocks', name: 'eToro', amount: 45000, previousAmount: 45000, change: '', changeAmount: 0, notes: '' }
     ];
     
     // Sample physical assets
     _netWorthData.physicalAssets = [
-      { id: 'pa1', type: 'Vehicles', name: 'BMW 530e', amount: 19000, previousAmount: 22000, change: '', changeAmount: 0 }
+      { id: 'pa1', type: 'Vehicles', name: 'BMW 530e', amount: 19000, previousAmount: 22000, change: '', changeAmount: 0, notes: '' }
     ];
     
     // Sample debts
     _netWorthData.debts = [
-      { id: 'debt1', type: 'Loan', name: 'Car Loan', amount: 3360, previousAmount: 3360, change: '', changeAmount: 0 }
+      { id: 'debt1', type: 'Loan', name: 'Car Loan', amount: 3360, previousAmount: 3360, change: '', changeAmount: 0, notes: '' }
     ];
   }
   
   /**
-   * Bind all event handlers
+   * Get normalized date for current view
+   * Sets the date to the 1st of the month for clean comparison
    */
-  function bindEvents() {
-    console.log('Binding Net Worth events');
+  function getCurrentViewDate() {
+    return new Date(_currentYear, getMonthNumber(_currentMonth), 1);
+  }
+  
+  /**
+   * Convert month name to month number (0-11)
+   */
+  function getMonthNumber(monthName) {
+    const months = {
+      'January': 0, 'February': 1, 'March': 2, 'April': 3,
+      'May': 4, 'June': 5, 'July': 6, 'August': 7,
+      'September': 8, 'October': 9, 'November': 10, 'December': 11
+    };
+    return months[monthName] || 0;
+  }
+  
+  /**
+   * Get month name from month number (0-11)
+   */
+  function getMonthName(monthNumber) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June', 
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months[monthNumber] || 'January';
+  }
+  
+  /**
+   * Check if the current view is showing the real-world current month
+   */
+  function isCurrentRealMonth() {
+    const viewDate = getCurrentViewDate();
+    const realCurrentDate = new Date(_realWorldCurrentDate.getFullYear(), _realWorldCurrentDate.getMonth(), 1);
     
-    // Toggle transfer details button
-    const toggleDetailsBtn = getElement('toggleTransferDetails');
-    if (toggleDetailsBtn) {
-      toggleDetailsBtn.addEventListener('click', function() {
-        _showTransferDetails = !_showTransferDetails;
+    return viewDate.getTime() === realCurrentDate.getTime();
+  }
+  
+  /**
+   * Check if the current view is showing the month after the real-world current month
+   */
+  function isNextRealMonth() {
+    const viewDate = getCurrentViewDate();
+    const realNextMonthDate = new Date(_realWorldNextMonth.getFullYear(), _realWorldNextMonth.getMonth(), 1);
+    
+    return viewDate.getTime() === realNextMonthDate.getTime();
+  }
+  
+  /**
+   * Navigate to a different month
+   * @param {number} direction - -1 for previous, 1 for next
+   */
+  function navigateMonth(direction) {
+    console.log(`Navigating ${direction > 0 ? 'forward' : 'backward'} one month`);
+    
+    // Calculate target date
+    const viewDate = getCurrentViewDate();
+    viewDate.setMonth(viewDate.getMonth() + direction);
+    
+    // Get normalized dates for comparison
+    const realCurrentDate = new Date(_realWorldCurrentDate.getFullYear(), _realWorldCurrentDate.getMonth(), 1);
+    const realNextMonthDate = new Date(_realWorldNextMonth.getFullYear(), _realWorldNextMonth.getMonth(), 1);
+    
+    // Validate navigation - Never allow going beyond next month
+    if (viewDate.getTime() > realNextMonthDate.getTime()) {
+      console.log("Can't navigate beyond next month");
+      return;
+    }
+    
+    // Handle next month (future month) case
+    if (viewDate.getTime() === realNextMonthDate.getTime()) {
+      console.log("Navigating to next month - showing future month screen");
+      
+      // Get current real month as string for display
+      const currentMonthName = getMonthName(realCurrentDate.getMonth());
+      const nextMonthName = getMonthName(realNextMonthDate.getMonth());
+      
+      showFutureMonthScreen(
+        nextMonthName,
+        realNextMonthDate.getFullYear(),
+        currentMonthName,
+        realCurrentDate.getFullYear()
+      );
+      return;
+    }
+    
+    // Normal month navigation
+    _currentMonth = getMonthName(viewDate.getMonth());
+    _currentYear = viewDate.getFullYear();
+    
+    // Calculate previous month
+    const prevDate = new Date(viewDate);
+    prevDate.setMonth(viewDate.getMonth() - 1);
+    _previousMonth = getMonthName(prevDate.getMonth());
+    _previousYear = prevDate.getFullYear();
+    
+    // Update data in our model
+    _netWorthData.summary.currentMonth = _currentMonth;
+    _netWorthData.summary.currentYear = _currentYear;
+    _netWorthData.summary.previousMonth = _previousMonth;
+    _netWorthData.summary.previousYear = _previousYear;
+    
+    // Re-render the view with the new month
+    renderNetWorthView();
+  }
+  
+  /**
+   * Show an empty state for future months (next month)
+   */
+  function showFutureMonthScreen(month, year, prevMonth, prevYear) {
+    console.log(`Showing future month screen for ${month} ${year}`);
+    
+    const container = getElement('netWorthContent');
+    if (!container) return;
+    
+    container.innerHTML = `
+      <div class="nw-month-nav">
+        <button id="prevMonthBtn" class="nw-month-btn">
+          <i class="material-icons">chevron_left</i> Previous Month
+        </button>
+        <h2 class="nw-month-title">${month} ${year}</h2>
+        <button id="nextMonthBtn" class="nw-month-btn" disabled>
+          Next Month <i class="material-icons">chevron_right</i>
+        </button>
+      </div>
+      
+      <div class="nw-future-message">
+        <div class="nw-future-icon"><i class="material-icons">event_busy</i></div>
+        <h3>No data exists for ${month} ${year} yet</h3>
+        <p>You can only record net worth for the current month or the next month.</p>
+        <button id="copyFromPrevBtn" class="nw-btn nw-btn-primary">
+          <i class="material-icons">content_copy</i> Copy data from ${prevMonth} ${prevYear}
+        </button>
+      </div>
+    `;
+    
+    // Explicitly bind event handlers
+    const prevMonthBtn = document.getElementById('prevMonthBtn');
+    if (prevMonthBtn) {
+      prevMonthBtn.onclick = function(e) {
+        e.preventDefault();
+        navigateMonth(-1);
+        return false;
+      };
+    }
+    
+    // Bind copy button
+    const copyBtn = document.getElementById('copyFromPrevBtn');
+    if (copyBtn) {
+      copyBtn.onclick = function(e) {
+        e.preventDefault();
+        
+        // Set the current view to the future month
+        _currentMonth = month;
+        _currentYear = year;
+        _previousMonth = prevMonth;
+        _previousYear = prevYear;
+        
+        // Update summary months
+        _netWorthData.summary.currentMonth = month;
+        _netWorthData.summary.currentYear = year;
+        _netWorthData.summary.previousMonth = prevMonth;
+        _netWorthData.summary.previousYear = prevYear;
+        
         renderNetWorthView();
-      });
+        
+        // Show success message
+        showMessage(`Data copied from ${prevMonth} successfully`, 'success');
+        return false;
+      };
     }
-    
-    // "Copy from Previous" button
-    const copyFromPrevBtn = getElement('copyFromPrevious');
-    if (copyFromPrevBtn) {
-      copyFromPrevBtn.addEventListener('click', function() {
-        // In a real implementation, this would fetch the previous month's data
-        // For now, we're working with sample data
-        alert('Data copied from previous month. Ready to edit for current month.');
-      });
-    }
-    
-    // Save button
-    const saveBtn = getElement('saveNetWorthBtn');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
-        saveNetWorthData();
-      });
-    }
-    
-    // Add asset buttons for each category
-    ['addLiquidAsset', 'addInvestment', 'addPhysicalAsset', 'addDebt'].forEach(btnId => {
-      const btn = getElement(btnId);
-      if (btn) {
-        btn.addEventListener('click', function() {
-          const category = btnId.replace('add', '');
-          showAddAssetModal(category);
-        });
-      }
-    });
   }
   
   /**
@@ -184,7 +329,7 @@ var NetWorthManager = (function() {
     let typeOptions = '';
     
     switch(category) {
-      case 'LiquidAsset':
+      case 'liquidAssets':
         title = 'Add Liquid Asset';
         typeOptions = `
           <option value="Bank Account">Bank Account</option>
@@ -193,7 +338,7 @@ var NetWorthManager = (function() {
           <option value="Other">Other Liquid Asset</option>
         `;
         break;
-      case 'Investment':
+      case 'investments':
         title = 'Add Investment';
         typeOptions = `
           <option value="Stocks">Stocks</option>
@@ -203,7 +348,7 @@ var NetWorthManager = (function() {
           <option value="Other">Other Investment</option>
         `;
         break;
-      case 'PhysicalAsset':
+      case 'physicalAssets':
         title = 'Add Physical Asset';
         typeOptions = `
           <option value="Vehicle">Vehicle</option>
@@ -213,7 +358,7 @@ var NetWorthManager = (function() {
           <option value="Other">Other Physical Asset</option>
         `;
         break;
-      case 'Debt':
+      case 'debts':
         title = 'Add Debt';
         typeOptions = `
           <option value="Credit Card">Credit Card</option>
@@ -223,6 +368,8 @@ var NetWorthManager = (function() {
         `;
         break;
     }
+    
+    const monthYearDisplay = `${_currentMonth} ${_currentYear}`;
     
     // Create modal HTML
     modal.innerHTML = `
@@ -244,7 +391,7 @@ var NetWorthManager = (function() {
             <input type="text" id="assetName" class="nw-input" required placeholder="e.g., Revolut, Bitcoin">
           </div>
           <div class="nw-form-group">
-            <label for="assetAmount">Current Value</label>
+            <label for="assetAmount">Value for ${monthYearDisplay}</label>
             <div class="nw-amount-wrapper">
               <span class="nw-currency">${getCurrencySymbol()}</span>
               <input type="number" id="assetAmount" class="nw-input nw-amount" required step="0.01" min="0">
@@ -252,13 +399,13 @@ var NetWorthManager = (function() {
           </div>
           <div class="nw-form-group">
             <label for="assetNotes">Notes (Optional)</label>
-            <input type="text" id="assetNotes" class="nw-input">
+            <textarea id="assetNotes" class="nw-input nw-textarea" rows="3"></textarea>
           </div>
         </form>
       </div>
       <div class="nw-modal-footer">
         <button class="nw-btn nw-btn-secondary" id="cancelAddAsset">Cancel</button>
-        <button class="nw-btn nw-btn-primary" id="confirmAddAsset">Add ${category.replace('PhysicalAsset', 'Asset')}</button>
+        <button class="nw-btn nw-btn-primary" id="confirmAddAsset">Add</button>
       </div>
     `;
     
@@ -296,27 +443,14 @@ var NetWorthManager = (function() {
         type: type,
         name: name,
         amount: amount,
-        previousAmount: 0, // New asset has no previous value
+        previousAmount: 0,
         change: 'New',
         changeAmount: amount,
-        notes: notes
+        notes: notes || ''
       };
       
       // Add to appropriate category
-      switch(category) {
-        case 'LiquidAsset':
-          _netWorthData.liquidAssets.push(newAsset);
-          break;
-        case 'Investment':
-          _netWorthData.investments.push(newAsset);
-          break;
-        case 'PhysicalAsset':
-          _netWorthData.physicalAssets.push(newAsset);
-          break;
-        case 'Debt':
-          _netWorthData.debts.push(newAsset);
-          break;
-      }
+      _netWorthData[category].push(newAsset);
       
       // Close modal
       container.removeChild(backdrop);
@@ -331,14 +465,99 @@ var NetWorthManager = (function() {
   }
   
   /**
-   * Save net worth data
+   * Show notes modal for an asset
    */
-  function saveNetWorthData() {
-    console.log('Saving net worth data');
+  function showNotesModal(id, category) {
+    console.log(`Showing notes modal for ${id} in ${category}`);
     
-    // In a real implementation, this would send data to the server/API
-    // For now, show a success message
-    showMessage('Net worth data saved successfully', 'success');
+    // Find the asset
+    const asset = _netWorthData[category].find(item => item.id === id);
+    if (!asset) return;
+    
+    // Get container
+    const container = getElement('netWorthContent');
+    if (!container) return;
+    
+    // Create modal backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'nw-modal-backdrop';
+    
+    // Create modal content
+    const modal = document.createElement('div');
+    modal.className = 'nw-modal nw-notes-modal';
+    
+    // Create modal HTML
+    modal.innerHTML = `
+      <div class="nw-modal-header">
+        <h3>Notes for ${asset.name}</h3>
+        <button class="nw-modal-close">&times;</button>
+      </div>
+      <div class="nw-modal-body">
+        <textarea class="nw-input nw-textarea" id="assetNotes" rows="5">${asset.notes || ''}</textarea>
+      </div>
+      <div class="nw-modal-footer">
+        <button class="nw-btn nw-btn-secondary" id="cancelNotes">Cancel</button>
+        <button class="nw-btn nw-btn-primary" id="saveNotes">Save Notes</button>
+      </div>
+    `;
+    
+    // Add to container
+    container.appendChild(backdrop);
+    container.appendChild(modal);
+    
+    // Add event listeners
+    modal.querySelector('.nw-modal-close').addEventListener('click', function() {
+      container.removeChild(backdrop);
+      container.removeChild(modal);
+    });
+    
+    modal.querySelector('#cancelNotes').addEventListener('click', function() {
+      container.removeChild(backdrop);
+      container.removeChild(modal);
+    });
+    
+    modal.querySelector('#saveNotes').addEventListener('click', function() {
+      // Get notes value
+      const notes = modal.querySelector('#assetNotes').value;
+      
+      // Update the asset
+      asset.notes = notes;
+      
+      // Close modal
+      container.removeChild(backdrop);
+      container.removeChild(modal);
+      
+      // No need to re-render as notes aren't displayed in the main view
+      
+      // Show success message
+      showMessage('Notes saved successfully', 'success');
+    });
+  }
+  
+  /**
+   * Remove an asset
+   */
+  function removeAsset(id, category) {
+    console.log(`Removing asset ${id} from ${category}`);
+    
+    // Find the asset index
+    const index = _netWorthData[category].findIndex(item => item.id === id);
+    if (index === -1) return;
+    
+    // Get asset info for confirmation message
+    const asset = _netWorthData[category][index];
+    
+    // Confirm deletion
+    if (confirm(`Are you sure you want to remove ${asset.name}?`)) {
+      // Remove from array
+      _netWorthData[category].splice(index, 1);
+      
+      // Re-render
+      renderNetWorthView();
+      
+      // Show success message
+      showMessage(`${asset.name} removed successfully`, 'success');
+    }
   }
   
   /**
@@ -387,16 +606,7 @@ var NetWorthManager = (function() {
   }
   
   /**
-   * Calculate change percentage
-   */
-  function calculateChangePercentage(current, previous) {
-    if (!previous || previous === 0) return '';
-    const change = (current - previous) / Math.abs(previous) * 100;
-    return `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
-  }
-  
-  /**
-   * Render the net worth view with all components
+   * Render the net worth view
    */
   function renderNetWorthView() {
     console.log('Rendering Net Worth view');
@@ -404,102 +614,99 @@ var NetWorthManager = (function() {
     const container = getElement('netWorthContent');
     if (!container) return;
     
+    // Format month/year for display
+    const monthYearDisplay = `${_currentMonth} ${_currentYear}`;
+    
     // Create HTML structure
     container.innerHTML = `
-      <!-- Status message container -->
-      <div id="netWorthMessage" class="nw-message" style="display: none;"></div>
+      <div class="nw-message" id="netWorthMessage" style="display: none;"></div>
       
-      <!-- Summary Cards -->
-      <div class="nw-summary-row">
-        <div class="nw-summary-box">
-          <div class="nw-box-content">
-            <div class="nw-box-item">
-              <div class="nw-box-label">Net Worth</div>
-              <div class="nw-box-value">${formatCurrency(_netWorthData.summary.totalNetWorth)}</div>
-              <div class="nw-box-change ${_netWorthData.summary.change >= 0 ? 'nw-positive' : 'nw-negative'}">
-                (${formatCurrency(_netWorthData.summary.change)})
-              </div>
+      <div class="nw-month-nav">
+        <button id="prevMonthBtn" class="nw-month-btn">
+          <i class="material-icons">chevron_left</i> Previous Month
+        </button>
+        <h2 class="nw-month-title">${monthYearDisplay}</h2>
+        <button id="nextMonthBtn" class="nw-month-btn">
+          Next Month <i class="material-icons">chevron_right</i>
+        </button>
+      </div>
+      
+      <div class="nw-summary-card">
+        <div class="nw-summary-content">
+          <div class="nw-summary-item">
+            <div class="nw-summary-label">Net Worth</div>
+            <div class="nw-summary-value">${formatCurrency(_netWorthData.summary.totalNetWorth)}</div>
+            <div class="nw-summary-change ${_netWorthData.summary.change >= 0 ? 'nw-positive' : 'nw-negative'}">
+              (${formatCurrency(_netWorthData.summary.change)})
             </div>
-            <div class="nw-box-item">
-              <div class="nw-box-label">Total Assets</div>
-              <div class="nw-box-value">${formatCurrency(_netWorthData.summary.totalAssets)}</div>
-            </div>
-            <div class="nw-box-item">
-              <div class="nw-box-label">Total Debts</div>
-              <div class="nw-box-value">${formatCurrency(_netWorthData.summary.totalDebts)}</div>
-            </div>
+          </div>
+          <div class="nw-summary-item">
+            <div class="nw-summary-label">Total Assets</div>
+            <div class="nw-summary-value">${formatCurrency(_netWorthData.summary.totalAssets)}</div>
+          </div>
+          <div class="nw-summary-item">
+            <div class="nw-summary-label">Total Debts</div>
+            <div class="nw-summary-value">${formatCurrency(_netWorthData.summary.totalDebts)}</div>
           </div>
         </div>
       </div>
       
-      <!-- Controls -->
-      <div class="nw-controls">
-        <div class="nw-toggle-container">
-          <label class="nw-toggle-label">
-            <input type="checkbox" id="toggleTransferDetails" ${_showTransferDetails ? 'checked' : ''}>
-            <span class="nw-toggle-text">Show Transfer Details</span>
-          </label>
-        </div>
-        <div class="nw-action-buttons">
-          <button id="copyFromPrevious" class="nw-btn nw-btn-secondary">
-            <i class="material-icons">content_copy</i> Copy from Previous
-          </button>
-          <button id="saveNetWorthBtn" class="nw-btn nw-btn-primary">
-            <i class="material-icons">save</i> Save
-          </button>
-        </div>
-      </div>
-      
-      <!-- Liquid Assets Section -->
-      <div class="nw-section">
-        <div class="nw-section-header">
-          <h3 class="nw-section-title">Liquid Assets</h3>
-          <button id="addLiquidAsset" class="nw-btn-icon">
-            <i class="material-icons">add_circle</i>
-          </button>
-        </div>
-        ${renderAssetTable('liquidAssets')}
-      </div>
-      
-      <!-- Investments Section -->
-      <div class="nw-section">
-        <div class="nw-section-header">
-          <h3 class="nw-section-title">Investments</h3>
-          <button id="addInvestment" class="nw-btn-icon">
-            <i class="material-icons">add_circle</i>
-          </button>
-        </div>
-        ${renderAssetTable('investments')}
-      </div>
-      
-      <!-- Physical Assets Section -->
-      <div class="nw-section">
-        <div class="nw-section-header">
-          <h3 class="nw-section-title">Physical Assets</h3>
-          <button id="addPhysicalAsset" class="nw-btn-icon">
-            <i class="material-icons">add_circle</i>
-          </button>
-        </div>
-        ${renderAssetTable('physicalAssets')}
-      </div>
-      
-      <!-- Debts Section -->
-      <div class="nw-section">
-        <div class="nw-section-header">
-          <h3 class="nw-section-title">Debts</h3>
-          <button id="addDebt" class="nw-btn-icon">
-            <i class="material-icons">add_circle</i>
-          </button>
-        </div>
-        ${renderAssetTable('debts')}
-      </div>
+      ${renderCategorySection('Liquid Assets', 'liquidAssets')}
+      ${renderCategorySection('Investments', 'investments')}
+      ${renderCategorySection('Physical Assets', 'physicalAssets')}
+      ${renderCategorySection('Debts', 'debts')}
     `;
     
-    // Re-bind events
-    bindEvents();
+    // Bind event handlers for navigation - direct approach with no debouncing
+    const prevMonthBtn = document.getElementById('prevMonthBtn');
+    if (prevMonthBtn) {
+      prevMonthBtn.onclick = function(e) {
+        e.preventDefault();
+        navigateMonth(-1);
+        return false;
+      };
+    }
+    
+    const nextMonthBtn = document.getElementById('nextMonthBtn');
+    if (nextMonthBtn) {
+      nextMonthBtn.onclick = function(e) {
+        e.preventDefault();
+        navigateMonth(1);
+        return false;
+      };
+    }
+    
+    // Bind category add buttons
+    document.querySelectorAll('.nw-add-btn').forEach(btn => {
+      btn.onclick = function(e) {
+        e.preventDefault();
+        const category = this.getAttribute('data-category');
+        if (category) {
+          showAddAssetModal(category);
+        }
+        return false;
+      };
+    });
     
     // Set up editable fields
     setupEditableFields();
+  }
+  
+  /**
+   * Render a category section with its assets
+   */
+  function renderCategorySection(title, category) {
+    return `
+      <div class="nw-section">
+        <div class="nw-section-header">
+          <h3 class="nw-section-title">${title}</h3>
+          <button class="nw-add-btn" data-category="${category}">
+            <i class="material-icons">add_circle_outline</i> Add
+          </button>
+        </div>
+        ${renderAssetTable(category)}
+      </div>
+    `;
   }
   
   /**
@@ -509,7 +716,7 @@ var NetWorthManager = (function() {
     if (!_netWorthData[category] || _netWorthData[category].length === 0) {
       return `
         <div class="nw-empty-state">
-          <p>No ${category.replace(/([A-Z])/g, ' $1').toLowerCase()} found. Click the + button to add.</p>
+          <p>No ${category.replace(/([A-Z])/g, ' $1').toLowerCase()} found. Click Add to create one.</p>
         </div>
       `;
     }
@@ -517,6 +724,7 @@ var NetWorthManager = (function() {
     // Determine if this is the debts section to handle negative values
     const isDebt = category === 'debts';
     
+    // Always show change details
     return `
       <div class="nw-table-container">
         <table class="nw-table">
@@ -524,27 +732,29 @@ var NetWorthManager = (function() {
             <tr>
               <th>Type</th>
               <th>Name</th>
-              <th>Previous</th>
-              <th>Current</th>
-              ${_showTransferDetails ? '<th>Change</th><th>Amount</th>' : ''}
+              <th>Amount</th>
+              <th>Change</th>
+              <th>Change Amount</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${_netWorthData[category].map(item => `
-              <tr data-id="${item.id}">
-                <td class="nw-type-cell">${item.type}</td>
-                <td class="nw-name-cell">${item.name}</td>
-                <td class="nw-prev-cell">${formatCurrency(isDebt ? -item.previousAmount : item.previousAmount)}</td>
-                <td class="nw-current-cell">
-                  <div class="nw-editable" data-field="amount" data-id="${item.id}" data-category="${category}">
-                    ${formatCurrency(isDebt ? -item.amount : item.amount)}
-                  </div>
-                </td>
-                ${_showTransferDetails ? `
+            ${_netWorthData[category].map(item => {
+              // Format the value based on whether it's a debt
+              const formattedValue = formatCurrency(isDebt ? -item.amount : item.amount);
+              
+              return `
+                <tr data-id="${item.id}">
+                  <td class="nw-type-cell">${item.type}</td>
+                  <td class="nw-name-cell">${item.name}</td>
+                  <td class="nw-value-cell">
+                    <div class="nw-editable" data-field="amount" data-id="${item.id}" data-category="${category}">
+                      ${formattedValue}
+                    </div>
+                  </td>
                   <td class="nw-change-cell">
                     <select class="nw-change-select" data-id="${item.id}" data-category="${category}">
-                      <option value="" ${item.change === '' ? 'selected' : ''}>-</option>
+                      <option value=""></option>
                       <option value="Deposit" ${item.change === 'Deposit' ? 'selected' : ''}>Deposit</option>
                       <option value="Withdrawal" ${item.change === 'Withdrawal' ? 'selected' : ''}>Withdrawal</option>
                       <option value="Transfer" ${item.change === 'Transfer' ? 'selected' : ''}>Transfer</option>
@@ -555,17 +765,20 @@ var NetWorthManager = (function() {
                   </td>
                   <td class="nw-change-amount-cell">
                     <div class="nw-editable" data-field="changeAmount" data-id="${item.id}" data-category="${category}">
-                      ${item.changeAmount ? formatCurrency(item.changeAmount) : '-'}
+                      ${item.changeAmount ? formatCurrency(item.changeAmount) : ''}
                     </div>
                   </td>
-                ` : ''}
-                <td class="nw-actions-cell">
-                  <button class="nw-btn-icon nw-delete-btn" data-id="${item.id}" data-category="${category}">
-                    <i class="material-icons">delete</i>
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
+                  <td class="nw-actions-cell">
+                    <button class="nw-action-btn nw-notes-btn" data-id="${item.id}" data-category="${category}" title="Notes">
+                      <i class="material-icons">description</i>
+                    </button>
+                    <button class="nw-action-btn nw-delete-btn" data-id="${item.id}" data-category="${category}" title="Remove">
+                      <i class="material-icons">close</i>
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -576,27 +789,29 @@ var NetWorthManager = (function() {
    * Set up editable fields after rendering
    */
   function setupEditableFields() {
-    // Get all editable fields
-    const editables = document.querySelectorAll('.nw-editable');
-    
-    editables.forEach(editable => {
-      // Make field editable on click
-      editable.addEventListener('click', function() {
+    // Set up editable field handlers
+    document.querySelectorAll('.nw-editable').forEach(el => {
+      el.addEventListener('click', function() {
         const field = this.getAttribute('data-field');
         const id = this.getAttribute('data-id');
         const category = this.getAttribute('data-category');
-        const item = findItemById(id, category);
         
-        if (!item) return;
+        const asset = _netWorthData[category].find(item => item.id === id);
+        if (!asset) return;
         
-        // Get current value
-        const currentValue = field === 'amount' ? item.amount : item.changeAmount;
+        // Determine if we're editing a debt value (should be negative)
+        const isDebt = category === 'debts' && field === 'amount';
+        
+        // Get current value (use absolute value for display in debt fields)
+        const currentValue = field === 'amount' 
+          ? (isDebt ? -asset.amount : asset.amount) 
+          : (asset.changeAmount || 0);
         
         // Replace with input field
-        const currencySymbol = getCurrencySymbol();
+        const originalContent = this.innerHTML;
         this.innerHTML = `
           <div class="nw-edit-wrapper">
-            <span class="nw-edit-currency">${currencySymbol}</span>
+            <span class="nw-edit-currency">${getCurrencySymbol()}</span>
             <input type="number" class="nw-edit-input" value="${currentValue}" step="0.01" min="0">
           </div>
         `;
@@ -606,85 +821,97 @@ var NetWorthManager = (function() {
         input.focus();
         input.select();
         
-        // Handle blur event
+        // Save on blur
         input.addEventListener('blur', function() {
-          const newValue = parseFloat(this.value);
+          let newValue = parseFloat(this.value);
           
-          if (!isNaN(newValue)) {
-            // Update data
-            if (field === 'amount') {
-              item.amount = newValue;
-            } else {
-              item.changeAmount = newValue;
-            }
-            
-            // Update display
-            const isDebt = category === 'debts';
-            editable.innerHTML = formatCurrency(isDebt && field === 'amount' ? -newValue : newValue);
-          } else {
-            // Revert to original value
-            const isDebt = category === 'debts';
-            editable.innerHTML = formatCurrency(isDebt && field === 'amount' ? -currentValue : currentValue);
+          // Validate
+          if (isNaN(newValue) || newValue < 0) {
+            // Revert to original content on invalid input
+            el.innerHTML = originalContent;
+            return;
           }
+          
+          // Update the value (make debts negative in the data)
+          if (field === 'amount') {
+            asset.amount = isDebt ? -newValue : newValue;
+          } else {
+            asset.changeAmount = newValue;
+          }
+          
+          // Update the display
+          el.innerHTML = formatCurrency(newValue);
+          
+          // Show save indicator
+          el.classList.add('nw-saving');
+          
+          // Simulate API save
+          setTimeout(() => {
+            el.classList.remove('nw-saving');
+            el.classList.add('nw-saved');
+            
+            setTimeout(() => {
+              el.classList.remove('nw-saved');
+            }, 1000);
+          }, 500);
         });
         
         // Handle Enter key
         input.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') {
+          if (e.key === 'Enter' || e.key === 'Tab') {
             this.blur();
+            e.preventDefault();
           }
         });
       });
     });
     
-    // Set up change select handlers
-    const changeSelects = document.querySelectorAll('.nw-change-select');
-    
-    changeSelects.forEach(select => {
+    // Set up change dropdown handlers
+    document.querySelectorAll('.nw-change-select').forEach(select => {
       select.addEventListener('change', function() {
         const id = this.getAttribute('data-id');
         const category = this.getAttribute('data-category');
-        const item = findItemById(id, category);
         
-        if (!item) return;
+        const asset = _netWorthData[category].find(item => item.id === id);
+        if (!asset) return;
         
-        // Update data
-        item.change = this.value;
+        // Update the value
+        asset.change = this.value;
+        
+        // Show save indicator
+        this.classList.add('nw-saving');
+        
+        // Simulate API save
+        setTimeout(() => {
+          this.classList.remove('nw-saving');
+          this.classList.add('nw-saved');
+          
+          setTimeout(() => {
+            this.classList.remove('nw-saved');
+          }, 1000);
+        }, 500);
       });
     });
     
-    // Set up delete buttons
-    const deleteButtons = document.querySelectorAll('.nw-delete-btn');
-    
-    deleteButtons.forEach(button => {
-      button.addEventListener('click', function() {
+    // Set up notes button handlers
+    document.querySelectorAll('.nw-notes-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
         const id = this.getAttribute('data-id');
         const category = this.getAttribute('data-category');
         
-        if (confirm('Are you sure you want to delete this item?')) {
-          // Find index of the item
-          const itemIndex = _netWorthData[category].findIndex(item => item.id === id);
-          
-          if (itemIndex !== -1) {
-            // Remove the item
-            _netWorthData[category].splice(itemIndex, 1);
-            
-            // Re-render
-            renderNetWorthView();
-            
-            // Show message
-            showMessage('Item deleted successfully', 'success');
-          }
-        }
+        showNotesModal(id, category);
       });
     });
-  }
-  
-  /**
-   * Find an item by ID in a category
-   */
-  function findItemById(id, category) {
-    return _netWorthData[category].find(item => item.id === id);
+    
+    // Set up delete button handlers
+    document.querySelectorAll('.nw-delete-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const category = this.getAttribute('data-category');
+        
+        removeAsset(id, category);
+      });
+    });
   }
   
   /**
@@ -701,6 +928,12 @@ var NetWorthManager = (function() {
     if (data.investments) _netWorthData.investments = data.investments;
     if (data.physicalAssets) _netWorthData.physicalAssets = data.physicalAssets;
     if (data.debts) _netWorthData.debts = data.debts;
+    
+    // Update month/year if present in data
+    if (data.summary?.currentMonth) _currentMonth = data.summary.currentMonth;
+    if (data.summary?.currentYear) _currentYear = data.summary.currentYear;
+    if (data.summary?.previousMonth) _previousMonth = data.summary.previousMonth;
+    if (data.summary?.previousYear) _previousYear = data.summary.previousYear;
     
     // Re-render
     renderNetWorthView();
@@ -776,7 +1009,7 @@ SimBudget.loadNetWorthData = function() {
     
     // Clear loading flag
     _loadingView = null;
-  }, 300); // Slightly longer timeout to ensure DOM is ready
+  }, 300); // Small timeout to ensure DOM is ready
 };
 </script>
 
@@ -826,50 +1059,92 @@ SimBudget.loadNetWorthData = function() {
   color: #1976d2;
 }
 
-/* ======== SUMMARY BOX ======== */
-.nw-summary-row {
-  margin-bottom: 16px;
+/* ======== MONTH NAVIGATION ======== */
+.nw-month-nav {
   display: flex;
-  justify-content: center;
-}
-
-.nw-summary-box {
-  margin-top: 15px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
   background-color: #ffffff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  width: 100%;
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-.nw-box-content {
+.nw-month-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  text-align: center;
+}
+
+.nw-month-btn {
+  background: none;
+  border: none;
+  color: var(--primary, #7F5539);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nw-month-btn:hover,
+.nw-month-btn:active {
+  background-color: rgba(0,0,0,0.04);
+}
+
+.nw-month-btn:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.nw-month-btn i {
+  font-size: 18px;
+}
+
+/* ======== SUMMARY CARD ======== */
+.nw-summary-card {
+  background-color: #ffffff;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.nw-summary-content {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  width: 100%;
+  flex-wrap: wrap;
 }
 
-.nw-box-item {
-  flex: 1;
+.nw-summary-item {
   text-align: center;
+  flex: 1;
+  min-width: 0;
   padding: 0 8px;
 }
 
-.nw-box-label {
+.nw-summary-label {
   font-size: 12px;
   color: var(--text-secondary, #666);
   margin-bottom: 4px;
 }
 
-.nw-box-value {
-  font-size: 18px;
+.nw-summary-value {
+  font-size: 20px;
   font-weight: 600;
   color: var(--primary, #7F5539);
 }
 
-.nw-box-change {
+.nw-summary-change {
   font-size: 14px;
   font-weight: 500;
+  margin-top: 2px;
 }
 
 .nw-positive {
@@ -880,41 +1155,33 @@ SimBudget.loadNetWorthData = function() {
   color: #f44336;
 }
 
-/* ======== CONTROLS ======== */
-.nw-controls {
+/* ======== OPTIONS ======== */
+.nw-options {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
-  flex-wrap: wrap;
 }
 
-.nw-toggle-container {
-  margin-right: 8px;
-}
-
-.nw-toggle-label {
+.nw-checkbox {
   display: flex;
   align-items: center;
   cursor: pointer;
 }
 
-.nw-toggle-text {
-  margin-left: 8px;
-  font-size: 14px;
+.nw-checkbox input {
+  margin-right: 8px;
 }
 
-.nw-action-buttons {
-  display: flex;
-  gap: 8px;
+.nw-checkbox-text {
+  font-size: 13px;
 }
 
-/* ======== SECTIONS ======== */
+/* ======== CATEGORY SECTIONS ======== */
 .nw-section {
   background-color: #ffffff;
-  border-radius: 8px;
+  border-radius: 6px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   overflow: hidden;
 }
 
@@ -922,20 +1189,44 @@ SimBudget.loadNetWorthData = function() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 12px;
+  background-color: #f8f8f8;
   border-bottom: 1px solid #eee;
 }
 
 .nw-section-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
 }
 
+.nw-add-btn {
+  background: none;
+  border: none;
+  color: var(--primary, #7F5539);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.nw-add-btn:hover {
+  background-color: rgba(0,0,0,0.04);
+}
+
+.nw-add-btn i {
+  font-size: 16px;
+  margin-right: 4px;
+}
+
 .nw-empty-state {
-  padding: 24px;
+  padding: 20px;
   text-align: center;
   color: var(--text-secondary, #666);
+  font-size: 13px;
 }
 
 /* ======== TABLE ======== */
@@ -946,12 +1237,12 @@ SimBudget.loadNetWorthData = function() {
 .nw-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .nw-table th,
 .nw-table td {
-  padding: 10px 8px;
+  padding: 12px 6px;
   text-align: left;
   border-bottom: 1px solid #eee;
 }
@@ -959,25 +1250,26 @@ SimBudget.loadNetWorthData = function() {
 .nw-table th {
   font-weight: 500;
   color: var(--text-secondary, #666);
+  font-size: 12px;
+  background-color: white;
   position: sticky;
   top: 0;
-  background-color: white;
   z-index: 1;
 }
 
 .nw-type-cell {
-  width: 15%;
+  width: 18%;
   white-space: nowrap;
 }
 
 .nw-name-cell {
-  width: 20%;
+  width: 30%;
 }
 
-.nw-prev-cell,
-.nw-current-cell {
-  width: 15%;
+.nw-value-cell {
+  width: 18%;
   text-align: right;
+  white-space: nowrap;
 }
 
 .nw-change-cell {
@@ -985,24 +1277,61 @@ SimBudget.loadNetWorthData = function() {
 }
 
 .nw-change-amount-cell {
-  width: 15%;
+  width: 14%;
   text-align: right;
+  white-space: nowrap;
 }
 
 .nw-actions-cell {
   width: 10%;
-  text-align: center;
+  white-space: nowrap;
+  text-align: right;
 }
 
+.nw-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 13px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.nw-action-btn:hover {
+  background-color: rgba(0,0,0,0.04);
+}
+
+.nw-delete-btn {
+  color: var(--error, #f44336);
+}
+
+.nw-notes-btn {
+  color: var(--text-secondary, #666);
+}
+
+.nw-action-btn i {
+  font-size: 16px;
+}
+
+/* Editable fields */
 .nw-editable {
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: 3px;
+  padding: 8px 5px;
+  display: inline-block;
+  min-width: 60px;
   transition: background-color 0.2s;
 }
 
 .nw-editable:hover {
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: rgba(0,0,0,0.04);
 }
 
 .nw-edit-wrapper {
@@ -1011,84 +1340,75 @@ SimBudget.loadNetWorthData = function() {
 }
 
 .nw-edit-currency {
-  margin-right: 2px;
+  margin-right: 4px;
 }
 
 .nw-edit-input {
-  width: 100%;
-  border: none;
   background: transparent;
+  border: none;
   outline: none;
+  width: 100%;
   text-align: right;
-  font-size: 14px;
+  padding: 0;
+  font-size: 13px;
 }
 
+/* Change tracking */
 .nw-change-select {
   width: 100%;
-  padding: 4px;
+  padding: 4px 6px;
   border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
+  border-radius: 3px;
+  font-size: 12px;
+  background-color: white;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
-/* ======== BUTTONS ======== */
-.nw-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: background-color 0.2s, transform 0.1s;
+/* Add a custom dropdown arrow that only shows on hover */
+.nw-change-cell {
+  position: relative;
 }
 
-.nw-btn i {
-  margin-right: 8px;
+.nw-change-cell:hover::after {
+  content: '▾';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #666;
 }
 
-.nw-btn-primary {
-  background-color: var(--primary, #7F5539);
-  color: white;
+/* Saving indicators */
+.nw-saving {
+  position: relative;
+  opacity: 0.7;
 }
 
-.nw-btn-primary:hover {
-  background-color: var(--primary-dark, #6B463C);
-  transform: translateY(-1px);
-}
-
-.nw-btn-secondary {
-  background-color: transparent;
-  border: 1px solid var(--primary, #7F5539);
-  color: var(--primary, #7F5539);
-}
-
-.nw-btn-secondary:hover {
-  background-color: rgba(127, 85, 57, 0.05);
-  transform: translateY(-1px);
-}
-
-.nw-btn-icon {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--primary, #7F5539);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
+.nw-saving::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border: 2px solid #1976d2;
+  border-top-color: transparent;
   border-radius: 50%;
-  transition: background-color 0.2s;
+  animation: nw-spin 1s linear infinite;
 }
 
-.nw-btn-icon:hover {
-  background-color: rgba(0, 0, 0, 0.04);
+.nw-saved {
+  background-color: rgba(76, 175, 80, 0.1);
+  transition: background-color 0.5s;
 }
 
-.nw-delete-btn {
-  color: var(--error, #f44336);
+@keyframes nw-spin {
+  0% { transform: translateY(-50%) rotate(0deg); }
+  100% { transform: translateY(-50%) rotate(360deg); }
 }
 
 /* ======== MODAL ======== */
@@ -1108,18 +1428,22 @@ SimBudget.loadNetWorthData = function() {
   left: 50%;
   transform: translate(-50%, -50%);
   background-color: white;
-  border-radius: 8px;
+  border-radius: 6px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   width: 90%;
-  max-width: 500px;
+  max-width: 400px;
   z-index: 1001;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
+.nw-notes-modal {
+  max-width: 350px;
+}
+
 .nw-modal-header {
-  padding: 16px;
+  padding: 12px;
   border-bottom: 1px solid #eee;
   display: flex;
   justify-content: space-between;
@@ -1128,48 +1452,55 @@ SimBudget.loadNetWorthData = function() {
 
 .nw-modal-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
 }
 
 .nw-modal-close {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 20px;
   cursor: pointer;
   color: var(--text-secondary, #666);
 }
 
 .nw-modal-body {
-  padding: 16px;
+  padding: 12px;
   max-height: 70vh;
   overflow-y: auto;
 }
 
 .nw-modal-footer {
-  padding: 16px;
+  padding: 12px;
   border-top: 1px solid #eee;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 8px;
 }
 
+/* ======== FORM ======== */
 .nw-form-group {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .nw-form-group label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-weight: 500;
+  font-size: 13px;
 }
 
 .nw-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  font-size: 16px;
+  font-size: 13px;
+}
+
+.nw-textarea {
+  resize: vertical;
+  min-height: 80px;
 }
 
 .nw-amount-wrapper {
@@ -1178,7 +1509,7 @@ SimBudget.loadNetWorthData = function() {
 
 .nw-currency {
   position: absolute;
-  left: 12px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-secondary, #666);
@@ -1188,51 +1519,108 @@ SimBudget.loadNetWorthData = function() {
   padding-left: 24px;
 }
 
+/* ======== BUTTONS ======== */
+.nw-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.nw-btn i {
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+.nw-btn-primary {
+  background-color: var(--primary, #7F5539);
+  color: white;
+}
+
+.nw-btn-primary:hover {
+  background-color: var(--primary-dark, #654430);
+}
+
+.nw-btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--primary, #7F5539);
+  color: var(--primary, #7F5539);
+}
+
+.nw-btn-secondary:hover {
+  background-color: rgba(127, 85, 57, 0.05);
+}
+
+/* ======== FUTURE MONTH SCREEN ======== */
+.nw-future-message {
+  text-align: center;
+  padding: 40px 20px;
+  background-color: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  margin-top: 16px;
+}
+
+.nw-future-icon {
+  margin-bottom: 16px;
+  font-size: 24px;
+  color: var(--text-secondary, #666);
+}
+
+.nw-future-icon i {
+  font-size: 48px;
+}
+
+.nw-future-message h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.nw-future-message p {
+  margin: 0 0 24px;
+  color: var(--text-secondary, #666);
+  font-size: 14px;
+}
+
 /* ======== DARK MODE SUPPORT ======== */
-body.dark-mode .nw-summary-box,
-body.dark-mode .nw-section {
+body.dark-mode .nw-month-nav,
+body.dark-mode .nw-summary-card,
+body.dark-mode .nw-section,
+body.dark-mode .nw-modal,
+body.dark-mode .nw-future-message {
   background-color: var(--dark-surface, #1e1e1e);
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
 }
 
-body.dark-mode .nw-box-label,
-body.dark-mode .nw-section-title {
+body.dark-mode .nw-section-header {
+  background-color: var(--dark-surface, #2c2c2e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .nw-summary-label,
+body.dark-mode .nw-section-title,
+body.dark-mode .nw-table th,
+body.dark-mode .nw-form-group label {
   color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
 }
 
-body.dark-mode .nw-box-value {
+body.dark-mode .nw-summary-value {
   color: var(--primary-light, #DDA15E);
-}
-
-body.dark-mode .nw-table th {
-  background-color: var(--dark-surface, #1e1e1e);
-  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
 }
 
 body.dark-mode .nw-table td {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
-body.dark-mode .nw-section-header {
-  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
-}
-
-body.dark-mode .nw-editable:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-body.dark-mode .nw-btn-secondary {
-  border-color: var(--primary-light, #DDA15E);
-  color: var(--primary-light, #DDA15E);
-}
-
-body.dark-mode .nw-btn-secondary:hover {
-  background-color: rgba(221, 161, 94, 0.1);
-}
-
-body.dark-mode .nw-modal {
+body.dark-mode .nw-table th {
   background-color: var(--dark-surface, #1e1e1e);
-  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
 }
 
 body.dark-mode .nw-modal-header,
@@ -1240,125 +1628,170 @@ body.dark-mode .nw-modal-footer {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
-body.dark-mode .nw-input {
-  background-color: var(--dark-surface, #1e1e1e);
+body.dark-mode .nw-input,
+body.dark-mode .nw-change-select {
+  background-color: var(--dark-surface, #2c2c2e);
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
 }
 
+body.dark-mode .nw-edit-input {
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .nw-btn-secondary {
+  border-color: var(--primary-light, #DDA15E);
+  color: var(--primary-light, #DDA15E);
+}
+
+body.dark-mode .nw-editable:hover,
+body.dark-mode .nw-action-btn:hover,
+body.dark-mode .nw-add-btn:hover,
+body.dark-mode .nw-month-btn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .nw-saved {
+  background-color: rgba(76, 175, 80, 0.08);
+}
+
 /* ======== RESPONSIVE DESIGN ======== */
 @media (max-width: 768px) {
-  .nw-controls {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  
-  .nw-action-buttons {
-    width: 100%;
-    justify-content: flex-end;
-  }
-  
-  .nw-summary-box .nw-box-content {
+  .nw-summary-content {
+    display: flex;
     flex-direction: row;
     justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 8px;
   }
   
-  .nw-box-item {
-    padding: 0 4px;
-  }
-  
-  .nw-box-value {
-    font-size: 16px;
-  }
-  
-  .nw-box-change {
-    font-size: 12px;
-  }
-  
-  /* Optimize table for mobile */
-  .nw-table {
-    font-size: 13px;
-  }
-  
-  .nw-table th,
-  .nw-table td {
+  .nw-summary-item {
+    flex: 1;
+    text-align: center;
     padding: 8px 4px;
   }
   
-  /* Hide certain columns on smaller screens */
-  .nw-change-cell,
-  .nw-change-amount-cell,
-  .nw-table th:nth-child(5),
-  .nw-table th:nth-child(6) {
+  .nw-summary-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  
+  .nw-summary-value {
+    font-size: 16px;
+  }
+  
+  .nw-summary-change {
+    font-size: 12px;
+  }
+  
+  /* Hide certain columns on mobile */
+  .nw-table .nw-change-cell,
+  .nw-table .nw-change-amount-cell,
+  .nw-table th:nth-child(4),
+  .nw-table th:nth-child(5) {
     display: none;
   }
   
-  /* Only show when transfer details toggle is on */
-  .nw-showTransferDetails .nw-change-cell,
-  .nw-showTransferDetails .nw-change-amount-cell,
-  .nw-showTransferDetails .nw-table th:nth-child(5),
-  .nw-showTransferDetails .nw-table th:nth-child(6) {
-    display: table-cell;
+  /* Adjust remaining columns */
+  .nw-type-cell {
+    width: 30%;
+  }
+  
+  .nw-name-cell {
+    width: 40%;
+  }
+  
+  .nw-value-cell {
+    width: 30%;
+  }
+  
+  /* Make the add button more compact */
+  .nw-add-btn span {
+    display: none;
+  }
+  
+  .nw-add-btn i {
+    margin-right: 0;
+  }
+  
+  /* Make month navigation buttons more compact */
+  .nw-month-btn span {
+    display: none;
+  }
+  
+  /* Make action buttons more accessible */
+  .nw-actions-cell {
+    width: auto;
+  }
+  
+  .nw-action-btn {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .nw-action-btn i {
+    font-size: 20px;
+  }
+  
+  /* Ensure the table fits mobile view */
+  .nw-table {
+    table-layout: fixed;
+    width: 100%;
+  }
+  
+  .nw-table-container {
+    overflow-x: visible;
   }
 }
 
 @media (min-width: 769px) {
-  .nw-summary-box,
+  .nw-summary-card,
   .nw-section {
     max-width: 800px;
     margin-left: auto;
     margin-right: auto;
   }
   
-  .nw-box-label {
-    font-size: 14px;
+  .nw-options {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
   }
   
-  .nw-box-value {
-    font-size: 22px;
-  }
-  
-  .nw-box-change {
-    font-size: 16px;
-  }
-  
-  .nw-table {
-    font-size: 15px;
-  }
-  
-  .nw-table th,
-  .nw-table td {
-    padding: 12px 16px;
+  .nw-month-nav {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 
 /* ======== PRINT STYLES ======== */
 @media print {
-  .nw-summary-box,
+  .nw-summary-card,
   .nw-section {
     box-shadow: none;
     border: 1px solid #ccc;
     break-inside: avoid;
   }
   
-  .nw-controls,
-  .nw-btn-icon,
-  .nw-add-btn {
+  .nw-options,
+  .nw-add-btn,
+  .nw-month-btn {
     display: none;
   }
   
-  .nw-table th,
-  .nw-table td {
-    padding: 8px;
+  .nw-action-btn {
+    display: none;
   }
   
-  /* Show all columns when printing */
-  .nw-change-cell,
-  .nw-change-amount-cell,
-  .nw-table th:nth-child(5),
-  .nw-table th:nth-child(6) {
-    display: table-cell;
+  .nw-editable {
+    cursor: text;
+  }
+  
+  .nw-month-nav {
+    break-after: avoid;
   }
 }
+
+
 </style>

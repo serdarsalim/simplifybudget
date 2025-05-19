@@ -562,6 +562,10 @@ SimBudget.makeEditableBudgetValues = function() {
  * Minimal implementation of expense chart to prevent errors
  * @param {Array} categories - Budget categories data
  */
+/**
+ * Minimal implementation of expense chart to prevent errors
+ * @param {Array} categories - Budget categories data
+ */
 SimBudget.renderExpenseChart = function(categories) {
   const canvas = document.getElementById('expense-donut-chart');
   if (!canvas) return;
@@ -577,54 +581,82 @@ SimBudget.renderExpenseChart = function(categories) {
     SimBudget._expenseChart.destroy();
   }
   
-  // Predefined palette of 30 matte colors in orange/yellow/warm tones
-  // These colors form a cohesive palette but are still distinguishable
+  // Predefined palette of 30 matte colors
   const colorPalette = [
-    '#FF9A76', // Warm orange
-    '#FFEADB', // Light peach
-    '#F7C5A8', // Pale apricot
-    '#E3B587', // Light tan
-    '#D4A276', // Medium tan
-    '#C68B59', // Warm tan
-    '#B87A3D', // Amber
-    '#A96A20', // Dark amber
-    '#FFC288', // Light orange
-    '#FFB347', // Medium orange
-    '#FFA500', // Standard orange
-    '#FF8C00', // Dark orange
-    '#F4A460', // Sandy brown
-    '#E2A76F', // Medium sandy brown
-    '#D2B48C', // Tan
-    '#C39953', // Gold-tan
-    '#B58A3F', // Golden brown
-    '#DAA520', // Goldenrod
-    '#FFD700', // Gold
-    '#FFDF00', // Golden yellow
-    '#F0E68C', // Khaki
-    '#EEE8AA', // Pale goldenrod
-    '#E6C35C', // Dark khaki gold
-    '#D8BFD8', // Light warm purple
-    '#DFB8AC', // Beige-pink
-    '#E3A587', // Light copper
-    '#D49A6A', // Medium copper
-    '#CD853F', // Peru (brownish orange)
-    '#BE7F51', // Medium brown
-    '#A67B5B'  // Warm beige-brown
+    '#fd7f6f', '#7eb0d5', '#b2e061', '#bd7ebe', '#ffb55a', '#ffee65',
+    '#beb9db', '#fdcce5', '#8bd3c7', '#a5cfb5', '#89c7a3', '#6bbf91',
+    '#ffadad', '#ffd6a5', '#fdffb6', '#caffbf', '#9bf6ff', '#a0c4ff',
+    '#bdb2ff', '#ffc6ff', '#fffffc', '#d0f4de', '#fefae0', '#f1c0e8',
+    '#51a6f8', '#3a8ded', '#ff9f70', '#ffb685', '#ffd6a5', '#ffe8b3'
   ];
   
   // Get data for chart and assign colors from palette
   const chartData = categories
     .filter(cat => cat.actual > 0)
-    .map((cat, index) => ({
-      label: cat.name,
-      value: cat.actual,
-      color: colorPalette[index % colorPalette.length] // Cycle through colors if more than 30 categories
-    }));
+    .map((cat, index) => {
+      // Extract emoji from category name
+      const emoji = getEmoji(cat.name);
+      
+      return {
+        label: cat.name,
+        value: cat.actual,
+        color: colorPalette[index % colorPalette.length],
+        emoji: emoji // Store the emoji for later use
+      };
+    });
   
   if (chartData.length === 0) return;
   
   // Calculate total budget for percentages
   const totalBudget = chartData.reduce((sum, item) => sum + item.value, 0);
+  
+  // Create custom plugin to draw emojis on chart segments
+  const emojiPlugin = {
+  id: 'emojiPlugin',
+  afterDraw: function(chart) {
+    const ctx = chart.ctx;
+    const meta = chart.getDatasetMeta(0);
+    
+    // For each segment
+    meta.data.forEach((element, index) => {
+      // Get the emoji for this segment
+      const emoji = chartData[index].emoji;
+      if (!emoji || emoji === '📊') return; // Skip if no emoji or default
+      
+      // Calculate the percentage of this segment
+      const percentage = chartData[index].value / totalBudget;
+      
+      // Only draw emoji if segment is large enough (at least 8% of total)
+      if (percentage >= 0.08) {
+        // Get segment center and radius
+        const centerX = element.x;
+        const centerY = element.y;
+        const radius = element.outerRadius;
+        const innerRadius = element.innerRadius;
+        
+        // Calculate position to place emoji (middle of the segment)
+        const midRadius = innerRadius + (radius - innerRadius) * 0.5;
+        const startAngle = element.startAngle;
+        const endAngle = element.endAngle;
+        const midAngle = startAngle + (endAngle - startAngle) / 2;
+        
+        // Position emoji at midpoint of the segment
+        const x = centerX + Math.cos(midAngle) * midRadius;
+        const y = centerY + Math.sin(midAngle) * midRadius;
+        
+        // Set the font size proportional to the segment size - 20% SMALLER
+        const arcSize = radius * (endAngle - startAngle);
+        const fontSize = Math.min(Math.max(arcSize * 0.4, 12.8), 32); // Reduced by 20%
+        
+        // Draw the emoji
+        ctx.font = `${fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, x, y);
+      }
+    });
+  }
+};
   
   // Create simple chart
   const ctx = canvas.getContext('2d');
@@ -640,49 +672,71 @@ SimBudget.renderExpenseChart = function(categories) {
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      cutout: '70%', // Slightly larger hole for better donut look
-      plugins: {
-        legend: {
-          display: false, // Hide the legend completely as requested
-        },
-        tooltip: {
-          callbacks: {
-            // Customize tooltip to show name and percentage
-            label: function(context) {
-              const value = context.raw;
-              const percentage = ((value / totalBudget) * 100).toFixed(1);
-              const formattedValue = Utils.formatCurrency(value);
-              return `${context.label}: ${formattedValue} (${percentage}%)`;
-            }
-          },
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          padding: 12,
-          titleFont: {
-            size: 14,
-            weight: 'bold'
-          },
-          bodyFont: {
-            size: 13
-          },
-          cornerRadius: 4,
-          displayColors: true, // Show color boxes in tooltip
-          boxWidth: 12,
-          boxHeight: 12,
-          boxPadding: 3
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '70%', // Slightly larger hole for better donut look
+  plugins: {
+    legend: {
+      display: false // Hide the legend completely as requested
+    },
+    tooltip: {
+      // Add this to ensure tooltip appears in front
+      position: 'nearest',
+      z: 100,
+      callbacks: {
+        // Customize tooltip - avoid duplicate emojis
+        label: function(context) {
+          const value = context.raw;
+          const percentage = ((value / totalBudget) * 100).toFixed(1);
+          const formattedValue = Utils.formatCurrency(value);
+          const emoji = chartData[context.dataIndex].emoji;
+          
+          // Get label without emoji (if it contains the emoji)
+          let label = context.label;
+          if (label.includes(emoji)) {
+            // Remove the emoji from the label
+            label = label.replace(emoji, '').trim();
+          }
+          
+          return `${emoji} ${label}: ${formattedValue} (${percentage}%)`;
         }
       },
-      // Add hover effect to make segments pop out slightly
-      hover: {
-        mode: 'nearest',
-        intersect: true
+      backgroundColor: 'rgba(0,0,0,0.8)',
+      padding: 12,
+      titleFont: {
+        size: 14,
+        weight: 'bold'
       },
-      animation: {
-        animateScale: true,
-        animateRotate: true
-      }
+      bodyFont: {
+        size: 13
+      },
+      cornerRadius: 4,
+      displayColors: true,
+      boxWidth: 12,
+      boxHeight: 12,
+      boxPadding: 3
     }
+  },
+  // Add hover effect to make segments pop out slightly
+  hover: {
+    mode: 'nearest',
+    intersect: true
+  },
+  animation: {
+    animateScale: true,
+    animateRotate: true
+  },
+  // Add this to ensure tooltip is visible
+  layout: {
+    padding: {
+      top: 10,
+      bottom: 10,
+      left: 10,
+      right: 10
+    }
+  }
+},
+    plugins: [emojiPlugin] // Add our custom emoji plugin
   });
 };
 
@@ -710,7 +764,7 @@ SimBudget.reorderDashboardForMobile = function() {
                             container.querySelector('.dashboard-card.subscription-card');
     const subscriptionHeader = container.querySelector('.subscription-list-header');
     
-    const netWorth = container.querySelector('.net-worth-container, .net-worth-card');
+   // const netWorth = container.querySelector('.net-worth-container, .net-worth-card');
     
     // FIXED: Get chart elements with header
     const chartCard = container.querySelector('.donut-chart-card') || 
@@ -733,7 +787,6 @@ SimBudget.reorderDashboardForMobile = function() {
       if (subscriptionList) container.appendChild(subscriptionList);
     }
     
-    if (netWorth) container.appendChild(netWorth);
     
     // FIXED: Handle chart card & header
     if (chartCard) {
@@ -743,7 +796,8 @@ SimBudget.reorderDashboardForMobile = function() {
       if (chartContainer) container.appendChild(chartContainer);
     }
 
-    
+      if (netWorth) container.appendChild(netWorth);
+
   }
 
   SimBudget.fixMobileDisplay();

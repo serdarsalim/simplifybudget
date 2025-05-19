@@ -8,7 +8,7 @@
   var SimBudget = (function () {
     // Private variables
     let _initialized = false;
-    let _currentView = "budget";
+    let _currentView = "expense";
     let _isRendering = false;
     let _loadingView = null;
 
@@ -304,7 +304,7 @@
         this.loadTranslations();
 
         // Load initial budget data
-        this.loadViewData("budget");
+        this.loadViewData("expense");
 
         _initialized = true;
         console.log("SimBudget initialized");

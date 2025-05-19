@@ -1,8 +1,4 @@
 <script>
-/**
- * MonthlyGrid - Monthly spending grid view component for SimBudget
- * Shows daily transactions across categories in a spreadsheet-like grid
- */
 var MonthlyGrid = (function() {
   // Private variables
   let _initialized = false;
@@ -10,14 +6,13 @@ var MonthlyGrid = (function() {
   let _currentYear = new Date().getFullYear();
   let _categories = [];
   let _transactions = [];
+  let _isLoading = false;
   
   // DOM element cache for performance
   const _elements = {};
   
   /**
    * Get an element by ID with caching
-   * @param {string} id - Element ID
-   * @return {HTMLElement} Element
    */
   function getElement(id) {
     if (!_elements[id]) {
@@ -28,10 +23,8 @@ var MonthlyGrid = (function() {
 
   /**
    * Initialize the Monthly Grid
-   * @param {string} containerId - Optional ID of container element
    */
   function init(containerId) {
-    // Allow initialization when container ID is provided
     if (_initialized && !containerId) {
       return;
     }
@@ -56,114 +49,459 @@ var MonthlyGrid = (function() {
         return;
       }
       _elements['monthly-grid-container'] = defaultContainer;
-
     }
-    
-    // Load sample data for display
-    loadSampleData();
     
     // Set up event handlers
     bindEvents();
     
-    // Render the grid
-    renderGrid();
-
-       // ADD THIS: Prevent body scrolling on mobile
-  if (window.innerWidth <= 768) {
-    document.body.style.overflow = 'hidden';
+    // Load real data from spreadsheet
+    loadRealExpenseData();
     
-    // Allow the grid container to scroll
-    const container = getElement('monthly-grid-container');
-    if (container) {
-      container.style.overflow = 'auto';
+    // Prevent body scrolling on mobile
+    if (window.innerWidth <= 768) {
+      document.body.style.overflow = 'hidden';
+      
+      // Allow the grid container to scroll
+      const container = getElement('monthly-grid-container');
+      if (container) {
+        container.style.overflow = 'auto';
+      }
     }
-  }
     
     _initialized = true;
     console.log('Monthly Grid View initialized');
   }
   
   /**
-   * Load sample data for prototype display
+   * Load real expense data from spreadsheet for current month
    */
-  function loadSampleData() {
-    // Sample categories with emojis
-    _categories = [
-      { id: 'dining', name: 'Dining out', emoji: '🍕', active: true },
-      { id: 'groceries', name: 'Groceries', emoji: '🍎', active: true },
-      { id: 'personal', name: 'Personal care', emoji: '❤️', active: true },
-      { id: 'transport', name: 'Transport', emoji: '🚗', active: true },
-      { id: 'shopping', name: 'Shopping', emoji: '🛍️', active: true },
-      { id: 'utilities', name: 'Utilities', emoji: '💡', active: true },
-      { id: 'housing', name: 'Housing', emoji: '🏡', active: true },
-      { id: 'business', name: 'Business', emoji: '💼', active: true },
-      { id: 'childcare', name: 'Childcare', emoji: '👶', active: true },
-      { id: 'other', name: 'Other', emoji: '🧩', active: true },
-      { id: 'donation', name: 'Donation', emoji: '🎗️', active: false },
-      { id: 'fun', name: 'Fun', emoji: '🎬', active: true }
-    ];
+  function loadRealExpenseData() {
+    if (_isLoading) {
+      console.log('Already loading expense data, skipping...');
+      return;
+    }
     
-    // Generate sample transactions
-    _transactions = generateSampleTransactions();
+    _isLoading = true;
+    
+    // Debug logging
+    const currentDate = new Date(_currentYear, _currentMonth, 1);
+    const monthName = currentDate.toLocaleString('default', { month: 'long' });
+    console.log('=== MONTH DEBUG ===');
+    console.log('UI should show:', monthName, _currentYear);
+    console.log('_currentMonth value:', _currentMonth, '(0=Jan, 11=Dec)');
+    console.log('Sending to server: month=' + _currentMonth + ', year=' + _currentYear);
+    console.log('Expected server data: ' + monthName + ' ' + _currentYear);
+    console.log('==================');
+    
+    console.log('Loading real expense data for month:', _currentMonth, 'year:', _currentYear);
+    
+    // Show loading indicator
+    showLoadingIndicator();
+    
+    // Clear existing data
+    _transactions = [];
+    _categories = [];
+    
+    // STEP 1: Load active categories first
+    loadActiveCategories()
+      .then(categories => {
+        console.log('Categories loaded, now loading expenses...');
+        
+        // STEP 2: Load expenses for the current month
+        if (!window.API || typeof API.getExpenseData !== 'function') {
+          throw new Error('API.getExpenseData function not found. Check API.html file.');
+        }
+        
+        // Ensure parameters are numbers
+        const monthParam = parseInt(_currentMonth);
+        const yearParam = parseInt(_currentYear);
+        
+        console.log('Calling API.getExpenseData with params:', monthParam, yearParam);
+        
+        return new Promise((resolve, reject) => {
+          API.getExpenseData(
+            monthParam,
+            yearParam,
+            function(result) {
+              console.log('SUCCESS: API returned:', result);
+              
+              if (!result) {
+                reject('Server returned null result');
+                return;
+              }
+              
+              if (!result.success) {
+                reject('Server returned failure: ' + (result.error || 'No error message'));
+                return;
+              }
+              
+              if (!result.expenses || !Array.isArray(result.expenses)) {
+                reject('Server returned invalid expenses data. Type: ' + typeof result.expenses);
+                return;
+              }
+              
+              resolve(result.expenses);
+            },
+            function(error) {
+              reject('Server function call failed: ' + error);
+            }
+          );
+        });
+      })
+      .then(expenses => {
+        console.log('Processing ' + expenses.length + ' expenses...');
+        
+        // STEP 3: Process the expense data (no category creation)
+        processRealExpenseData(expenses);
+        
+        // STEP 4: Render the grid with real data
+        renderGrid();
+        
+        console.log(`SUCCESS: Loaded ${_transactions.length} transactions for ${_currentMonth}/${_currentYear}`);
+        hideLoadingIndicator();
+        _isLoading = false;
+      })
+      .catch(error => {
+        console.error('FAILED: Error loading expense data:', error);
+        showErrorMessage('Failed to load data: ' + error);
+        hideLoadingIndicator();
+        _isLoading = false;
+      });
   }
   
   /**
-   * Generate random sample transactions for the prototype
+   * Parse category string to extract name and emoji
+   * Format: "Business 💼" -> {name: "Business", emoji: "💼"}
    */
-  function generateSampleTransactions() {
-    const transactions = [];
-    const days = new Date(_currentYear, _currentMonth + 1, 0).getDate(); // Days in current month
+  function parseCategoryNameAndEmoji(categoryString) {
+    // Split by space and check if last part is an emoji
+    const parts = categoryString.trim().split(' ');
     
-    // Generate 1-3 transactions per day for random categories
-    for (let day = 1; day <= days; day++) {
-      const numTransactions = Math.floor(Math.random() * 3) + 1; // 1-3 transactions
+    if (parts.length >= 2) {
+      // Check if the last part contains emoji characters
+      const lastPart = parts[parts.length - 1];
+      const emojiRegex = /[\u{1F600}-\u{1F6FF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
       
-      for (let i = 0; i < numTransactions; i++) {
-        // Get random category
-        const categoryIndex = Math.floor(Math.random() * _categories.length);
-        const category = _categories[categoryIndex];
-        
-        // Random amount between 1 and 50 with more small amounts
-        const randomFactor = Math.random();
-        let amount;
-        
-        if (randomFactor < 0.3) {
-          // 30% chance for very small amount (1-9)
-          amount = Math.floor(Math.random() * 9) + 1;
-        } else if (randomFactor < 0.7) {
-          // 40% chance for medium amount (10-20)
-          amount = Math.floor(Math.random() * 11) + 10;
-        } else {
-          // 30% chance for larger amount (21-50)
-          amount = Math.floor(Math.random() * 30) + 21;
-        }
-        
-        // Create transaction
-        transactions.push({
-          id: `tx-${day}-${i}-${Date.now()}`,
-          date: new Date(_currentYear, _currentMonth, day),
-          category: category.id,
-          amount: amount,
-          description: `Sample ${category.name} expense`,
-          account: 'Main Account'
-        });
+      if (emojiRegex.test(lastPart)) {
+        // Last part contains emoji, split name and emoji
+        const name = parts.slice(0, -1).join(' ');
+        const emoji = lastPart;
+        return { name, emoji };
       }
     }
     
-    return transactions;
+    // No emoji found, return the whole string as name
+    return { name: categoryString, emoji: '' };
   }
   
-  // Track if modal is being opened to prevent immediate close
-  let _isOpeningModal = false;
+  /**
+   * Load categories exactly like QuickExpenseEntry does - FIXED to store parsed categories
+   */
+  function loadActiveCategories() {
+    console.log('Loading categories from localStorage and API...');
+    
+    return new Promise((resolve, reject) => {
+      // First try to load from local storage for immediate display
+      const cachedCategories = localStorage.getItem('simbudget_categories');
+      const activeCategories = localStorage.getItem('simbudget_active_categories');
+      
+      if (cachedCategories && activeCategories) {
+        try {
+          const allCategories = JSON.parse(cachedCategories);
+          const active = JSON.parse(activeCategories);
+          
+          console.log('All categories from cache:', allCategories);
+          console.log('Active categories list:', active);
+          
+          // FIXED: Parse categories immediately and store in correct format
+          const parsedActiveCategories = allCategories
+            .filter(cat => {
+              const categoryName = typeof cat === 'string' ? cat : cat.name;
+              return active.includes(categoryName);
+            })
+            .map(cat => {
+              const categoryString = typeof cat === 'string' ? cat : cat.name;
+              const parsed = parseCategoryNameAndEmoji(categoryString);
+              return {
+                id: parsed.name,        // Clean name as ID for matching
+                name: parsed.name,      // Clean name without emoji
+                emoji: parsed.emoji,    // Extracted emoji
+                active: true
+              };
+            });
+          
+          // Store PARSED categories in _categories
+          _categories = parsedActiveCategories;
+          
+          console.log('Stored parsed active categories:', parsedActiveCategories);
+          resolve(parsedActiveCategories);
+          return;
+        } catch (e) {
+          console.error('Error parsing cached categories:', e);
+        }
+      }
+      
+      // If API exists, use it to load categories
+      if (window.API && typeof API.getCategories === 'function') {
+        API.getCategories(
+          function(result) {
+            if (result && result.success) {
+              if (result.categories && result.activeCategories) {
+                // FIXED: Parse categories immediately
+                const parsedActiveCategories = result.categories
+                  .filter(cat => result.activeCategories.includes(cat))
+                  .map(cat => {
+                    const parsed = parseCategoryNameAndEmoji(cat);
+                    return {
+                      id: parsed.name,        // Clean name as ID for matching
+                      name: parsed.name,      // Clean name without emoji
+                      emoji: parsed.emoji,    // Extracted emoji
+                      active: true
+                    };
+                  });
+                
+                // Cache the full categories array (for other components)
+                localStorage.setItem('simbudget_categories', JSON.stringify(result.categories));
+                localStorage.setItem('simbudget_active_categories', JSON.stringify(result.activeCategories));
+                
+                // Store PARSED categories in _categories
+                _categories = parsedActiveCategories;
+                
+                console.log('Loaded and parsed active categories from API:', parsedActiveCategories);
+                resolve(parsedActiveCategories);
+              } else {
+                reject('No categories in API result');
+              }
+            } else {
+              reject('API call failed');
+            }
+          },
+          function(error) {
+            console.error('Error loading categories:', error);
+            reject(error);
+          }
+        );
+      } else {
+        reject('API.getCategories not available');
+      }
+    });
+  }
+
+  /**
+   * Parse date string in format "DD MMM YYYY" (e.g., "28 Feb 2025")
+   * Returns a Date object or null if parsing fails
+   */
+  function parseSpreadsheetDate(dateString) {
+    if (!dateString || typeof dateString !== 'string') {
+      return null;
+    }
+    
+    // Clean the string and split by spaces
+    const parts = dateString.trim().split(/\s+/);
+    if (parts.length !== 3) {
+      console.warn('Invalid date format, expected "DD MMM YYYY":', dateString);
+      return null;
+    }
+    
+    const [dayStr, monthStr, yearStr] = parts;
+    
+    // Parse day
+    const day = parseInt(dayStr);
+    if (isNaN(day) || day < 1 || day > 31) {
+      console.warn('Invalid day in date:', dateString);
+      return null;
+    }
+    
+    // Parse year
+    const year = parseInt(yearStr);
+    if (isNaN(year) || year < 1900 || year > 2100) {
+      console.warn('Invalid year in date:', dateString);
+      return null;
+    }
+    
+    // Parse month (convert month abbreviation to 0-based index)
+    const monthMap = {
+      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+    };
+    
+    const month = monthMap[monthStr];
+    if (month === undefined) {
+      console.warn('Invalid month in date:', dateString);
+      return null;
+    }
+    
+    // Create date using local timezone to avoid timezone shifts
+    const date = new Date(year, month, day, 12, 0, 0, 0); // Set to noon to avoid DST issues
+    
+    // Verify the date is valid (handles cases like Feb 30)
+    if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
+      console.warn('Date components changed during creation, invalid date:', dateString);
+      return null;
+    }
+    
+    console.log(`Parsed "${dateString}" -> Day: ${date.getDate()}, Month: ${date.getMonth()}, Year: ${date.getFullYear()}`);
+    return date;
+  }
+
+  /**
+   * Process real expense data from spreadsheet (expenses only, no categories)
+   */
+  function processRealExpenseData(expenses) {
+    console.log('Processing expense data:', expenses.length, 'items');
+    
+    const processedTransactions = [];
+    
+    // Process each expense
+    expenses.forEach((expense, index) => {
+      // Skip empty rows
+      if (!expense.category || !expense.amount) {
+        console.log('Skipping expense', index, '- missing category or amount:', expense);
+        return;
+      }
+      
+      // Parse date - ENHANCED with robust parsing
+      let expenseDate;
+      
+      if (expense.date instanceof Date) {
+        expenseDate = expense.date;
+        console.log(`Expense ${index}: Date is already Date object:`, expense.date.toDateString());
+      } else if (expense.date) {
+        // Try our custom parser first
+        expenseDate = parseSpreadsheetDate(expense.date);
+        
+        if (!expenseDate) {
+          // Fallback to standard Date parsing
+          console.log(`Expense ${index}: Custom parsing failed, trying standard Date() for:`, expense.date);
+          expenseDate = new Date(expense.date);
+          
+          if (isNaN(expenseDate.getTime())) {
+            console.warn(`Expense ${index}: Both parsing methods failed for date:`, expense.date);
+            return;
+          }
+        }
+        
+        console.log(`Expense ${index}: Successfully parsed "${expense.date}" -> ${expenseDate.toDateString()} (Day: ${expenseDate.getDate()})`);
+      } else {
+        console.warn('No date for expense', index, ':', expense);
+        return;
+      }
+      
+      // Parse amount
+      const amount = parseFloat(expense.amount);
+      if (isNaN(amount) || amount <= 0) {
+        console.warn('Invalid amount for expense', index, ':', expense);
+        return;
+      }
+      
+      // Parse category to get clean name (remove emoji)
+      const parsed = parseCategoryNameAndEmoji(expense.category.trim());
+      const cleanCategory = parsed.name; // Use only the name part for matching
+      
+      // Create transaction object
+      const transaction = {
+        id: expense.rowIndex || `tx-real-${index}`,
+        date: expenseDate,
+        category: cleanCategory,  // Store clean category name for matching with active categories
+        amount: amount,
+        description: expense.name || expense.description || '',
+        account: expense.account || 'Main Account',
+        notes: expense.notes || ''
+      };
+      
+      processedTransactions.push(transaction);
+      console.log(`Processed: ${transaction.description} - €${amount} on ${expenseDate.toDateString()} [${cleanCategory}] (Day: ${expenseDate.getDate()})`);
+    });
+    
+    // Store processed transactions (categories are loaded separately)
+    _transactions = processedTransactions;
+    
+    console.log(`FINAL: Processed ${_transactions.length} transactions`);
+    console.log('Sample transactions with days:');
+    _transactions.slice(0, 5).forEach(tx => {
+      console.log(`  - Day ${tx.date.getDate()}: ${tx.description} in "${tx.category}" on ${tx.date.toDateString()}`);
+    });
+    
+    // Additional debugging: Check for transactions all on the same day
+    const dayMap = {};
+    _transactions.forEach(tx => {
+      const day = tx.date.getDate();
+      dayMap[day] = (dayMap[day] || 0) + 1;
+    });
+    console.log('Transactions per day:', dayMap);
+  }
   
   /**
-   * Bind event handlers
+   * Show loading indicator with current month info
    */
+  function showLoadingIndicator() {
+    const container = getElement('monthly-grid-container');
+    if (container) {
+      const monthName = new Date(_currentYear, _currentMonth, 1)
+        .toLocaleString('default', { month: 'long' });
+      
+      container.innerHTML = `
+        <div class="loading-indicator">
+          <div class="loading-spinner"></div>
+          <p>Loading ${monthName} ${_currentYear} expenses...</p>
+          <p><small>Reading month-specific data from spreadsheet</small></p>
+        </div>
+      `;
+    }
+  }
+  
+  /**
+   * Hide loading indicator
+   */
+  function hideLoadingIndicator() {
+    const loadingEl = document.querySelector('.loading-indicator');
+    if (loadingEl) {
+      loadingEl.remove();
+    }
+  }
+  
+  /**
+   * Show error message
+   */
+  function showErrorMessage(message) {
+    const container = getElement('monthly-grid-container');
+    if (container) {
+      container.innerHTML = `
+        <div class="grid-error">
+          <h3>❌ Failed to Load Data</h3>
+          <p><strong>Error:</strong> ${message}</p>
+          <p><strong>Expected:</strong> Reading from spreadsheet with expense data</p>
+          <button class="retry-btn" onclick="MonthlyGrid.refresh()">Retry</button>
+          <hr>
+          <details>
+            <summary>Debugging Info</summary>
+            <p><strong>Check Code.gs:</strong> Make sure getExpenseData() function exists</p>
+            <p><strong>Check API.html:</strong> Make sure API.getExpenseData() function exists</p>
+            <p><strong>Check Logs:</strong> Open Apps Script editor → Executions tab</p>
+            <p><strong>Check Sheet:</strong> Verify spreadsheet has expense data in correct format</p>
+          </details>
+        </div>
+      `;
+    }
+  }
+  
+  /**
+   * Refresh the grid by reloading data
+   */
+  function refresh() {
+    console.log('Refreshing monthly grid...');
+    _isLoading = false; // Reset loading flag
+    loadRealExpenseData();
+  }
+
+  // Track modal states to prevent accidental popups
+  let _isOpeningModal = false;
+  let _isClosingModal = false;
+  
   function bindEvents() {
     // Month navigation
     const prevMonth = getElement('prevMonth');
     const nextMonth = getElement('nextMonth');
-    const monthYearDisplay = getElement('monthYearDisplay');
     
     if (prevMonth) {
       prevMonth.addEventListener('click', function() {
@@ -181,21 +519,18 @@ var MonthlyGrid = (function() {
     const gridContainer = getElement('monthly-grid-container');
     if (gridContainer) {
       gridContainer.addEventListener('click', function(e) {
+        if (_isClosingModal) return;
+        
         const cell = e.target.closest('.grid-cell[data-day][data-category]');
         if (cell) {
-          // Prevent event from bubbling up to document
           e.stopPropagation();
           
           const day = cell.getAttribute('data-day');
           const category = cell.getAttribute('data-category');
           
-          // Set flag that we're opening modal
           _isOpeningModal = true;
-          
-          // Open the modal
           openTransactionModal(day, category);
           
-          // Reset flag after a short delay
           setTimeout(() => {
             _isOpeningModal = false;
           }, 300);
@@ -203,67 +538,68 @@ var MonthlyGrid = (function() {
       });
     }
     
-    // Modal events - improved for better reliability
-    document.addEventListener('click', function(e) {
-      // Don't process document clicks when opening modal
-      if (_isOpeningModal) return;
-      
-      const modal = getElement('transaction-modal');
-      if (!modal) return;
-      
-      const closeBtn = getElement('close-modal-btn');
-      const modalCard = modal.querySelector('.modal-card');
-      
-      // Close when clicking on the X button
-      if (closeBtn && (e.target === closeBtn || closeBtn.contains(e.target))) {
+    // Remove existing event listeners first to prevent duplicates
+    document.removeEventListener('click', handleDocumentClick);
+    document.removeEventListener('touchend', handleTouchEnd);
+    
+    // Add event listeners
+    document.addEventListener('click', handleDocumentClick);
+    document.addEventListener('touchend', handleTouchEnd);
+  }
+  
+  function handleDocumentClick(e) {
+    if (_isOpeningModal || _isClosingModal) return;
+    
+    const modal = getElement('transaction-modal');
+    if (!modal) return;
+    
+    const closeBtn = getElement('close-modal-btn');
+    const modalCard = modal.querySelector('.modal-card');
+    const addBtn = getElement('add-transaction-btn');
+    
+    if (closeBtn && (e.target === closeBtn || closeBtn.contains(e.target))) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeTransactionModal();
+      return;
+    }
+    
+    if (addBtn && (e.target === addBtn || addBtn.contains(e.target))) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Add transaction button clicked - single event');
+      addTransactionRow();
+      return;
+    }
+    
+    if (modal.classList.contains('visible')) {
+      if (e.target === modal || 
+          (e.target !== modalCard && !modalCard.contains(e.target))) {
+        e.preventDefault();
+        e.stopPropagation();
         closeTransactionModal();
         return;
       }
-      
-      // Only check for outside clicks if the modal is already visible
-      if (modal.classList.contains('visible')) {
-        // If clicking directly on backdrop or outside modal card
-        if (e.target === modal || 
-            (e.target !== modalCard && !modalCard.contains(e.target))) {
-          closeTransactionModal();
-          return;
-        }
-      }
-      
-      // Handle add transaction button - prevent multiple triggers
-      if ((e.target.id === 'add-transaction-btn' || e.target.closest('#add-transaction-btn'))) {
-        // Prevent any potential event bubbling or duplicate handling
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Add transaction button clicked');
-        addTransactionRow();
-      }
-    });
-    
-    // Add touch event handling for mobile
-    document.addEventListener('touchend', function(e) {
-      // Don't process touch events when opening modal
-      if (_isOpeningModal) return;
-      
-      const modal = getElement('transaction-modal');
-      if (!modal || !modal.classList.contains('visible')) return;
-      
-      const modalCard = modal.querySelector('.modal-card');
-      if (modalCard && !modalCard.contains(e.target) && e.target !== modalCard) {
-        closeTransactionModal();
-      }
-    });
+    }
   }
   
-  /**
-   * Navigate to previous/next month
-   * @param {number} change - Change in months (-1 for previous, 1 for next)
-   */
+  function handleTouchEnd(e) {
+    if (_isOpeningModal || _isClosingModal) return;
+    
+    const modal = getElement('transaction-modal');
+    if (!modal || !modal.classList.contains('visible')) return;
+    
+    const modalCard = modal.querySelector('.modal-card');
+    if (modalCard && !modalCard.contains(e.target) && e.target !== modalCard) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeTransactionModal();
+    }
+  }
+  
   function navigateMonth(change) {
-    // Update current month and year
     _currentMonth += change;
     
-    // Handle year change
     if (_currentMonth > 11) {
       _currentMonth = 0;
       _currentYear++;
@@ -272,29 +608,25 @@ var MonthlyGrid = (function() {
       _currentYear--;
     }
     
-    // Update display
     updateMonthYearDisplay();
     
-    // Regenerate sample data and re-render
-    _transactions = generateSampleTransactions();
-    renderGrid();
+    // Reload data for new month
+    console.log('Month changed to:', _currentMonth, '/', _currentYear, '- reloading data...');
+    loadRealExpenseData();
   }
   
-  /**
-   * Update the month/year display
-   */
   function updateMonthYearDisplay() {
     const monthYearDisplay = getElement('monthYearDisplay');
     if (monthYearDisplay) {
       const monthName = new Date(_currentYear, _currentMonth, 1)
         .toLocaleString('default', { month: 'long' });
+      
+      console.log('DISPLAY UPDATE: Setting display to', monthName, _currentYear, '(internal month index:', _currentMonth, ')');
+      
       monthYearDisplay.textContent = `${monthName} ${_currentYear}`;
     }
   }
   
-  /**
-   * Render the monthly grid - Incorporated from the successful debug approach
-   */
   function renderGrid() {
     const container = getElement('monthly-grid-container');
     if (!container) {
@@ -305,106 +637,172 @@ var MonthlyGrid = (function() {
     // Clear existing content
     container.innerHTML = '';
     
-    try {
-      // Get days in month
-      const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
+    // Get days in month
+    const daysInMonth = new Date(_currentYear, _currentMonth + 1, 0).getDate();
+    
+    // Update month/year display
+    updateMonthYearDisplay();
+    
+    // Categories are already parsed in _categories, just use them directly
+    const categoriesToDisplay = _categories;
+    
+    if (categoriesToDisplay.length === 0) {
+      container.innerHTML = `
+        <div class="grid-error">
+          <h3>No Categories Found</h3>
+          <p>No expense categories found in your data for the current month.</p>
+          <button class="retry-btn" onclick="MonthlyGrid.refresh()">Refresh</button>
+        </div>
+      `;
+      return;
+    }
+    
+    // Create table for grid
+    const table = document.createElement('table');
+    table.className = 'monthly-grid';
+    
+    // Add header with categories
+    const thead = createTableHeader(categoriesToDisplay, daysInMonth);
+    table.appendChild(thead);
+    
+    // Create rows for each day
+    const tbody = createTableBody(categoriesToDisplay, daysInMonth);
+    table.appendChild(tbody);
+    
+    // Add table to container
+    container.appendChild(table);
+    
+    // Add the modal HTML after rendering the grid
+    ensureModalExists();
+  }
+  
+  function getTransactionsForDayAndCategory(day, categoryId) {
+    // Convert categoryId to match the actual category names from data
+    const transactions = _transactions.filter(tx => {
+      if (!tx.date || !tx.category) return false;
       
-      // Update month/year display
-      updateMonthYearDisplay();
+      // Check if the day matches
+      const txDay = tx.date.getDate();
+      const txMonth = tx.date.getMonth();
+      const txYear = tx.date.getFullYear();
       
-      // Prepare categories to display - active + any inactive with transactions
-      const categoriesToDisplay = prepareCategories();
+      // Must be same day, month, and year
+      const dayMatches = (txDay === day);
+      const monthMatches = (txMonth === _currentMonth);
+      const yearMatches = (txYear === _currentYear);
       
-      // Create table for grid
-      const table = document.createElement('table');
-      table.className = 'monthly-grid';
+      // Fix category matching - categoryId might be slugified, but tx.category is the full name
+      const categoryMatches = (
+        tx.category === categoryId || 
+        tx.category.toLowerCase().replace(/[^a-z0-9]/g, '') === categoryId ||
+        categoryId === tx.category.toLowerCase().replace(/[^a-z0-9]/g, '')
+      );
       
-      // Add header with categories
-      const thead = createTableHeader(categoriesToDisplay, daysInMonth);
-      table.appendChild(thead);
+      const matches = dayMatches && monthMatches && yearMatches && categoryMatches;
       
-      // Create rows for each day
-      const tbody = createTableBody(categoriesToDisplay, daysInMonth);
-      table.appendChild(tbody);
+      if (matches) {
+        console.log(`Found transaction: ${tx.description} on day ${day} in category ${categoryId}`);
+      }
       
-      // Add table to container
-      container.appendChild(table);
-    } catch (e) {
-      console.error("Error rendering grid:", e);
-      container.innerHTML = `<div class="grid-error">
-        <p>Error rendering grid: ${e.message}</p>
-        <button class="retry-btn" onclick="MonthlyGrid.renderGrid()">Retry</button>
-      </div>`;
+      return matches;
+    });
+    
+    return transactions;
+  }
+  
+  function getMonthTotalForCategory(categoryId) {
+    return _transactions
+      .filter(tx => 
+        tx.category === categoryId && 
+        tx.date.getMonth() === _currentMonth &&
+        tx.date.getFullYear() === _currentYear
+      )
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }
+  
+  function getMonthGrandTotal() {
+    return _transactions
+      .filter(tx => 
+        tx.date.getMonth() === _currentMonth &&
+        tx.date.getFullYear() === _currentYear
+      )
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }
+
+  function ensureModalExists() {
+    let modal = getElement('transaction-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'transaction-modal';
+      modal.className = 'transaction-modal';
+      modal.innerHTML = `
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="modal-title" class="modal-title">Transactions</h3>
+            <button id="close-modal-btn" class="close-btn" aria-label="Close">
+              <i class="material-icons">close</i>
+            </button>
+          </div>
+          
+          <div class="modal-content">
+            <div id="transactions-list" class="transactions-list">
+              <!-- Transactions will be populated here -->
+            </div>
+            
+            <div class="modal-actions">
+              <button id="add-transaction-btn" class="add-transaction-btn">
+                <i class="material-icons">add</i> Add Transaction
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      _elements['transaction-modal'] = modal;
+      _elements['modal-title'] = modal.querySelector('#modal-title');
+      _elements['transactions-list'] = modal.querySelector('#transactions-list');
+      _elements['close-modal-btn'] = modal.querySelector('#close-modal-btn');
+      _elements['add-transaction-btn'] = modal.querySelector('#add-transaction-btn');
     }
   }
-  
-  /**
-   * Prepare categories to display
-   */
-  function prepareCategories() {
-    const categoriesToDisplay = [];
-    const usedCategories = new Set();
-    
-    // First add active categories
-    _categories.filter(cat => cat.active).forEach(cat => {
-      categoriesToDisplay.push(cat);
-      usedCategories.add(cat.id);
-    });
-    
-    // Then find any inactive categories with transactions
-    _transactions.forEach(tx => {
-      if (!usedCategories.has(tx.category)) {
-        const cat = _categories.find(c => c.id === tx.category);
-        if (cat) {
-          categoriesToDisplay.push(cat);
-          usedCategories.add(cat.id);
-        }
-      }
-    });
-    
-    return categoriesToDisplay;
-  }
-  
-  /**
-   * Create table header with categories
-   */
+
   function createTableHeader(categories, daysInMonth) {
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     
-    // Date column header - explicitly add class
+    // Date column header
     const dateHeader = document.createElement('th');
     dateHeader.className = 'date-header';
     dateHeader.textContent = 'Date';
     headerRow.appendChild(dateHeader);
     
-    // Category headers with monthly totals
+    // Category headers with monthly totals - FIXED EMOJI DUPLICATION
     categories.forEach(category => {
       const categoryHeader = document.createElement('th');
       categoryHeader.className = 'category-header';
       categoryHeader.setAttribute('data-category', category.id);
-      
-      // Set tooltip with category name - will show on hover/tap
-      categoryHeader.title = category.name;
+      categoryHeader.title = `${category.emoji} ${category.name}`;
       
       // Calculate monthly total for this category
       const monthlyTotal = getMonthTotalForCategory(category.id);
       
-      // Create header content with emoji on top line, name on bottom
+      // Create header content with emoji on top line, name on bottom (desktop only)
       const headerContent = document.createElement('div');
       headerContent.className = 'category-header-content';
       
       const categoryEmoji = document.createElement('div');
       categoryEmoji.className = 'category-emoji';
-      categoryEmoji.textContent = category.emoji;
+      categoryEmoji.textContent = category.emoji; // ONLY the emoji, no name
       
       const categoryName = document.createElement('div');
       categoryName.className = 'category-name';
-      categoryName.textContent = category.name;
+      categoryName.textContent = category.name; // ONLY the clean name, no emoji
       
       const categoryTotal = document.createElement('div');
       categoryTotal.className = 'category-total';
-      categoryTotal.textContent = `€${monthlyTotal}`;
+      categoryTotal.textContent = `€${monthlyTotal.toFixed(0)}`;
       
       headerContent.appendChild(categoryEmoji);
       headerContent.appendChild(categoryName);
@@ -417,7 +815,7 @@ var MonthlyGrid = (function() {
     // Daily total header
     const totalHeader = document.createElement('th');
     totalHeader.className = 'total-header';
-    totalHeader.title = 'Daily Total'; // Tooltip for mobile
+    totalHeader.title = 'Daily Total';
     
     // Calculate monthly grand total
     const grandTotal = getMonthGrandTotal();
@@ -435,7 +833,7 @@ var MonthlyGrid = (function() {
     
     const totalValue = document.createElement('div');
     totalValue.className = 'category-total';
-    totalValue.textContent = `€${grandTotal}`;
+    totalValue.textContent = `€${grandTotal.toFixed(0)}`;
     
     totalHeaderContent.appendChild(totalEmoji);
     totalHeaderContent.appendChild(totalName);
@@ -447,7 +845,7 @@ var MonthlyGrid = (function() {
     // Notes header
     const notesHeader = document.createElement('th');
     notesHeader.className = 'notes-header';
-    notesHeader.title = 'Notes'; // Tooltip for mobile
+    notesHeader.title = 'Notes';
     
     const notesHeaderContent = document.createElement('div');
     notesHeaderContent.className = 'category-header-content';
@@ -470,27 +868,22 @@ var MonthlyGrid = (function() {
     return thead;
   }
   
-  /**
-   * Create table body with daily rows
-   */
   function createTableBody(categories, daysInMonth) {
-  const tbody = document.createElement('tbody');
-  
-  // Get today's date for highlighting
-  const today = new Date();
-  const isCurrentMonth = today.getMonth() === _currentMonth && today.getFullYear() === _currentYear;
-  const currentDay = today.getDate();
-  
-  // Create a row for each day
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dateObj = new Date(_currentYear, _currentMonth, day);
-    const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 6 = Saturday
+    const tbody = document.createElement('tbody');
     
-    // CHANGE THIS LINE: Only Sunday (0) is a weekend now
-    const isWeekend = (dayOfWeek === 0);
+    // Get today's date for highlighting
+    const today = new Date();
+    const isCurrentMonth = today.getMonth() === _currentMonth && today.getFullYear() === _currentYear;
+    const currentDay = today.getDate();
     
-    const isToday = isCurrentMonth && day === currentDay;
+    // Create a row for each day
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(_currentYear, _currentMonth, day);
+      const dayOfWeek = dateObj.getDay();
       
+      const isWeekend = (dayOfWeek === 0);
+      const isToday = isCurrentMonth && day === currentDay;
+        
       const row = document.createElement('tr');
       row.className = 'day-row';
       
@@ -534,18 +927,18 @@ var MonthlyGrid = (function() {
         // If there are transactions, show amount and count
         if (dayTransactions.length > 0) {
           const amount = dayTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-          dayTotal += amount; // Add to daily total
+          dayTotal += amount;
           
-          // Determine color based on amount
+          // Determine color based on amount ranges (improved thresholds)
           let colorClass = 'amount-large';
-          if (amount < 10) {
+          if (amount <= 30) {
             colorClass = 'amount-small';
-          } else if (amount < 20) {
+          } else if (amount <= 75) {
             colorClass = 'amount-medium';
           }
           
           cell.innerHTML = `<div class="cell-content ${colorClass}">
-                              <span class="amount">€${amount}</span>
+                              <span class="amount">€${amount.toFixed(0)}</span>
                               <span class="transaction-count">(${dayTransactions.length})</span>
                             </div>`;
         }
@@ -560,7 +953,7 @@ var MonthlyGrid = (function() {
       if (isToday) totalCell.classList.add('today-cell');
       
       if (dayTotal > 0) {
-        totalCell.innerHTML = `<div class="total-amount">€${dayTotal}</div>`;
+        totalCell.innerHTML = `<div class="total-amount">€${dayTotal.toFixed(0)}</div>`;
       }
       
       row.appendChild(totalCell);
@@ -579,1264 +972,283 @@ var MonthlyGrid = (function() {
     
     return tbody;
   }
-  
-  /**
-   * Get all transactions for a specific day and category
-   */
-  function getTransactionsForDayAndCategory(day, categoryId) {
-    return _transactions.filter(tx => 
-      tx.date.getDate() === day && 
-      tx.date.getMonth() === _currentMonth &&
-      tx.date.getFullYear() === _currentYear &&
-      tx.category === categoryId
-    );
+
+  function openTransactionModal(day, categoryId) {
+    if (_isClosingModal) return;
+    
+    console.log('Opening modal for day:', day, 'category:', categoryId);
+    
+    ensureModalExists();
+    
+    const modal = getElement('transaction-modal');
+    if (!modal) {
+      console.error('Modal element not found in DOM');
+      return;
+    }
+    
+    // FIXED: Now _categories contains parsed categories with id property
+    const category = _categories.find(c => c.id === categoryId);
+    if (!category) {
+      console.error('Category not found:', categoryId);
+      console.log('Available categories:', _categories);
+      return;
+    }
+    
+    const transactions = getTransactionsForDayAndCategory(parseInt(day), categoryId);
+    console.log('Transactions found:', transactions.length);
+    
+    const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
+    const formattedDate = dateObj.toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric'
+    });
+    
+    const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    
+    const modalTitle = getElement('modal-title');
+    if (modalTitle) {
+      modalTitle.innerHTML = `
+        <div class="integrated-title">
+          <span class="title-category">${category.emoji} ${category.name}</span>
+          <span class="title-divider">|</span>
+          <span class="title-date">${formattedDate}</span>
+          ${total > 0 ? `<span class="title-divider">|</span><span class="title-total">Total: €${total.toFixed(2)}</span>` : ''}
+        </div>
+      `;
+    }
+    
+    const transactionsList = getElement('transactions-list');
+    if (transactionsList) {
+      transactionsList.innerHTML = '';
+      
+      if (transactions.length > 0) {
+        transactions.forEach(tx => {
+          const item = createTransactionItem(tx);
+          transactionsList.appendChild(item);
+        });
+      } else {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-transactions';
+        emptyState.textContent = 'No transactions for this day/category. Add one below!';
+        transactionsList.appendChild(emptyState);
+      }
+    }
+    
+    modal.setAttribute('data-day', day);
+    modal.setAttribute('data-category', categoryId);
+    
+    document.addEventListener('keydown', handleEscKey);
+    
+    setTimeout(() => {
+      modal.classList.add('visible');
+      console.log('Modal should now be visible');
+    }, 10);
   }
   
-  /**
-   * Get total spent in a category for the current month
-   */
-  function getMonthTotalForCategory(categoryId) {
-    return _transactions
-      .filter(tx => 
-        tx.category === categoryId && 
-        tx.date.getMonth() === _currentMonth &&
-        tx.date.getFullYear() === _currentYear
-      )
-      .reduce((sum, tx) => sum + tx.amount, 0);
-  }
-  
-  /**
-   * Get grand total for the current month
-   */
-  function getMonthGrandTotal() {
-    return _transactions
-      .filter(tx => 
-        tx.date.getMonth() === _currentMonth &&
-        tx.date.getFullYear() === _currentYear
-      )
-      .reduce((sum, tx) => sum + tx.amount, 0);
-  }
-  
-  /**
-   * Open transaction modal for a specific day and category
-   * @param {string} day - Day of the month
-   * @param {string} categoryId - Category ID
-   */
-  /**
- * Open transaction modal for a specific day and category
- * @param {string} day - Day of the month
- * @param {string} categoryId - Category ID
- */
-function openTransactionModal(day, categoryId) {
-  // Debug log
-  console.log('Opening modal for day:', day, 'category:', categoryId);
-  
-  // Get modal and check it exists
-  const modal = getElement('transaction-modal');
-  if (!modal) {
-    console.error('Modal element not found in DOM');
-    return;
-  }
-  
-  // Get the category
-  const category = _categories.find(c => c.id === categoryId);
-  if (!category) {
-    console.error('Category not found:', categoryId);
-    return;
-  }
-  
-  // Get transactions for this day/category
-  const transactions = getTransactionsForDayAndCategory(parseInt(day), categoryId);
-  console.log('Transactions found:', transactions.length);
-  
-  // Format the date for display
-  const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
-  const formattedDate = dateObj.toLocaleDateString('en-US', { 
-    weekday: 'short', 
-    month: 'short', 
-    day: 'numeric',
-    year: 'numeric'
-  });
-  
-  // Calculate total
-  const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-  
-  // Update modal title with integrated total
-  const modalTitle = getElement('modal-title');
-  if (modalTitle) {
-    modalTitle.innerHTML = `
-      <div class="integrated-title">
-        <span class="title-category">${category.emoji} ${category.name}</span>
-        <span class="title-divider">|</span>
-        <span class="title-date">${formattedDate}</span>
-        ${total > 0 ? `<span class="title-divider">|</span><span class="title-total">Total: €${total}</span>` : ''}
+  function createTransactionItem(tx) {
+    const item = document.createElement('div');
+    item.className = 'transaction-item';
+    item.setAttribute('data-id', tx.id);
+    
+    item.innerHTML = `
+      <div class="transaction-row">
+        <input type="number" class="transaction-amount" value="${tx.amount}" min="0" step="0.01">
+        <input type="text" class="transaction-description" value="${tx.description || ''}">
+        <select class="transaction-account">
+          <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
+          <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
+          <option value="Savings" ${tx.account === 'Savings' ? 'selected' : ''}>Savings</option>
+        </select>
+        <div class="transaction-actions">
+          <button class="transaction-delete"><i class="material-icons">close</i></button>
+        </div>
       </div>
     `;
-  }
-  
-  // Update modal content
-  const transactionsList = getElement('transactions-list');
-  if (transactionsList) {
-    transactionsList.innerHTML = '';
     
-    if (transactions.length > 0) {
-      // We no longer need to add a separate total element here
-      // since it's now integrated in the title
-      
-      // Add each transaction
-      transactions.forEach(tx => {
-        const item = document.createElement('div');
-        item.className = 'transaction-item';
-        item.setAttribute('data-id', tx.id);
+    setupTransactionItemEvents(item, tx);
+    
+    return item;
+  }
+  
+  function setupTransactionItemEvents(item, tx) {
+    const deleteBtn = item.querySelector('.transaction-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
         
-        item.innerHTML = `
-          <div class="transaction-row">
-            <input type="number" class="transaction-amount" value="${tx.amount}" min="0" step="0.01">
-            <input type="text" class="transaction-description" value="${tx.description || ''}">
-            <select class="transaction-account">
-              <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
-              <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
-              <option value="Savings" ${tx.account === 'Savings' ? 'selected' : ''}>Savings</option>
-            </select>
-            <div class="transaction-actions">
-              <button class="transaction-delete"><i class="material-icons">delete</i></button>
-            </div>
-          </div>
-        `;
+        item.remove();
         
-        transactionsList.appendChild(item);
+        const index = _transactions.findIndex(transaction => transaction.id === tx.id);
+        if (index !== -1) {
+          _transactions.splice(index, 1);
+        }
+        
+        updateTransactionTotal();
+        renderGrid();
       });
-    } else {
-      // No transactions yet, show empty state
-      const emptyState = document.createElement('div');
-      emptyState.className = 'empty-transactions';
-      emptyState.textContent = 'No transactions for this day/category. Add one below!';
-      transactionsList.appendChild(emptyState);
+    }
+    
+    const amountInput = item.querySelector('.transaction-amount');
+    if (amountInput) {
+      amountInput.addEventListener('input', function() {
+        tx.amount = parseFloat(this.value) || 0;
+        updateTransactionTotal();
+        renderGrid();
+      });
+    }
+    
+    const descriptionInput = item.querySelector('.transaction-description');
+    if (descriptionInput) {
+      descriptionInput.addEventListener('input', function() {
+        tx.description = this.value;
+      });
+    }
+    
+    const accountSelect = item.querySelector('.transaction-account');
+    if (accountSelect) {
+      accountSelect.addEventListener('change', function() {
+        tx.account = this.value;
+      });
     }
   }
   
-  // Store current day/category for adding new transactions
-  modal.setAttribute('data-day', day);
-  modal.setAttribute('data-category', categoryId);
-  
-  // Add ESC key closing
-  document.addEventListener('keydown', handleEscKey);
-  
-  // Show the modal with a small delay to prevent immediate closing
-  setTimeout(() => {
-    modal.classList.add('visible');
-    console.log('Modal should now be visible');
-  }, 10);
-}
-
-/**
- * Update the total in the transaction modal (needs to update the title now)
- */
-function updateTransactionTotal() {
-  const transactionsList = getElement('transactions-list');
-  const modalTitle = getElement('modal-title');
-  if (!transactionsList || !modalTitle) return;
-  
-  // Get all transaction amounts
-  const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
-    .map(input => parseFloat(input.value) || 0);
-  
-  // Calculate total
-  const total = amounts.reduce((sum, amount) => sum + amount, 0);
-  
-  // Update the title total
-  const titleTotal = modalTitle.querySelector('.title-total');
-  if (titleTotal) {
-    titleTotal.textContent = `Total: €${total}`;
-  } else if (total > 0) {
-    // If total element doesn't exist but we have a value, add it
-    const titleContent = modalTitle.querySelector('.integrated-title');
-    if (titleContent) {
-      const divider = document.createElement('span');
-      divider.className = 'title-divider';
-      divider.textContent = '|';
-      
-      const newTotal = document.createElement('span');
-      newTotal.className = 'title-total';
-      newTotal.textContent = `Total: €${total}`;
-      
-      titleContent.appendChild(divider);
-      titleContent.appendChild(newTotal);
+  function updateTransactionTotal() {
+    const transactionsList = getElement('transactions-list');
+    const modalTitle = getElement('modal-title');
+    if (!transactionsList || !modalTitle) return;
+    
+    const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
+      .map(input => parseFloat(input.value) || 0);
+    
+    const total = amounts.reduce((sum, amount) => sum + amount, 0);
+    
+    const titleTotal = modalTitle.querySelector('.title-total');
+    if (titleTotal) {
+      titleTotal.textContent = `Total: €${total.toFixed(2)}`;
+    } else if (total > 0) {
+      const titleContent = modalTitle.querySelector('.integrated-title');
+      if (titleContent) {
+        const divider = document.createElement('span');
+        divider.className = 'title-divider';
+        divider.textContent = '|';
+        
+        const newTotal = document.createElement('span');
+        newTotal.className = 'title-total';
+        newTotal.textContent = `Total: €${total.toFixed(2)}`;
+        
+        titleContent.appendChild(divider);
+        titleContent.appendChild(newTotal);
+      }
     }
   }
-}
   
-  /**
-   * Handle ESC key to close modal
-   */
   function handleEscKey(e) {
     if (e.key === 'Escape') {
       closeTransactionModal();
     }
   }
   
-  /**
-   * Close transaction modal
-   */
   function closeTransactionModal() {
     console.log('Closing transaction modal');
+    _isClosingModal = true;
+    
     const modal = getElement('transaction-modal');
     if (modal) {
       modal.classList.remove('visible');
       console.log('Modal visibility class removed');
       
-      // Remove ESC key handler when modal is closed
       document.removeEventListener('keydown', handleEscKey);
+      
+      renderGrid();
+      
+      setTimeout(() => {
+        _isClosingModal = false;
+      }, 300);
     }
   }
   
-  /**
-   * Add a new transaction row in the modal
-   */
-  /**
- * Add a new transaction row in the modal
- */
-function addTransactionRow() {
-  console.log('Adding new transaction row');
-  
-  const transactionsList = getElement('transactions-list');
-  const modal = getElement('transaction-modal');
-  
-  if (!transactionsList || !modal) {
-    console.error('Required elements not found');
-    return;
-  }
-  
-  const day = modal.getAttribute('data-day');
-  const categoryId = modal.getAttribute('data-category');
-  
-  if (!day || !categoryId) {
-    console.error('Missing day or category information');
-    return;
-  }
-  
-  // Create a new transaction object
-  const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-  console.log('Creating transaction with ID:', newId);
-  
-  const newTx = {
-    id: newId,
-    date: new Date(_currentYear, _currentMonth, parseInt(day)),
-    category: categoryId,
-    amount: 0,
-    description: '',
-    account: 'Main Account'
-  };
-  
-  // Add to our local data
-  _transactions.push(newTx);
-  
-  // Create a new transaction item
-  const item = document.createElement('div');
-  item.className = 'transaction-item new-transaction';
-  item.setAttribute('data-id', newTx.id);
-  
-  item.innerHTML = `
-    <div class="transaction-row">
-      <input type="number" class="transaction-amount" value="" min="0" step="0.01" placeholder="Amount">
-      <input type="text" class="transaction-description" value="" placeholder="Description">
-      <select class="transaction-account">
-        <option value="Main Account">Main Account</option>
-        <option value="Credit Card">Credit Card</option>
-        <option value="Savings">Savings</option>
-      </select>
-      <div class="transaction-actions">
-        <button class="transaction-delete"><i class="material-icons">delete</i></button>
-      </div>
-    </div>
-  `;
-  
-  // Add handlers to the delete button
-  const deleteBtn = item.querySelector('.transaction-delete');
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', function(e) {
-      // Prevent event bubbling
-      e.stopPropagation();
-      
-      // Remove from UI
-      item.remove();
-      
-      // Remove from data
-      const index = _transactions.findIndex(tx => tx.id === newTx.id);
-      if (index !== -1) {
-        _transactions.splice(index, 1);
-      }
-      
-      // Update totals in the integrated title
-      updateTransactionTotal();
-    });
-  }
-  
-  // Add change event listeners to update the total when values change
-  const amountInput = item.querySelector('.transaction-amount');
-  if (amountInput) {
-    amountInput.addEventListener('input', updateTransactionTotal);
-  }
-  
-  // Focus the amount field after adding
-  setTimeout(() => {
-    const amountField = item.querySelector('.transaction-amount');
-    if (amountField) {
-      amountField.focus();
-    }
-  }, 100);
-  
-  // Add it to the list, removing empty state if present
-  if (transactionsList.querySelector('.empty-transactions')) {
-    transactionsList.innerHTML = '';
-  }
-  
-  transactionsList.appendChild(item);
-  
-  // Update UI to reflect changes
-  updateTransactionTotal();
-}
-  
-  /**
-   * Update the total in the transaction modal
-   */
-  function updateTransactionTotal() {
+  function addTransactionRow() {
+    console.log('Adding single new transaction row');
+    
     const transactionsList = getElement('transactions-list');
-    if (!transactionsList) return;
+    const modal = getElement('transaction-modal');
     
-    // Get all transaction amounts
-    const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
-      .map(input => parseFloat(input.value) || 0);
-    
-    // Calculate total
-    const total = amounts.reduce((sum, amount) => sum + amount, 0);
-    
-    // Update total display
-    const totalElement = transactionsList.querySelector('.total-value');
-    if (totalElement) {
-      totalElement.textContent = `€${total}`;
+    if (!transactionsList || !modal) {
+      console.error('Required elements not found');
+      return;
     }
+    
+    const day = modal.getAttribute('data-day');
+    const categoryId = modal.getAttribute('data-category');
+    
+    if (!day || !categoryId) {
+      console.error('Missing day or category information');
+      return;
+    }
+    
+    const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    console.log('Creating single transaction with ID:', newId);
+    
+    const newTx = {
+      id: newId,
+      date: new Date(_currentYear, _currentMonth, parseInt(day)),
+      category: categoryId,
+      amount: 0,
+      description: '',
+      account: 'Main Account'
+    };
+    
+    _transactions.push(newTx);
+    
+    const item = createTransactionItem(newTx);
+    item.classList.add('new-transaction');
+    
+    setTimeout(() => {
+      const amountField = item.querySelector('.transaction-amount');
+      if (amountField) {
+        amountField.focus();
+      }
+    }, 100);
+    
+    if (transactionsList.querySelector('.empty-transactions')) {
+      transactionsList.innerHTML = '';
+    }
+    
+    transactionsList.appendChild(item);
+    
+    updateTransactionTotal();
   }
   
   /**
-   * Set expense data from external source
-   * @param {Array} expenses - Expense data from API
+   * Set expense data from external source (enhanced)
    */
   function setExpenseData(expenses) {
-    if (!expenses || !Array.isArray(expenses)) return;
+    if (!expenses || !Array.isArray(expenses)) {
+      console.error('Invalid expense data provided:', expenses);
+      return;
+    }
     
     console.log('Setting expense data in MonthlyGrid:', expenses.length, 'transactions');
     
-    // Convert API expenses to our format
-    _transactions = expenses.map(expense => ({
-      id: expense.rowIndex || `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      date: expense.date instanceof Date ? expense.date : new Date(expense.date),
-      category: expense.category,
-      amount: parseFloat(expense.amount),
-      description: expense.name || expense.description || '',
-      account: expense.account || 'Main Account'
-    }));
+    // Process the new data
+    processRealExpenseData(expenses);
     
     // Render with the new data
     renderGrid();
   }
-  
- 
 
   // Public methods
   return {
     init: init,
     renderGrid: renderGrid,
     setExpenseData: setExpenseData,
-    openTransactionModal: openTransactionModal // Making this accessible for debugging
+    refresh: refresh,
+    openTransactionModal: openTransactionModal
   };
 })();
 
-// Expose globally without auto-initialization 
+// Expose globally
 window.MonthlyGrid = MonthlyGrid;
+
 </script>
-
-<!-- Transaction Modal -->
-<div id="transaction-modal" class="transaction-modal">
-  <div class="modal-backdrop"></div>
-  <div class="modal-card">
-    <div class="modal-header">
-      <h3 id="modal-title" class="modal-title">Transactions</h3>
-      <button id="close-modal-btn" class="close-btn" aria-label="Close">
-        <i class="material-icons">close</i>
-      </button>
-    </div>
-    
-    <div class="modal-content">
-      <div id="transactions-list" class="transactions-list">
-        <!-- Transactions will be populated here -->
-      </div>
-      
-      <div class="modal-actions">
-        <button id="add-transaction-btn" class="add-transaction-btn">
-          <i class="material-icons">add</i> Add Transaction
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<style>
-/* ======================================================
-   MONTHLY GRID VIEW STYLES - FIXED VERSION
-   ======================================================
-*/
-
-/* ============= MAIN CONTAINER ============= */
-.monthly-grid-container {
-  width: 100%;
-  height: 100%;
-  min-height: 500px;
-  position: relative;
-  overflow: auto;
-  padding-bottom: 16px;
-  max-height: calc(100vh - 90px);
-}
-
-/* Special container size for December (31 days) */
-.december-container.monthly-grid-container {
-  max-height: calc(100vh - 70px);
-}
-
-/* ============= GRID HEADER ============= */
-.grid-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding: 8px 0;
-}
-
-.month-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background-color: #ffffff;
-}
-
-.month-nav-btn {
-  background: none;
-  border: none;
-  color: var(--primary);
-  cursor: pointer;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.month-nav-btn:hover {
-  background-color: rgba(169, 99, 34, 0.1);
-}
-
-.month-year-display {
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-/* ============= GRID TABLE ============= */
-.monthly-grid {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  min-width: 800px; /* Ensure minimum width for small screens */
-}
-
-/* Headers - Double sticky approach with solid backgrounds */
-.monthly-grid thead {
-  position: sticky;
-  top: 0;
-  z-index: 200;
-}
-
-.monthly-grid th {
-  background-color: #f8f5f5 !important;
-  padding: 12px 8px;
-  text-align: left;
-  font-weight: 500;
-  color: var(--text-primary);
-  border-bottom: 2px solid var(--border);
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
-  opacity: 1;
-  position: sticky;
-  top: 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.monthly-grid th.total-header {
-  background-color: rgba(244, 67, 54, 0.12);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  z-index: 201;
-}
-
-.monthly-grid th.category-header,
-.monthly-grid th.date-header,
-.monthly-grid th.notes-header {
-  background-color: #f8f5f5;
-}
-
-.monthly-grid th.date-header {
-  width: 62px !important;
-  min-width: 62px !important;
-  max-width: 62px !important;
-  text-align: center !important;
-  padding-left: 2px !important;
-  padding-right: 2px !important;
-}
-
-.monthly-grid th:last-child {
-  border-right: none;
-}
-
-.date-header {
-  width: 90px;
-}
-
-.category-header {
-  min-width: 110px;
-}
-
-.total-header {
-  width: 110px;
-  text-align: center;
-  background-color: rgba(244, 67, 54, 0.12) !important;
-}
-
-.notes-header {
-  width: 200px;
-}
-
-.category-header-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.category-emoji {
-  font-size: 16px;
-  margin-bottom: 2px;
-}
-
-.category-name {
-  font-size: 11px;
-  text-align: center;
-  margin-bottom: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.category-total {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--primary);
-}
-
-/* Day rows and cells */
-.day-row {
-  background-color: #ffffff;
-}
-
-.day-row:hover {
-  background-color: rgba(169, 99, 34, 0.05);
-}
-
-.weekend-row {
-  background-color: rgba(255, 249, 219, 0.3) !important;
-}
-
-.weekend-row:hover {
-  background-color: rgba(255, 249, 219, 0.5) !important;
-}
-
-.today-row {
-  background-color: rgba(255, 235, 156, 0.3) !important;
-}
-
-.today-row:hover {
-  background-color: rgba(255, 235, 156, 0.5) !important;
-}
-
-.today-cell {
-  font-weight: 500;
-
-}
-
-.monthly-grid td {
-  padding: 4px;
-  border-bottom: 1px solid var(--border);
-  border-right: 1px solid rgba(0, 0, 0, 0.05);
-  height: 45px;
-  vertical-align: middle;
-}
-
-.monthly-grid td:last-child {
-  border-right: none;
-}
-
-.date-container {
-  display: flex;
-  flex-direction: column;
-}
-
-.day-number {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.day-name {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.grid-cell {
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.grid-cell:hover {
-  background-color: rgba(169, 99, 34, 0.1);
-}
-
-.cell-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 4px;
-  border-radius: 4px;
-  color: black;
-  font-weight: 500;
-}
-
-.amount-small {
-  background-color: rgba(76, 175, 80, 0.3);
-  color: black;
-}
-
-.amount-medium {
-  background-color: rgba(255, 152, 0, 0.3);
-  color: black;
-}
-
-.amount-large {
-  background-color: rgba(244, 67, 54, 0.3);
-  color: black;
-}
-
-.amount {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.transaction-count {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.7);
-}
-
-.total-cell {
-  font-weight: 600;
-  color: var(--primary);
-  text-align: center;
-  background-color: rgba(244, 67, 54, 0.08);
-}
-
-.total-amount {
-  font-size: 15px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-}
-
-.notes-cell {
-  position: relative;
-}
-
-.notes-content {
-  min-height: 20px;
-  padding: 4px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  transition: border-color 0.2s;
-  outline: none;
-  font-size: 13px;
-  background-color: rgba(241, 241, 241, 0.5);
-}
-
-.notes-content:hover, .notes-content:focus {
-  border-color: var(--border);
-  background-color: rgba(241, 241, 241, 0.8);
-}
-
-.notes-content:focus {
-  background-color: rgba(255, 255, 255, 0.9);
-}
-
-.grid-error {
-  padding: 20px;
-  text-align: center;
-  color: #d32f2f;
-  background-color: #ffebee;
-  border-radius: 4px;
-  margin: 20px 0;
-}
-
-.retry-btn {
-  margin-top: 10px;
-  padding: 8px 16px;
-  background-color: #d32f2f;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.retry-btn:hover {
-  background-color: #b71c1c;
-}
-
-/* ============= TRANSACTION MODAL ============= */
-.transaction-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1000;
-  display: none;
-  opacity: 0;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.3s;
-}
-
-.transaction-modal.visible {
-  display: flex;
-  opacity: 1;
-}
-
-.modal-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.modal-card {
-  position: relative;
-  width: 90%;
-  max-width: 600px;
-  max-height: 80vh;
-  background-color: var(--surface);
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-  transform: translateY(20px);
-  transition: transform 0.3s ease;
-}
-
-.transaction-modal.visible .modal-card {
-  transform: translateY(0);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.close-btn:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-.modal-content {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-}
-
-.transactions-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.transactions-total {
-  display: flex;
-  justify-content: space-between;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--primary);
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 8px;
-}
-
-.transaction-item {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.transaction-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.transaction-row {
-  display: grid;
-  grid-template-columns: 80px 1fr 120px 40px;
-  gap: 12px;
-  align-items: center;
-}
-
-.transaction-amount, .transaction-description, .transaction-account {
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.transaction-actions {
-  display: flex;
-  justify-content: center;
-}
-
-.transaction-delete {
-  background: none;
-  border: none;
-  color: var(--error);
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-
-.transaction-delete:hover {
-  opacity: 1;
-}
-
-.new-transaction {
-  animation: fade-in 0.3s ease-out;
-}
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.empty-transactions {
-  text-align: center;
-  color: var(--text-secondary);
-  padding: 24px 0;
-  font-style: italic;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-.add-transaction-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.add-transaction-btn:hover {
-  background-color: var(--primary-dark);
-}
-
-/* Dark mode */
-body.dark-mode .monthly-grid th {
-  background-color: #334960 !important;
-  color: var(--dark-text-primary);
-  border-color: rgba(255, 255, 255, 0.1);
-  border-right-color: rgba(255, 255, 255, 0.05);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-body.dark-mode .empty-transactions {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-body.dark-mode .monthly-grid th.total-header {
-  background-color: #ffcbcf !important; /* Solid background for dark mode */
-  backdrop-filter: none !important; /* Remove any backdrop filter */
-  -webkit-backdrop-filter: none !important;
-  background-clip: padding-box !important; /* Prevent bleed-through */
-  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3) !important; /* Stronger shadow for dark mode */
-  z-index: 210 !important; /* Higher z-index to ensure it's on top */
-}
-
-body.dark-mode .monthly-grid td {
-  border-color: rgba(255, 255, 255, 0.1);
-  border-right-color: rgba(255, 255, 255, 0.05);
-  background-color: transparent;
-}
-
-/* Fix day names in dark mode */
-body.dark-mode .day-name {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-body.dark-mode .day-number {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-body.dark-mode .day-row {
-  background-color: var(--dark-surface);
-}
-
-body.dark-mode .day-row:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-body.dark-mode .weekend-row {
-  background-color: rgba(255, 249, 219, 0.05) !important;
-}
-
-body.dark-mode .weekend-row:hover {
-  background-color: rgba(255, 249, 219, 0.1) !important;
-}
-
-body.dark-mode .today-row {
-  background-color: rgba(255, 235, 156, 0.08) !important;
-}
-
-body.dark-mode .today-row:hover {
-  background-color: rgba(255, 235, 156, 0.12) !important;
-}
-
-body.dark-mode .today-cell {
-  border-left: 2px solid rgba(255, 193, 7, 0.3);
-  border-right: 2px solid rgba(255, 193, 7, 0.3);
-}
-
-body.dark-mode .total-header {
-  background-color: rgba(244, 67, 54, 0.15) !important;
-}
-
-body.dark-mode .total-cell {
-  background-color: rgba(244, 67, 54, 0.1);
-}
-
-body.dark-mode .grid-cell:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-body.dark-mode .notes-content {
-  background-color: rgba(58, 58, 58, 0.5);
-}
-
-body.dark-mode .notes-content:hover,
-body.dark-mode .notes-content:focus {
-  background-color: rgba(58, 58, 58, 0.8);
-  border-color: var(--dark-border);
-}
-
-body.dark-mode .notes-content:focus {
-  background-color: rgba(40, 40, 40, 0.9);
-}
-
-body.dark-mode .amount-small {
-  background-color: rgba(76, 175, 80, 0.15);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-body.dark-mode .amount-medium {
-  background-color: rgba(255, 152, 0, 0.15);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-body.dark-mode .amount-large {
-  background-color: rgba(244, 67, 54, 0.15);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-body.dark-mode .transaction-count {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-body.dark-mode .modal-card {
-  background-color: var(--dark-surface);
-  color: var(--dark-text-primary);
-}
-
-body.dark-mode .modal-header {
-  border-color: var(--dark-border);
-}
-
-body.dark-mode .transactions-total {
-  border-color: var(--dark-border);
-}
-
-body.dark-mode .transaction-item {
-  background-color: var(--dark-surface);
-  border-color: var(--dark-border);
-}
-
-body.dark-mode .transaction-amount,
-body.dark-mode .transaction-description,
-body.dark-mode .transaction-account {
-  background-color: var(--dark-surface);
-  color: var(--dark-text-primary);
-  border-color: var(--dark-border);
-}
-
-/* Fix for progress bars in dark mode */
-body.dark-mode .progress-bar-container {
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  overflow: visible !important;
-}
-
-body.dark-mode .progress-bar {
-  background-color: rgb(109, 234, 113) !important;
-  box-shadow: 0 0 5px rgb(109, 234, 113) !important;
-  visibility: visible !important;
-}
-
-body.dark-mode .progress-bar.over-budget {
-  background-color: #f44336 !important;
-  box-shadow: 0 0 5px rgba(244, 67, 54, 0.7) !important;
-}
-
-body.dark-mode .progress-percentage {
-  color: rgba(255, 255, 255, 0.9) !important;
-  opacity: 1 !important;
-}
-
-/* ============= RESPONSIVE DESIGN ============= */
-@media (max-width: 768px) {
-  /* Ensure the quick expense button positioning isn't affected */
-  .quick-expense-btn {
-    position: fixed !important;
-    right: 20px !important;
-    bottom: 15px !important;
-    left: auto !important; /* This is crucial - prevent left positioning */
-  }
-  
-  .monthly-grid-container {
-    max-height: calc(100vh - 180px);
-  }
-  
-  .category-emoji {
-    font-size: 20px;
-    padding: 4px 0;
-  }
-  
-  .category-name {
-    display: none;
-  }
-  
-  .category-header {
-    min-width: 48px !important;
-    width: 48px !important;
-    padding: 8px 4px !important;
-  }
-  
-  .category-header:active .category-emoji {
-    transform: scale(1.2);
-    transition: transform 0.1s;
-  }
-  
-  .monthly-grid th.date-header, 
-  .monthly-grid td.date-cell {
-    width: 50px !important;
-    min-width: 50px !important;
-    max-width: 50px !important;
-  }
-  
-  .day-name {
-    font-size: 10px;
-  }
-  
-  /* Transaction modal adjustments for mobile */
-  .transaction-row {
-    grid-template-columns: 70px 1fr 100px 40px;
-    gap: 8px;
-  }
-}
-
-@media (max-width: 480px) {
-  /* Ensure the quick expense button stays at bottom right */
-  .quick-expense-btn {
-    position: fixed !important;
-    bottom: 15px !important;
-    right: 20px !important;
-    left: auto !important;
-    z-index: 9997 !important; /* Ensure proper z-index */
-  }
-  
-  .notes-header, .notes-cell {
-    display: none;
-  }
-  
-  .monthly-grid td, .monthly-grid th {
-    padding: 2px !important;
-  }
-  
-  .category-header, .total-header {
-    min-width: 40px !important;
-    width: 40px !important;
-  }
-  
-  .amount {
-    font-size: 12px;
-  }
-  
-  .transaction-count {
-    display: none;
-  }
-}
-
-/* Specific adjustments for smaller height screens */
-@media screen and (max-height: 800px) {
-  .budget-table th,
-  .budget-table td {
-    padding: 6px 6px !important;
-    font-size: 13px;
-  }
-  
-  .category-name, .budget-value, .actual-value {
-    font-size: 13px;
-  }
-  
-  .progress-percentage {
-    font-size: 9px;
-  }
-  
-  .progress-bar-container {
-    height: 5px;
-    margin-bottom: 1px;
-  }
-  
-  .budget-alert {
-    padding: 8px 12px;
-    font-size: 16px;
-  }
-}
-
-/* Ensure visibility classes don't affect other elements */
-.hidden {
-  display: none !important;
-}
-
-
-/* Updated styles for the integrated title in transaction modal */
-.integrated-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  width: 100%;
-}
-
-.title-category {
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.title-divider {
-  color: rgba(0, 0, 0, 0.3);
-  font-weight: 300;
-}
-
-.title-date {
-  color: rgba(0, 0, 0, 0.7);
-  font-weight: 400;
-  font-size: 0.9em;
-}
-
-.title-total {
-  color: var(--primary);
-  font-weight: 600;
-  margin-left: auto; /* Push to the right */
-}
-
-/* Adjust modal header to accommodate the new title layout */
-.modal-header {
-  padding: 12px 16px;
-}
-
-/* Remove the old separate total element (visually hidden but still in DOM for backwards compatibility) */
-.transactions-total {
-  display: none;
-}
-
-/* Dark mode adjustments */
-body.dark-mode .title-divider {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-body.dark-mode .title-date {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-body.dark-mode .title-total {
-  color: var(--settings-primary-light);
-}
-
-/* Responsive adjustments */
-@media (max-width: 480px) {
-  .integrated-title {
-    font-size: 14px;
-  }
-  
-  .modal-header {
-    padding: 10px 12px;
-  }
-}
-
-</style>

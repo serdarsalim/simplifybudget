@@ -323,7 +323,7 @@ function updateBudgetValue(categoryName, budgetValue) {
     }
     
     // Get all category names
-    const categoryRange = sheet.getRange("I9:I39");
+    const categoryRange = sheet.getRange("J9:J39");
     const categories = categoryRange.getValues();
     
     // Find the row index of the category
@@ -345,8 +345,8 @@ function updateBudgetValue(categoryName, budgetValue) {
       return { success: false, error: "Invalid budget value" };
     }
     
-    // Update the budget value in column J (budgeted amount)
-    sheet.getRange(rowIndex, 10).setValue(numericValue); // Column J is index 10
+    // Update the budget value in column K (budgeted amount)
+    sheet.getRange(rowIndex, 11).setValue(numericValue); // Column K is index 10
     
     return { 
       success: true,
@@ -491,73 +491,7 @@ function updateAccountBalance(accountName, amount) {
   }
 }
 
-/**
- * Get expense data - Updated to match correct ranges
- * @return {Object} Expense data array
- */
-function getExpenseData() {
-  try {
-    Logger.log("Getting expense data from sheet...");
-    const expenseSheet = getBudgetSheet("Expenses");
-    
-    if (!expenseSheet) {
-      Logger.log("Expenses sheet not found");
-      return { success: false, error: "Expenses sheet not found" };
-    }
-    
-    // Safely get the last row 
-    const lastRow = expenseSheet.getLastRow();
-    Logger.log("Sheet last row: " + lastRow);
-    
-    // Handle case where sheet has fewer than 5 rows (data starts at row 5)
-    if (lastRow < 5) {
-      Logger.log("Sheet has insufficient data rows (less than 5)");
-      return { 
-        success: true, 
-        expenses: [],
-        note: "No expense data found in sheet"
-      };
-    }
-    
-    // Get expense data starting from row 5 (after headers)
-    // Columns D-J (4-10 in 0-index): Date (implied), Amount, Category, Name, Label, Notes, Transaction
-    const dataRange = expenseSheet.getRange(5, 4, lastRow - 4, 7);
-    const expenseData = dataRange.getValues();
-    Logger.log("Retrieved " + expenseData.length + " rows from sheet");
-    
-    // Process into expense objects
-    const expenses = [];
-    for (let i = 0; i < expenseData.length; i++) {
-      const row = expenseData[i];
-      // Skip empty rows - check if amount and category are empty
-      if (!row[1] && !row[2]) continue;
-      
-      expenses.push({
-        rowIndex: i + 5, // Actual row in sheet (starting at row 5)
-        date: row[0], // Date in column D (index 0 in our range)
-        amount: row[1], // Amount in column E (index 1 in our range)
-        category: row[2], // Category in column F (index 2 in our range)
-        name: row[3], // Name in column G (index 3 in our range)
-        label: row[4], // Label in column H (index 4 in our range)
-        notes: row[5], // Notes in column I (index 5 in our range)
-        transaction: row[6] // Transaction in column J (index 6 in our range)
-      });
-    }
-    
-    Logger.log("Processed " + expenses.length + " valid expense records");
-    return {
-      success: true,
-      expenses: expenses
-    };
-  } catch (error) {
-    Logger.log("Error in getExpenseData: " + error.toString());
-    return { 
-      success: false, 
-      error: error.toString(),
-      details: "See server logs for more information"
-    };
-  }
-}
+
 
 
 /**
@@ -566,158 +500,79 @@ function getExpenseData() {
  * @param {number|string} year - Optional year to set before fetching data
  * @return {Object} Combined dashboard data
  */
-function getDashboardData(month, year) {
-  try {
-    // Get the Budget sheet for month/year update if needed
-    const budgetSheet = getBudgetSheet("Budget");
-    if (!budgetSheet) {
-      return { success: false, error: "Budget sheet not found" };
+function getDashboardData() {
+  const ss   = SpreadsheetApp.openById(PropertiesService.getUserProperties().getProperty('BUDGET_SPREADSHEET_ID'));
+  const budgetSheet  = ss.getSheetByName('Budget');
+  const dataSheet    = ss.getSheetByName('Dontedit');
+  
+  // 1) Read month, year & infoMessage
+  const [month,,year]  = budgetSheet.getRange('C1:E1').getValues()[0];
+  const infoMessage    = budgetSheet.getRange('I6').getValue() || '';
+  
+  // 2) Grab the full table (headers in row 300, data in 301–339)
+  const block = dataSheet.getRange('C300:N339').getValues();
+  const headerRow = block[0];
+  const rows      = block.slice(1);
+  
+  // 3) Build a quick name→index map
+  const idx = headerRow.reduce((m,h,i) => { m[h] = i; return m }, {});
+  
+  // 4) Summary & netWorth come from the **first** data row
+  const first = rows[0];
+  const summary = {
+    income:      +first[idx['income']]      || 0,
+    spent:       +first[idx['spent']]       || 0,
+    leftToSpend: +first[idx['leftToSpend']] || 0,
+    infoMessage
+  };
+  const netWorth = {
+    total:   +first[idx['netWorth']] || 0,
+    savings: +first[idx['savings']]  || 0,
+    debts:   +first[idx['debts']]    || 0
+  };
+  
+  // 5) Categories from every row where "categoryName" is truthy
+  const categories = rows
+    .filter(r => r[idx['categoryName']])
+    .map(r => ({
+      name:     r[idx['categoryName']].toString().trim(),
+      budgeted: +r[idx['budgeted']]   || 0,
+      actual:   +r[idx['actual']]     || 0
+    }));
+  
+  // 6) Subscriptions from rows where "Fixed expense" is truthy
+  let subTotal = 0, subCount = 0;
+  const items = rows
+    .filter(r => r[idx['Fixed expense']])
+    .map(r => {
+      subCount++;
+      const amt = +r[idx['amount']] || 0;
+      subTotal += amt;
+      return {
+        id:       subCount,
+        name:     r[idx['Fixed expense']].toString().trim(),
+        amount:   amt,
+        nextDate: r[idx['Due Date']] ? r[idx['Due Date']].toString() : ''
+      };
+    });
+  
+  // 7) Assemble final payload
+  return {
+    success: true,
+    dashboardData: {
+      header:        { month, year },
+      summary,
+      netWorth,
+      categories,
+      subscriptions: { items, total: subTotal, count: subCount }
     }
-    
-    // If month and year provided, update them first in the Budget sheet
-    if (month && year) {
-      console.log(`Updating month/year to ${month} ${year} before fetching data`);
-      budgetSheet.getRange("C1").setValue(month);
-      budgetSheet.getRange("E1").setValue(parseInt(year));
-    }
-    
-    // Get the Dontedit sheet for dashboard data
-    const donteditSheet = getBudgetSheet("Dontedit");
-    if (!donteditSheet) {
-      return { success: false, error: "Dontedit sheet not found" };
-    }
-    
-    // Fetch the entire dashboard data range in a single operation
-    // Adjust the range to match your actual data structure
-    const dashboardData = donteditSheet.getRange("C300:O340").getValues();
-    
-    // Extract values from the SECOND row (row 301) which contains actual data
-    // (row 300 contains headers)
-    const income = dashboardData[1][0] || 0;         // C301
-    const spent = dashboardData[1][1] || 0;          // D301
-    const leftToSpend = dashboardData[1][2] || 0;    // E301
-    const netWorthTotal = dashboardData[1][3] || 0;  // F301
-    const savings = dashboardData[1][4] || 0;        // G301
-    const debts = dashboardData[1][5] || 0;          // H301
-    
-    // Get the current month and year from the Budget sheet
-    const currentMonth = budgetSheet.getRange("C1").getValue();
-    const currentYear = budgetSheet.getRange("E1").getValue();
-    
-    // Get budget info message
-    const infoMessage = budgetSheet.getRange("H6").getValue();
-    
-    // Process categories from the dashboard data
-    const categories = [];
-    for (let i = 1; i < dashboardData.length; i++) {  // Start from index 1 (row 301)
-      const row = dashboardData[i];
-      const categoryName = row[6];  // Column I (index 6 in the array)
-      const budgeted = row[7];      // Column J (index 7 in the array)
-      const actual = row[8];        // Column K (index 8 in the array)
-      
-      // Only process rows that have category data
-      if (categoryName && typeof categoryName === 'string' && categoryName !== '') {
-        // Parse numeric values, removing currency symbols
-        let budgetedValue = 0;
-        let actualValue = 0;
-        
-        if (budgeted !== null && budgeted !== undefined) {
-          if (typeof budgeted === 'number') {
-            budgetedValue = budgeted;
-          } else {
-            const budgetStr = String(budgeted).replace(/[^0-9.-]+/g, '');
-            if (budgetStr) {
-              budgetedValue = parseFloat(budgetStr);
-            }
-          }
-        }
-        
-        if (actual !== null && actual !== undefined) {
-          if (typeof actual === 'number') {
-            actualValue = actual;
-          } else {
-            const actualStr = String(actual).replace(/[^0-9.-]+/g, '');
-            if (actualStr) {
-              actualValue = parseFloat(actualStr);
-            }
-          }
-        }
-        
-        categories.push({
-          name: categoryName,
-          budgeted: budgetedValue,
-          actual: actualValue
-        });
-      }
-    }
-    
-    // Extract subscription text - from second row (row 301)
-    const subscriptionSummary = dashboardData[1][9] || ''; // Column L (index 9)
-    
-    // Process subscriptions
-    const subscriptions = [];
-    for (let i = 1; i < dashboardData.length; i++) {  // Start from index 1 (row 301)
-      const row = dashboardData[i];
-      const expenseName = row[9]; // Column L (index 10)
-      const amount = row[10];      // Column M (index 11)
-      const dueDate = row[11];     // Column N (index 12)
-      
-      // Only process rows that have subscription data
-      if (expenseName && typeof expenseName === 'string' && expenseName !== '') {
-        // Parse amount, removing currency symbols
-        let amountValue = 0;
-        if (amount !== null && amount !== undefined) {
-          if (typeof amount === 'number') {
-            amountValue = amount;
-          } else {
-            const amountStr = String(amount).replace(/[^0-9.-]+/g, '');
-            if (amountStr) {
-              amountValue = parseFloat(amountStr);
-            }
-          }
-        }
-        
-        subscriptions.push({
-          id: subscriptions.length + 1,
-          name: expenseName,
-          amount: amountValue,
-          nextDate: dueDate || ''
-        });
-      }
-    }
-    
-    // Return all data in the same structure as before
-    return {
-      success: true,
-      dashboardData: {
-        header: {
-          month: currentMonth,
-          year: currentYear
-        },
-        summary: {
-          income: income,
-          spent: spent,
-          leftToSpend: leftToSpend,
-          infoMessage: infoMessage
-        },
-        netWorth: {
-          total: netWorthTotal,
-          savings: savings,
-          debts: debts
-        },
-        categories: categories,
-        subscriptions: {
-          items: subscriptions,
-          total: subscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0),
-          count: subscriptions.length
-        }
-      }
-    };
-  } catch (error) {
-    Logger.log("Error in getDashboardData: " + error.toString());
-    return { success: false, error: error.toString() };
-  }
+  };
 }
+
+
+
+
+
 
 function setCurrencyInSheet(currencySymbol) {
   try {
@@ -764,19 +619,15 @@ function setCurrencyInSheet(currencySymbol) {
       netWorthSheet.getRange("D5:P18").setNumberFormat(numberFormat);
       netWorthSheet.getRange("I37:I").setNumberFormat(numberFormat);
       
-      Logger.log("Applied format to Net Worth sheet ranges G37:G, D5:P18, and I37:I");
     }
 
     
     // 6. Format Budget!J9:K39 sheet 
     const budgetSheet = getBudgetSheet("Budget");
     if (budgetSheet) {
-      budgetSheet.getRange("J9:K39").setNumberFormat(numberFormat);
-      Logger.log("Applied format to Budget sheet range J9:K39");
+      budgetSheet.getRange("C6:M50").setNumberFormat(numberFormat);
       
-      // 7. Also format Budget!C6:E12 
-      budgetSheet.getRange("C6:E12").setNumberFormat(numberFormat);
-      Logger.log("Applied format to Budget sheet range C6:E12");
+
     }
     
     // 8. Format Dontedit rows 301:340 
@@ -792,8 +643,8 @@ function setCurrencyInSheet(currencySymbol) {
     const quickLogSheet = getBudgetSheet("Quick Log");
     if (quickLogSheet) {
       // Format the entire data grid from E2 to AL3177
-      quickLogSheet.getRange("E2:AL3177").setNumberFormat(numberFormat);
-      Logger.log("Applied format to Quick Log sheet range E2:AL3177");
+      quickLogSheet.getRange("E2:AL2452").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Quick Log sheet range E2:AL2452");
     }
 
    // 10. Format Setup sheet with specific currency ranges
@@ -852,3 +703,5 @@ function getCurrencyFormat(symbol, showDecimals = false) {
   // Return the specific format or default to a generic one with the given symbol
   return formats[symbol] || `"${symbol}"#,##0${decimalSuffix};("${symbol}"#,##0${decimalSuffix})`;
 }
+
+
