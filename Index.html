@@ -177,15 +177,14 @@
    
    
 
+// Replace the bottom script section in Index.html with this:
+
 <script>
   // Main entry point - Initialize the application
   document.addEventListener('DOMContentLoaded', function() {
     SimBudget.initialize();
-    
-    // Add these lines to switch to Expenses view after initialization
-    setTimeout(function() {
-      SimBudget.Views.switchTo('expense');
-    }, 100);
+    // REMOVED: The setTimeout that was forcing expenses view
+    // Now the initialize function handles view selection with session persistence
   });
 </script>
 

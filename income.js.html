@@ -554,10 +554,11 @@ SimBudget.loadIncomeData = function() {
 
 <style>
 /* ==============================================================
-   INCOME MANAGEMENT - COMPLETELY ISOLATED CSS WITH 'inc-' PREFIX
+   INCOME MANAGEMENT - DASHBOARD STYLE MATCHING
    ==============================================================
    All classes use the 'inc-' prefix to avoid conflicts.
    Mobile-first approach with desktop adjustments after.
+   Matching dashboard's signature border style and color scheme.
 */
 
 /* ======== LOADING ======== */
@@ -578,23 +579,27 @@ SimBudget.loadIncomeData = function() {
 /* ======== MESSAGES ======== */
 .inc-message {
   padding: 12px 16px;
-  border-radius: 4px;
+  border-radius: 0px;
   margin-bottom: 16px;
   font-weight: 500;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .inc-success-message {
-  background-color: rgba(76, 175, 80, 0.1);
+  background-color: #e8f5e9;
   color: #2e7d32;
 }
 
 .inc-error-message {
-  background-color: rgba(244, 67, 54, 0.1);
+  background-color: #ffebee;
   color: #d32f2f;
 }
 
 .inc-info-message {
-  background-color: rgba(33, 150, 243, 0.1);
+  background-color: #e3f2fd;
   color: #1976d2;
 }
 
@@ -608,13 +613,15 @@ SimBudget.loadIncomeData = function() {
 .inc-summary-box {
   grid-column: auto;
   margin-top: 15px;
-  background-color: #ffffff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background-color: #fe9aa1;
+  border-radius: 0px;
+  padding: 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
   width: 100%;
 }
-
 
 @media (min-width: 769px) {
   .inc-summary-box {
@@ -637,29 +644,37 @@ SimBudget.loadIncomeData = function() {
 
 .inc-box-label {
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: black;
   margin-bottom: 4px;
+  font-family: sans-serif;
 }
 
 .inc-box-value {
   font-size: 16px;
   font-weight: 600;
-  color: var(--primary, #7F5539);
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* ======== FORM SECTION ======== */
 .inc-form-container {
   background-color: #ffffff;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 0px;
+  padding: 20px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .inc-section-title {
   margin: 0 0 16px 0;
   font-size: 16px;
   font-weight: 500;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .inc-form {
@@ -675,14 +690,14 @@ SimBudget.loadIncomeData = function() {
 /* First row has 4 columns */
 .inc-row-first {
   display: grid;
-  grid-template-columns: 0.8fr 1fr 0.8fr 0.8fr; /* Date, Name, Amount, Account */
+  grid-template-columns: 1fr 0.5fr 1.5fr 1fr; /* Date, Amount, Name, Account */
   gap: 12px;
 }
 
 /* Second row has 3 columns, with Notes taking more space */
 .inc-row-second {
   display: grid;
-  grid-template-columns: 1fr 2fr 0.8fr; /* Source, Notes (wider), Add button */
+  grid-template-columns: 1fr 2fr 1fr; /* Source, Notes, Add button */
   gap: 12px;
 }
 
@@ -691,7 +706,7 @@ SimBudget.loadIncomeData = function() {
   height: 44px;
   padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 0px;
   font-size: 16px; /* Prevents zoom on iOS */
 }
 
@@ -706,10 +721,14 @@ SimBudget.loadIncomeData = function() {
   top: 50%;
   transform: translateY(-50%);
   color: #666;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .inc-amount {
   padding-left: 24px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .inc-add-btn {
@@ -719,14 +738,18 @@ SimBudget.loadIncomeData = function() {
   justify-content: center;
   gap: 8px;
   width: 100%;
+  border-radius: 0px;
 }
 
 /* ======== TABLE SECTION ======== */
 .inc-table-container {
   background-color: #ffffff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 0px;
+  padding: 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .inc-table-wrapper {
@@ -751,12 +774,16 @@ SimBudget.loadIncomeData = function() {
   font-weight: 500;
   color: var(--text-secondary, #666);
   white-space: nowrap;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .inc-amount-cell {
   font-weight: 500;
-  color: var(--primary, #7F5539);
+  color: #2c3e50;
   white-space: nowrap;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* Hide less important columns on mobile */
@@ -783,6 +810,7 @@ SimBudget.loadIncomeData = function() {
 .inc-more-btn {
   min-width: 120px;
   height: 44px;
+  border-radius: 0px;
 }
 
 /* ======== DARK MODE SUPPORT ======== */
@@ -800,7 +828,7 @@ body.dark-mode .inc-table th {
 
 body.dark-mode .inc-box-value,
 body.dark-mode .inc-amount-cell {
-  color: var(--primary-light, #DDA15E);
+  color: #DDA15E;
 }
 
 body.dark-mode .inc-input {
@@ -811,6 +839,10 @@ body.dark-mode .inc-input {
 
 body.dark-mode .inc-table td {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-currency {
+  color: rgba(255, 255, 255, 0.6);
 }
 
 /* ======== MOBILE ADJUSTMENTS ======== */
@@ -968,7 +1000,6 @@ body.dark-mode .inc-table td {
   .inc-summary-box,
   .inc-form-container,
   .inc-table-container {
-    box-shadow: none !important;
     border: 1px solid #ccc !important;
     break-inside: avoid !important;
   }

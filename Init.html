@@ -280,35 +280,149 @@
       /**
        * Initialize the application
        */
-      initialize: function () {
-        if (_initialized) return;
+      // Replace these two functions in Init.html
 
-        console.log("Initializing SimBudget...");
+/**
+ * Initialize the application - ENHANCED with session persistence
+ */
+initialize: function() {
+  if (_initialized) return;
 
-        // Set up event listeners
-        this.bindEvents();
+  console.log("Initializing SimBudget...");
 
-        // Set up month and year selectors
-        this.setupMonthYearSelectors();
+  // Set up event listeners
+  this.bindEvents();
 
-        // Check for existing sheet URL
-        this.checkExistingConnection();
+  // Set up month and year selectors
+  this.setupMonthYearSelectors();
 
-        // Apply settings
-        this.applySettings();
+  // Check for existing sheet URL
+  this.checkExistingConnection();
 
-        // Load user info
-        this.loadUserInfo();
+  // Apply settings
+  this.applySettings();
 
-        // Load translations based on saved language preference
-        this.loadTranslations();
+  // Load user info
+  this.loadUserInfo();
 
-        // Load initial budget data
-        this.loadViewData("expense");
+  // Load translations based on saved language preference
+  this.loadTranslations();
 
-        _initialized = true;
-        console.log("SimBudget initialized");
-      },
+  // ENHANCED: Check for saved view and switch to it
+  const savedView = this.getSavedView();
+  console.log("Session persistence: Last active view was", savedView);
+  
+  if (savedView && this.isValidView(savedView)) {
+    console.log("Session persistence: Restoring view to", savedView);
+    // Switch to saved view instead of default 'expense'
+    this.Views.switchTo(savedView);
+  } else {
+    console.log("Session persistence: No valid saved view, using default 'expense'");
+    // Load default view data
+    this.loadViewData("expense");
+  }
+
+  _initialized = true;
+  console.log("SimBudget initialized");
+},
+
+/**
+ * Get saved view from localStorage
+ * @return {string|null} Saved view name or null
+ */
+getSavedView: function() {
+  try {
+    return localStorage.getItem('simbudget_lastActiveView');
+  } catch (error) {
+    console.warn("Session persistence: Could not read saved view", error);
+    return null;
+  }
+},
+
+/**
+ * Validate if a view name is supported
+ * @param {string} viewName - View name to validate
+ * @return {boolean} True if valid view
+ */
+isValidView: function(viewName) {
+  const validViews = ['budget', 'expense', 'income', 'recurring', 'netWorth', 'reports', 'categories', 'settings'];
+  return validViews.includes(viewName);
+},
+
+// ENHANCED Views.switchTo function with session persistence
+Views: {
+  /**
+   * Switch to a view - ENHANCED with session persistence
+   */
+  switchTo: function(viewName) {
+    if (!viewName) return;
+
+    console.log("Views.switchTo: Switching to", viewName);
+
+    // Save the view choice for session persistence
+    try {
+      localStorage.setItem('simbudget_lastActiveView', viewName);
+      console.log("Session persistence: Saved active view as", viewName);
+    } catch (error) {
+      console.warn("Session persistence: Could not save active view", error);
+    }
+
+    // Hide all views
+    document.querySelectorAll(".view").forEach((view) => {
+      view.classList.remove("active-view");
+    });
+
+    // Show the selected view
+    const targetView = document.getElementById(viewName + "View");
+    if (targetView) {
+      targetView.classList.add("active-view");
+      _currentView = viewName;
+
+      // Update sidebar active state - ENHANCED for reliability
+      this.updateSidebarActiveState(viewName);
+
+      // Dispatch event when view is activated
+      const event = new CustomEvent("view-activated", {
+        detail: { view: viewName },
+      });
+      document.dispatchEvent(event);
+
+      // Load data for the view
+      SimBudget.loadViewData(viewName);
+    } else {
+      console.error("Views.switchTo: Target view not found", viewName + "View");
+    }
+  },
+
+  /**
+   * Update sidebar active state - NEW helper function
+   * @param {string} viewName - Active view name
+   */
+  updateSidebarActiveState: function(viewName) {
+    // Remove active class from all sidebar items
+    document.querySelectorAll(".sb-nav-item").forEach((item) => {
+      item.classList.remove("active");
+    });
+
+    // Add active class to current view
+    const activeItem = document.querySelector(
+      `.sb-nav-item[data-view="${viewName}"]`
+    );
+    if (activeItem) {
+      activeItem.classList.add("active");
+      console.log("Sidebar: Updated active state for", viewName);
+    } else {
+      console.warn("Sidebar: Could not find nav item for", viewName);
+    }
+  },
+
+  /**
+   * Get current view
+   */
+  getCurrent: function() {
+    return _currentView;
+  }
+},
 
       /**
        * Load translations based on user preference

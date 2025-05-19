@@ -1369,11 +1369,15 @@ input[type="date"].rec-input {
 .rec-grid-item:nth-child(1) .rec-input[type="date"] {
   display: block !important;
   width: 100% !important;
-}/* Style for regular placeholders */
+}
+
+/* Style for regular placeholders */
 .rec-input::placeholder {
   color: #9e9e9e;
   opacity: 1; /* Firefox needs this */
-}/* Currency symbol regular positioning - more space for placeholder */
+}
+
+/* Currency symbol regular positioning - more space for placeholder */
 .rec-currency {
   position: absolute;
   left: 12px;
@@ -1381,18 +1385,26 @@ input[type="date"].rec-input {
   transform: translateY(-50%);
   color: #666;
   z-index: 1;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* Move placeholder text far away from currency symbol */
 .rec-amount {
   padding-left: 36px !important; /* Much larger padding */
   text-indent: 8px; /* Additional text indent for placeholder */
-}/* Dark mode support for date floating labels only */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* Dark mode support for date floating labels only */
 body.dark-mode .rec-grid-item:nth-child(1) label,
 body.dark-mode .rec-grid-item:nth-child(2) label {
   background-color: var(--dark-surface, #1e1e1e);
   color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
-}/* More aggressive fix for amount placeholder position */
+}
+
+/* More aggressive fix for amount placeholder position */
 .rec-amount-wrapper {
   position: relative;
   width: 100%;
@@ -1405,21 +1417,28 @@ body.dark-mode .rec-grid-item:nth-child(2) label {
   transform: translateY(-50%);
   color: #666;
   z-index: 1; /* Lower z-index so it doesn't overlap */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .rec-amount {
   padding-left: 36px !important; /* Much larger left padding */
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* Special styling for amount placeholder */
 input[type="number"].rec-amount::placeholder {
   position: relative;
   z-index: 3;
-}/* ==============================================================
-   RECURRING MANAGEMENT - COMPLETELY ISOLATED CSS WITH 'rec-' PREFIX
+}
+
+/* ==============================================================
+   RECURRING MANAGEMENT - DASHBOARD STYLE MATCHING
    ==============================================================
    All classes use the 'rec-' prefix to avoid conflicts.
    Mobile-first approach with desktop adjustments after.
+   Matching dashboard's signature border style and color scheme.
 */
 
 /* ======== LOADING & ERROR STATES ======== */
@@ -1438,16 +1457,19 @@ input[type="number"].rec-amount::placeholder {
 }
 
 .rec-error {
-  background-color: rgba(244, 67, 54, 0.05);
-  border-radius: 8px;
-  border: 1px solid rgba(244, 67, 54, 0.2);
+  background-color: #ffebee;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .rec-error-details {
   font-family: monospace;
   background: rgba(0,0,0,0.05);
   padding: 8px;
-  border-radius: 4px;
+  border-radius: 0px;
   max-width: 100%;
   overflow-x: auto;
   margin-top: 10px;
@@ -1458,23 +1480,27 @@ input[type="number"].rec-amount::placeholder {
 /* ======== MESSAGES ======== */
 .rec-message {
   padding: 12px 16px;
-  border-radius: 4px;
+  border-radius: 0px;
   margin-bottom: 16px;
   font-weight: 500;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .rec-success-message {
-  background-color: rgba(76, 175, 80, 0.1);
+  background-color: #e8f5e9;
   color: #2e7d32;
 }
 
 .rec-error-message {
-  background-color: rgba(244, 67, 54, 0.1);
+  background-color: #ffebee;
   color: #d32f2f;
 }
 
 .rec-info-message {
-  background-color: rgba(33, 150, 243, 0.1);
+  background-color: #e3f2fd;
   color: #1976d2;
 }
 
@@ -1486,10 +1512,13 @@ input[type="number"].rec-amount::placeholder {
 }
 
 .rec-summary-box {
-  background-color: #ffb8a3; /* Match dashboard theme */
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background-color: #fe9aa1; /* Match dashboard coral */
+  border-radius: 0px;
+  padding: 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
   width: 100%;
 }
 
@@ -1509,20 +1538,25 @@ input[type="number"].rec-amount::placeholder {
 
 .rec-box-label {
   font-size: 12px;
-  color: #607d8b;
+  color: black;
   margin-bottom: 4px;
+  font-family: sans-serif;
 }
 
 .rec-box-value {
   font-size: 18px;
   font-weight: 600;
   color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .rec-box-subtitle {
   font-size: 14px;
-  color: #607d8b;
+  color: #2c3e50;
   font-weight: normal;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 /* Hide summary on mobile */
@@ -1535,16 +1569,21 @@ input[type="number"].rec-amount::placeholder {
 /* ======== FORM SECTION ======== */
 .rec-form-container {
   background-color: #ffffff;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 0px;
+  padding: 20px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .rec-section-title {
   margin: 0 0 16px 0;
   font-size: 16px;
   font-weight: 500;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .rec-form {
@@ -1644,7 +1683,7 @@ input[type="number"].rec-amount::placeholder {
   height: 48px;
   padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 0px;
   font-size: 15px;
   width: 100%;
   box-sizing: border-box;
@@ -1710,11 +1749,12 @@ input[type="date"].rec-input {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background-color: var(--primary, #7F5539);
+  background-color: #2c3e50;
   color: white;
   border: none;
   font-weight: 500;
   width: 100%;
+  border-radius: 0px;
 }
 
 /* Five-column form layout for desktop */
@@ -1778,9 +1818,12 @@ input[type="date"].rec-input {
 /* ======== TABLE SECTION ======== */
 .rec-table-container {
   background-color: #ffffff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 0px;
+  padding: 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
 }
 
 .rec-table-header {
@@ -1805,7 +1848,7 @@ input[type="date"].rec-input {
 .rec-filter-btn {
   background-color: #f5f5f5;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 0px;
   padding: 8px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -1813,16 +1856,16 @@ input[type="date"].rec-input {
 }
 
 .rec-filter-btn.active {
-  background-color: var(--primary, #7F5539);
+  background-color: #2c3e50;
   color: white;
-  border-color: var(--primary, #7F5539);
+  border-color: #2c3e50;
 }
 
 .rec-filter-select {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid #ddd;
-  border-radius: 4px;
+  border-radius: 0px;
   font-size: 14px;
 }
 
@@ -1852,6 +1895,8 @@ input[type="date"].rec-input {
   top: 0;
   background-color: white;
   z-index: 10;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .rec-table tbody tr {
@@ -1863,7 +1908,7 @@ input[type="date"].rec-input {
 }
 
 .rec-table tbody tr.rec-editing {
-  box-shadow: 0 0 0 2px var(--primary, #7F5539);
+  box-shadow: 0 0 0 2px #2c3e50;
   position: relative;
   z-index: 5;
 }
@@ -1871,6 +1916,9 @@ input[type="date"].rec-input {
 .rec-amount-cell {
   font-weight: 500;
   white-space: nowrap;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+  color: #2c3e50;
 }
 
 .rec-action-btn {
@@ -1883,12 +1931,12 @@ input[type="date"].rec-input {
   color: #666;
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: 0px;
 }
 
 .rec-action-btn:hover {
   background-color: rgba(0,0,0,0.05);
-  color: var(--primary, #7F5539);
+  color: #2c3e50;
 }
 
 .rec-actions-cell {
@@ -1907,7 +1955,7 @@ input[type="date"].rec-input {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid #ddd;
-  border-radius: 3px;
+  border-radius: 0px;
   font-size: 14px;
 }
 
@@ -2043,7 +2091,13 @@ input[type="date"].rec-input {
 }
 
 /* ======== DARK MODE SUPPORT ======== */
-body.dark-mode .rec-summary-box,
+/* Summary box becomes dark in dark mode like dashboard */
+body.dark-mode .rec-summary-box {
+  background-color: var(--dark-surface, #1e1e1e) !important;
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87)) !important;
+}
+
+/* White data containers stay dark */
 body.dark-mode .rec-form-container,
 body.dark-mode .rec-table-container,
 body.dark-mode .rec-sample-table table {
@@ -2051,16 +2105,26 @@ body.dark-mode .rec-sample-table table {
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
 }
 
+/* Labels and secondary text */
 body.dark-mode .rec-box-label,
 body.dark-mode .rec-grid-item label,
 body.dark-mode .rec-table th {
-  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6)) !important;
 }
 
-body.dark-mode .rec-box-value {
-  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+/* Values and important numbers - golden color like dashboard */
+body.dark-mode .rec-box-value,
+body.dark-mode .rec-box-subtitle,
+body.dark-mode .rec-amount-cell {
+  color: #DDA15E !important;
 }
 
+/* Currency symbols */
+body.dark-mode .rec-currency {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Form elements */
 body.dark-mode .rec-input,
 body.dark-mode .rec-filter-select,
 body.dark-mode .rec-filter-btn,
@@ -2070,6 +2134,7 @@ body.dark-mode .rec-edit-input {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
+/* Table styling */
 body.dark-mode .rec-table td,
 body.dark-mode .rec-sample-table td {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
@@ -2079,15 +2144,17 @@ body.dark-mode .rec-table th {
   background-color: var(--dark-surface, #1e1e1e);
 }
 
+/* Interactive elements */
 body.dark-mode .rec-action-btn {
   color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
 }
 
 body.dark-mode .rec-action-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
+  color: #DDA15E;
 }
 
-/* Adjust background colors for status rows */
+/* Status row backgrounds */
 body.dark-mode .rec-table tbody tr[data-status="Active"] {
   background-color: rgba(212, 237, 218, 0.15); /* Darker green */
 }
@@ -2100,10 +2167,21 @@ body.dark-mode .rec-table tbody tr[data-status="Ended"] {
   background-color: rgba(248, 215, 218, 0.15); /* Darker pink */
 }
 
-/* Fix color for active filter button */
+/* Filter button active state */
 body.dark-mode .rec-filter-btn.active {
-  background-color: var(--primary-light, #DDA15E);
-  border-color: var(--primary-light, #DDA15E);
+  background-color: #DDA15E;
+  border-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+/* Button styling */
+body.dark-mode .rec-add-btn {
+  background-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .rec-add-btn:hover {
+  background-color: #c9955a;
 }
 
 /* ======== DESKTOP STYLES ======== */
@@ -2171,7 +2249,6 @@ body.dark-mode .rec-filter-btn.active {
   
   .rec-summary-box,
   .rec-table-container {
-    box-shadow: none !important;
     border: 1px solid #ccc !important;
     break-inside: avoid !important;
   }

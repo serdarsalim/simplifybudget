@@ -7,6 +7,7 @@ var MonthlyGrid = (function() {
   let _categories = [];
   let _transactions = [];
   let _isLoading = false;
+  let _currencySymbol = '€'; // Default currency, will be updated from settings
   
   // DOM element cache for performance
   const _elements = {};
@@ -22,6 +23,38 @@ var MonthlyGrid = (function() {
   }
 
   /**
+   * Get currency symbol from user settings
+   */
+  function loadCurrencyFromSettings() {
+    try {
+      if (window.SimBudget && SimBudget.Settings) {
+        _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '€';
+      } else {
+        // Fallback: try localStorage directly
+        const saved = localStorage.getItem('simbudget_settings');
+        if (saved) {
+          const settings = JSON.parse(saved);
+          _currencySymbol = settings.currencySymbol || '€';
+        }
+      }
+      console.log('MonthlyGrid: Using currency symbol:', _currencySymbol);
+    } catch (error) {
+      console.warn('MonthlyGrid: Error loading currency from settings, using default:', error);
+      _currencySymbol = '€';
+    }
+  }
+
+  /**
+   * Format currency amount consistently
+   * @param {number} amount - Amount to format
+   * @param {number} decimals - Number of decimal places (default: 0)
+   * @return {string} Formatted currency string
+   */
+  function formatCurrency(amount, decimals = 0) {
+    return `${_currencySymbol}${amount.toFixed(decimals)}`;
+  }
+
+  /**
    * Initialize the Monthly Grid
    */
   function init(containerId) {
@@ -30,6 +63,14 @@ var MonthlyGrid = (function() {
     }
     
     console.log('Initializing Monthly Grid View...');
+    
+    // Load currency symbol from user settings
+    loadCurrencyFromSettings();
+    
+    // Clean up any existing event handlers first
+    if (_initialized) {
+      unbindEvents();
+    }
     
     // Find and store container element
     if (containerId) {
@@ -288,60 +329,142 @@ var MonthlyGrid = (function() {
   }
 
   /**
-   * Parse date string in format "DD MMM YYYY" (e.g., "28 Feb 2025")
+   * Generate transaction summary for a specific day
+   * @param {number} day - Day of the month
+   * @return {string} Summary string like "Netflix €5, Groceries €45 ..."
+   */
+  function generateDayTransactionSummary(day) {
+    // Get all transactions for this day across all categories
+    const dayTransactions = _transactions.filter(tx => {
+      if (!tx.date) return false;
+      
+      const txDay = tx.date.getDate();
+      const txMonth = tx.date.getMonth();
+      const txYear = tx.date.getFullYear();
+      
+      return txDay === day && txMonth === _currentMonth && txYear === _currentYear;
+    });
+    
+    if (dayTransactions.length === 0) {
+      return '';
+    }
+    
+    // Create summary items with name and amount
+    const summaryItems = dayTransactions.map(tx => {
+      const name = tx.description || tx.name || 'Expense';
+      const amount = formatCurrency(tx.amount);
+      return `${name} ${amount}`;
+    });
+    
+    // Join with commas
+    const fullSummary = summaryItems.join(', ');
+    
+    // Truncate if too long (keep around 50 characters)
+    const maxLength = 50;
+    if (fullSummary.length > maxLength) {
+      // Find the last complete item that fits within the limit
+      let truncated = '';
+      let totalLength = 0;
+      
+      for (let i = 0; i < summaryItems.length; i++) {
+        const testLength = truncated ? 
+          truncated.length + 2 + summaryItems[i].length : // +2 for ", "
+          summaryItems[i].length;
+          
+        if (testLength <= maxLength - 4) { // -4 for " ..."
+          truncated = truncated ? truncated + ', ' + summaryItems[i] : summaryItems[i];
+        } else {
+          break;
+        }
+      }
+      
+      return truncated + ' ...';
+    }
+    
+    return fullSummary;
+  }
+
+  /**
+   * Parse date string - handles both ISO strings and "DD MMM YYYY" format
    * Returns a Date object or null if parsing fails
    */
   function parseSpreadsheetDate(dateString) {
-    if (!dateString || typeof dateString !== 'string') {
+    if (!dateString) {
       return null;
     }
     
-    // Clean the string and split by spaces
-    const parts = dateString.trim().split(/\s+/);
-    if (parts.length !== 3) {
-      console.warn('Invalid date format, expected "DD MMM YYYY":', dateString);
-      return null;
+    // If it's already a Date object, return it
+    if (dateString instanceof Date) {
+      return dateString;
     }
     
-    const [dayStr, monthStr, yearStr] = parts;
+    // Convert to string if not already
+    const dateStr = dateString.toString().trim();
     
-    // Parse day
-    const day = parseInt(dayStr);
-    if (isNaN(day) || day < 1 || day > 31) {
-      console.warn('Invalid day in date:', dateString);
-      return null;
+    // Check if it's an ISO string (from server API)
+    if (dateStr.includes('T') && (dateStr.includes('Z') || dateStr.includes('+'))) {
+      console.log(`Parsing ISO date: "${dateStr}"`);
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        console.log(`ISO parsed: "${dateStr}" -> Day: ${date.getDate()}, Month: ${date.getMonth()}, Year: ${date.getFullYear()}`);
+        return date;
+      }
     }
     
-    // Parse year
-    const year = parseInt(yearStr);
-    if (isNaN(year) || year < 1900 || year > 2100) {
-      console.warn('Invalid year in date:', dateString);
-      return null;
+    // Try "DD MMM YYYY" format
+    const parts = dateStr.split(/\s+/);
+    if (parts.length === 3) {
+      const [dayStr, monthStr, yearStr] = parts;
+      
+      // Parse day
+      const day = parseInt(dayStr);
+      if (isNaN(day) || day < 1 || day > 31) {
+        console.warn('Invalid day in date:', dateStr);
+        return null;
+      }
+      
+      // Parse year
+      const year = parseInt(yearStr);
+      if (isNaN(year) || year < 1900 || year > 2100) {
+        console.warn('Invalid year in date:', dateStr);
+        return null;
+      }
+      
+      // Parse month (convert month abbreviation to 0-based index)
+      const monthMap = {
+        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+      };
+      
+      const month = monthMap[monthStr];
+      if (month === undefined) {
+        console.warn('Invalid month in date:', dateStr);
+        return null;
+      }
+      
+      // Create date using local timezone to avoid timezone shifts
+      const date = new Date(year, month, day, 12, 0, 0, 0); // Set to noon to avoid DST issues
+      
+      // Verify the date is valid (handles cases like Feb 30)
+      if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
+        console.warn('Date components changed during creation, invalid date:', dateStr);
+        return null;
+      }
+      
+      console.log(`Parsed "${dateStr}" -> Day: ${date.getDate()}, Month: ${date.getMonth()}, Year: ${date.getFullYear()}`);
+      return date;
     }
     
-    // Parse month (convert month abbreviation to 0-based index)
-    const monthMap = {
-      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-    };
-    
-    const month = monthMap[monthStr];
-    if (month === undefined) {
-      console.warn('Invalid month in date:', dateString);
-      return null;
+    // Fallback: try standard Date parsing
+    console.log(`Trying fallback parsing for: "${dateStr}"`);
+    const fallbackDate = new Date(dateStr);
+    if (!isNaN(fallbackDate.getTime())) {
+      console.log(`Fallback parsed: "${dateStr}" -> Day: ${fallbackDate.getDate()}, Month: ${fallbackDate.getMonth()}, Year: ${fallbackDate.getFullYear()}`);
+      return fallbackDate;
     }
     
-    // Create date using local timezone to avoid timezone shifts
-    const date = new Date(year, month, day, 12, 0, 0, 0); // Set to noon to avoid DST issues
-    
-    // Verify the date is valid (handles cases like Feb 30)
-    if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
-      console.warn('Date components changed during creation, invalid date:', dateString);
-      return null;
-    }
-    
-    console.log(`Parsed "${dateString}" -> Day: ${date.getDate()}, Month: ${date.getMonth()}, Year: ${date.getFullYear()}`);
-    return date;
+    console.warn('All parsing methods failed for:', dateStr);
+    return null;
   }
 
   /**
@@ -410,7 +533,7 @@ var MonthlyGrid = (function() {
       };
       
       processedTransactions.push(transaction);
-      console.log(`Processed: ${transaction.description} - €${amount} on ${expenseDate.toDateString()} [${cleanCategory}] (Day: ${expenseDate.getDate()})`);
+      console.log(`Processed: ${transaction.description} - ${formatCurrency(amount)} on ${expenseDate.toDateString()} [${cleanCategory}] (Day: ${expenseDate.getDate()})`);
     });
     
     // Store processed transactions (categories are loaded separately)
@@ -494,25 +617,59 @@ var MonthlyGrid = (function() {
     loadRealExpenseData();
   }
 
+  /**
+   * Update currency symbol and refresh display
+   */
+  function updateCurrency() {
+    loadCurrencyFromSettings();
+    if (_initialized) {
+      renderGrid(); // Re-render to show new currency
+    }
+  }
+
   // Track modal states to prevent accidental popups
   let _isOpeningModal = false;
   let _isClosingModal = false;
   
   function bindEvents() {
-    // Month navigation
-    const prevMonth = getElement('prevMonth');
-    const nextMonth = getElement('nextMonth');
+    // Month navigation - DON'T replace elements, just remove/add listeners properly
+    const prevMonth = document.getElementById('prevMonth');
+    const nextMonth = document.getElementById('nextMonth');
     
     if (prevMonth) {
-      prevMonth.addEventListener('click', function() {
+      // Remove existing MonthlyGrid listeners (if any)
+      prevMonth.removeEventListener('click', prevMonth._monthlyGridHandler);
+      
+      // Add our handler and store reference for future removal
+      prevMonth._monthlyGridHandler = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Previous month clicked - current month:', _currentMonth);
         navigateMonth(-1);
-      });
+      };
+      
+      prevMonth.addEventListener('click', prevMonth._monthlyGridHandler);
+      console.log('Bound previous month handler');
+    } else {
+      console.error('prevMonth button not found in DOM');
     }
     
     if (nextMonth) {
-      nextMonth.addEventListener('click', function() {
+      // Remove existing MonthlyGrid listeners (if any)
+      nextMonth.removeEventListener('click', nextMonth._monthlyGridHandler);
+      
+      // Add our handler and store reference for future removal
+      nextMonth._monthlyGridHandler = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Next month clicked - current month:', _currentMonth);
         navigateMonth(1);
-      });
+      };
+      
+      nextMonth.addEventListener('click', nextMonth._monthlyGridHandler);
+      console.log('Bound next month handler');
+    } else {
+      console.error('nextMonth button not found in DOM');
     }
     
     // Cell click handlers (using event delegation)
@@ -545,6 +702,26 @@ var MonthlyGrid = (function() {
     // Add event listeners
     document.addEventListener('click', handleDocumentClick);
     document.addEventListener('touchend', handleTouchEnd);
+  }
+  
+  /**
+   * Clean up event listeners when MonthlyGrid is destroyed/reinitialized
+   */
+  function unbindEvents() {
+    const prevMonth = document.getElementById('prevMonth');
+    const nextMonth = document.getElementById('nextMonth');
+    
+    if (prevMonth && prevMonth._monthlyGridHandler) {
+      prevMonth.removeEventListener('click', prevMonth._monthlyGridHandler);
+      prevMonth._monthlyGridHandler = null;
+    }
+    
+    if (nextMonth && nextMonth._monthlyGridHandler) {
+      nextMonth.removeEventListener('click', nextMonth._monthlyGridHandler);
+      nextMonth._monthlyGridHandler = null;
+    }
+    
+    console.log('Unbound MonthlyGrid navigation handlers');
   }
   
   function handleDocumentClick(e) {
@@ -598,6 +775,14 @@ var MonthlyGrid = (function() {
   }
   
   function navigateMonth(change) {
+    // Prevent navigation while loading
+    if (_isLoading) {
+      console.log('Navigation blocked - already loading data');
+      return;
+    }
+    
+    console.log('BEFORE navigation: month=' + _currentMonth + ', year=' + _currentYear);
+    
     _currentMonth += change;
     
     if (_currentMonth > 11) {
@@ -607,6 +792,8 @@ var MonthlyGrid = (function() {
       _currentMonth = 11;
       _currentYear--;
     }
+    
+    console.log('AFTER navigation: month=' + _currentMonth + ', year=' + _currentYear);
     
     updateMonthYearDisplay();
     
@@ -752,7 +939,7 @@ var MonthlyGrid = (function() {
             
             <div class="modal-actions">
               <button id="add-transaction-btn" class="add-transaction-btn">
-                <i class="material-icons">add</i> Add Transaction
+                <i class="material-icons">add</i> Add More
               </button>
             </div>
           </div>
@@ -802,7 +989,7 @@ var MonthlyGrid = (function() {
       
       const categoryTotal = document.createElement('div');
       categoryTotal.className = 'category-total';
-      categoryTotal.textContent = `€${monthlyTotal.toFixed(0)}`;
+      categoryTotal.textContent = formatCurrency(monthlyTotal);
       
       headerContent.appendChild(categoryEmoji);
       headerContent.appendChild(categoryName);
@@ -833,7 +1020,7 @@ var MonthlyGrid = (function() {
     
     const totalValue = document.createElement('div');
     totalValue.className = 'category-total';
-    totalValue.textContent = `€${grandTotal.toFixed(0)}`;
+    totalValue.textContent = formatCurrency(grandTotal);
     
     totalHeaderContent.appendChild(totalEmoji);
     totalHeaderContent.appendChild(totalName);
@@ -938,7 +1125,7 @@ var MonthlyGrid = (function() {
           }
           
           cell.innerHTML = `<div class="cell-content ${colorClass}">
-                              <span class="amount">€${amount.toFixed(0)}</span>
+                              <span class="amount">${formatCurrency(amount)}</span>
                               <span class="transaction-count">(${dayTransactions.length})</span>
                             </div>`;
         }
@@ -953,18 +1140,47 @@ var MonthlyGrid = (function() {
       if (isToday) totalCell.classList.add('today-cell');
       
       if (dayTotal > 0) {
-        totalCell.innerHTML = `<div class="total-amount">€${dayTotal.toFixed(0)}</div>`;
+        totalCell.innerHTML = `<div class="total-amount">${formatCurrency(dayTotal)}</div>`;
       }
       
       row.appendChild(totalCell);
       
-      // Notes cell
+      // Notes cell - now shows auto-generated transaction summary
       const notesCell = document.createElement('td');
       notesCell.className = 'notes-cell';
       if (isWeekend) notesCell.classList.add('weekend-cell');
       if (isToday) notesCell.classList.add('today-cell');
       
-      notesCell.innerHTML = `<div class="notes-content" contenteditable="true"></div>`;
+      // Generate transaction summary for this day
+      const transactionSummary = generateDayTransactionSummary(day);
+      
+      // Create notes content div (no longer editable)
+      const notesContent = document.createElement('div');
+      notesContent.className = 'notes-content';
+      notesContent.textContent = transactionSummary;
+      
+      // Add title attribute for full summary on hover if truncated
+      if (transactionSummary.includes(' ...')) {
+        // Get the full summary for tooltip
+        const allDayTransactions = _transactions.filter(tx => {
+          if (!tx.date) return false;
+          const txDay = tx.date.getDate();
+          const txMonth = tx.date.getMonth();
+          const txYear = tx.date.getFullYear();
+          return txDay === day && txMonth === _currentMonth && txYear === _currentYear;
+        });
+        
+        const fullSummary = allDayTransactions.map(tx => {
+          const name = tx.description || tx.name || 'Expense';
+          const amount = formatCurrency(tx.amount);
+          return `${name} ${amount}`;
+        }).join(', ');
+        
+        notesContent.title = fullSummary;
+        notesContent.style.cursor = 'help';
+      }
+      
+      notesCell.appendChild(notesContent);
       row.appendChild(notesCell);
       
       tbody.appendChild(row);
@@ -1013,7 +1229,7 @@ var MonthlyGrid = (function() {
           <span class="title-category">${category.emoji} ${category.name}</span>
           <span class="title-divider">|</span>
           <span class="title-date">${formattedDate}</span>
-          ${total > 0 ? `<span class="title-divider">|</span><span class="title-total">Total: €${total.toFixed(2)}</span>` : ''}
+          ${total > 0 ? `<span class="title-divider">|</span><span class="title-total">Total: ${formatCurrency(total, 2)}</span>` : ''}
         </div>
       `;
     }
@@ -1051,10 +1267,21 @@ var MonthlyGrid = (function() {
     item.className = 'transaction-item';
     item.setAttribute('data-id', tx.id);
     
+    // Use placeholders instead of default values for better UX
+    const amountValue = tx.amount && tx.amount > 0 ? tx.amount : '';
+    const amountPlaceholder = _currencySymbol; // Just the currency symbol
+    const descriptionValue = tx.description || '';
+    const descriptionPlaceholder = 'Name';
+    
     item.innerHTML = `
       <div class="transaction-row">
-        <input type="number" class="transaction-amount" value="${tx.amount}" min="0" step="0.01">
-        <input type="text" class="transaction-description" value="${tx.description || ''}">
+        <input type="number" class="transaction-amount" 
+               value="${amountValue}" 
+               placeholder="${amountPlaceholder}"
+               min="0" step="0.01">
+        <input type="text" class="transaction-description" 
+               value="${descriptionValue}"
+               placeholder="${descriptionPlaceholder}">
         <select class="transaction-account">
           <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
           <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
@@ -1125,7 +1352,7 @@ var MonthlyGrid = (function() {
     
     const titleTotal = modalTitle.querySelector('.title-total');
     if (titleTotal) {
-      titleTotal.textContent = `Total: €${total.toFixed(2)}`;
+      titleTotal.textContent = `Total: ${formatCurrency(total, 2)}`;
     } else if (total > 0) {
       const titleContent = modalTitle.querySelector('.integrated-title');
       if (titleContent) {
@@ -1135,7 +1362,7 @@ var MonthlyGrid = (function() {
         
         const newTotal = document.createElement('span');
         newTotal.className = 'title-total';
-        newTotal.textContent = `Total: €${total.toFixed(2)}`;
+        newTotal.textContent = `Total: ${formatCurrency(total, 2)}`;
         
         titleContent.appendChild(divider);
         titleContent.appendChild(newTotal);
@@ -1244,11 +1471,1150 @@ var MonthlyGrid = (function() {
     renderGrid: renderGrid,
     setExpenseData: setExpenseData,
     refresh: refresh,
-    openTransactionModal: openTransactionModal
+    updateCurrency: updateCurrency,  // Add this for external updates
+    openTransactionModal: openTransactionModal,
+    unbindEvents: unbindEvents
   };
 })();
+
+// Test function to examine raw date data from spreadsheet
+function testRawDateData() {
+  console.log("=== TESTING RAW DATE DATA FROM SPREADSHEET ===");
+  
+  if (!window.API || typeof API.testRawExpenseDates !== 'function') {
+    console.error("API.testRawExpenseDates function not found. Need to add it to API.html");
+    return;
+  }
+  
+  API.testRawExpenseDates(
+    function(result) {
+      console.log("Raw date test results:", result);
+      
+      if (result.success && result.dates) {
+        console.log("=== SPREADSHEET DATE ANALYSIS ===");
+        console.log("Total rows examined:", result.totalRows);
+        console.log("Non-empty dates found:", result.dates.length);
+        
+        // Group by what the raw value looks like
+        const dateFormats = {};
+        const dateTypes = {};
+        
+        result.dates.forEach((item, index) => {
+          const rawValue = item.rawValue;
+          const valueType = typeof rawValue;
+          const valueString = String(rawValue);
+          
+          // Track types
+          dateTypes[valueType] = (dateTypes[valueType] || 0) + 1;
+          
+          // Track formats
+          if (!dateFormats[valueString]) {
+            dateFormats[valueString] = {
+              count: 0,
+              type: valueType,
+              sampleRow: item.row,
+              parsedDate: item.parsedDate
+            };
+          }
+          dateFormats[valueString].count++;
+          
+          // Log first 10 examples
+          if (index < 10) {
+            console.log(`Row ${item.row}: "${rawValue}" (${valueType}) -> ${item.parsedDate}`);
+          }
+        });
+        
+        console.log("\n=== DATE TYPE SUMMARY ===");
+        Object.entries(dateTypes).forEach(([type, count]) => {
+          console.log(`${type}: ${count} occurrences`);
+        });
+        
+        console.log("\n=== DATE FORMAT SUMMARY ===");
+        Object.entries(dateFormats)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 10) // Show top 10 formats
+          .forEach(([format, info]) => {
+            console.log(`"${format}" (${info.type}): ${info.count} times`);
+          });
+      } else {
+        console.error("Failed to get date data:", result.error);
+      }
+    },
+    function(error) {
+      console.error("Error testing raw dates:", error);
+    }
+  );
+}
+
+// Add to window for easy testing
+window.testRawDateData = testRawDateData;
 
 // Expose globally
 window.MonthlyGrid = MonthlyGrid;
 
 </script>
+
+<style>
+/* ======================================================
+   MONTHLY GRID VIEW STYLES - DASHBOARD STYLE MATCHING
+   ======================================================
+   Matching dashboard's signature border style and color scheme.
+*/
+
+/* ============= MAIN CONTAINER ============= */
+.monthly-grid-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  position: relative;
+  overflow: auto;
+  padding: 8px 16px 16px 16px;
+  max-height: calc(100vh - 90px);
+  max-width: 1200px;
+  margin: 0 auto;
+  background-color: #ffffff;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+}
+
+/* ============= GRID HEADER ============= */
+.grid-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 8px 0;
+  background-color: #fe9aa1;
+  border-radius: 0px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+}
+
+.month-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: transparent;
+}
+
+.month-nav-btn {
+  background: none;
+  border: none;
+  color: #2c3e50;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 0px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.month-nav-btn:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.month-year-display {
+  font-size: 18px;
+  font-weight: 500;
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* ============= GRID TABLE ============= */
+.monthly-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 750px;
+}
+
+/* Headers - Sticky positioning with dashboard style */
+.monthly-grid thead {
+  position: sticky;
+  top: 0px;
+  z-index: 200;
+}
+
+.monthly-grid th {
+  background-color: #f8f5f5 !important;
+  padding: 6px 4px;
+  text-align: left;
+  font-weight: 500;
+  color: #2c3e50;
+  border-bottom: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+  position: sticky;
+  top: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  z-index: 210;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.monthly-grid th.total-header {
+  background-color: #f8e4e4 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  z-index: 220;
+}
+
+.monthly-grid th.date-header {
+  width: 60px !important;
+  min-width: 60px !important;
+  max-width: 60px !important;
+  text-align: center !important;
+  padding: 6px 4px !important;
+  position: sticky !important;
+  left: 0 !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+  background-color: #f7f5f5 !important;
+  border-bottom: 1px solid #ddd !important;
+  border-right: 1px solid #ddd !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+.category-header {
+  min-width: 75px;
+  width: 75px;
+}
+
+.total-header {
+  width: 80px;
+  text-align: center;
+}
+
+.notes-header {
+  width: 120px;
+}
+
+/* Category header content layout */
+.category-header-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Emoji styling - centered on top */
+.category-emoji {
+  font-size: 18px;
+  line-height: 1;
+  margin: 0;
+  padding: 2px 0;
+  text-align: center;
+}
+
+/* Category name styling - below emoji, centered */
+.category-name {
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  font-weight: 500;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* Category total styling */
+.category-total {
+  font-size: 13px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* Day rows and cells */
+.day-row {
+  background-color: #ffffff;
+}
+
+.day-row:hover {
+  background-color: rgba(44, 62, 80, 0.05);
+}
+
+.weekend-row {
+  background-color: rgba(255, 249, 219, 0.3) !important;
+}
+
+.weekend-row:hover {
+  background-color: rgba(255, 249, 219, 0.5) !important;
+}
+
+.today-row {
+  background-color: rgba(255, 235, 156, 0.3) !important;
+}
+
+.today-row:hover {
+  background-color: rgba(255, 235, 156, 0.5) !important;
+}
+
+.today-cell {
+  font-weight: 500;
+}
+
+.monthly-grid td {
+  padding: 2px;
+  border-bottom: 1px solid #eee;
+  border-right: 1px solid #eee;
+  height: 32px;
+  vertical-align: middle;
+}
+
+.date-cell {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 100 !important;
+  background-color: #f7f5f5 !important;
+}
+
+.date-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.day-number {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  margin: 0;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.day-name {
+  font-size: 9px;
+  color: #666;
+  line-height: 1;
+  margin: 0;
+}
+
+.grid-cell {
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.grid-cell:hover {
+  background-color: rgba(44, 62, 80, 0.1);
+}
+
+/* Cell content with color coding */
+.cell-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 2px;
+  color: black;
+  font-weight: 500;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 0px;
+}
+
+/* Color coding */
+.amount-small {
+  background-color: rgba(76, 175, 80, 0.15); /* Light green */
+  border-left: 3px solid #4CAF50;
+}
+
+.amount-medium {
+  background-color: rgba(255, 193, 7, 0.15); /* Light amber */
+  border-left: 3px solid #FFC107;
+}
+
+.amount-large {
+  background-color: rgba(244, 67, 54, 0.15); /* Light red */
+  border-left: 3px solid #F44336;
+}
+
+.amount {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  margin: 0;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.transaction-count {
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1;
+  margin: 0;
+  font-style: italic;
+}
+
+.total-cell {
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: center;
+  background-color: rgba(244, 67, 54, 0.08);
+}
+
+.total-amount {
+  font-size: 13px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  line-height: 1;
+  font-weight: 700;
+  font-family: 'Lato', sans-serif;
+}
+
+.notes-cell {
+  position: relative;
+}
+
+.notes-content {
+  min-height: 20px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 0px;
+  transition: border-color 0.2s, background-color 0.2s;
+  outline: none;
+  font-size: 10px;
+  background-color: rgba(241, 241, 241, 0.5);
+  line-height: 1.2;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.notes-content:hover, .notes-content:focus {
+  border-color: #ddd;
+  background-color: rgba(241, 241, 241, 0.8);
+}
+
+.notes-content:focus {
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.2);
+}
+
+/* Error states */
+.grid-error {
+  padding: 30px 20px;
+  text-align: center;
+  color: #d32f2f;
+  background-color: #ffebee;
+  border-radius: 0px;
+  margin: 20px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+}
+
+.grid-error h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.grid-error p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+.retry-btn {
+  margin-top: 16px;
+  padding: 10px 20px;
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  border-radius: 0px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.retry-btn:hover {
+  background-color: #b71c1c;
+}
+
+/* Loading indicator */
+.loading-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e0e0e0;
+  border-top: 4px solid #2c3e50;
+  border-radius: 50%;
+  animation: loading-spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes loading-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-indicator p {
+  margin: 8px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.loading-indicator small {
+  font-size: 12px;
+  color: #666;
+  opacity: 0.7;
+}
+
+/* ============= TRANSACTION MODAL ============= */
+.transaction-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  display: none;
+  opacity: 0;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease;
+}
+
+.transaction-modal.visible {
+  display: flex;
+  opacity: 1;
+}
+
+.modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.modal-card {
+  position: relative;
+  width: 90%;
+  max-width: 650px;
+  max-height: 85vh;
+  background-color: #ffffff;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.transaction-modal.visible .modal-card {
+  transform: translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #ddd;
+  background-color: #fafafa;
+  border-radius: 0px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  border-radius: 0px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.modal-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.transaction-item {
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  padding: 16px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.transaction-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Transaction row layout */
+.transaction-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 60px 40px;
+  gap: 12px;
+  align-items: center;
+}
+
+.transaction-amount, .transaction-description {
+  padding: 10px 5px;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.transaction-amount:focus, .transaction-description:focus {
+  border-color: #2c3e50;
+  box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1);
+  outline: none;
+}
+
+/* Compact account dropdown */
+.transaction-account {
+  color: transparent;
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  font-size: 14px;
+  width: 60px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  padding: 10px;
+  transition: border-color 0.2s;
+}
+
+.transaction-account:hover, .transaction-account:focus {
+  border-color: #2c3e50;
+}
+
+.transaction-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.transaction-delete {
+  background: none;
+  border: none;
+  color: #f44336;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s, background-color 0.2s;
+  width: 36px;
+  height: 36px;
+  border-radius: 0px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transaction-delete:hover {
+  opacity: 1;
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+.new-transaction {
+  animation: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.empty-transactions {
+  text-align: center;
+  color: #666;
+  padding: 40px 20px;
+  font-style: italic;
+  font-size: 15px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #ddd;
+}
+
+.add-transaction-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background-color: #2c3e50;
+  color: white;
+  border: none;
+  border-radius: 0px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+
+.add-transaction-btn:hover {
+  background-color: #1e2b37;
+}
+
+/* Modal title layout */
+.integrated-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.title-category {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.title-divider {
+  color: rgba(0, 0, 0, 0.3);
+  font-weight: 300;
+}
+
+.title-date {
+  color: rgba(0, 0, 0, 0.7);
+  font-weight: 400;
+  font-size: 0.9em;
+}
+
+.title-total {
+  color: #2c3e50;
+  font-weight: 600;
+  margin-left: auto;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* ============= RESPONSIVE DESIGN ============= */
+@media (max-width: 768px) {
+  /* Ensure parent elements don't constrain height */
+  .view, #expenseView, #expenseContent {
+    height: 100% !important;
+    max-height: none !important;
+  }
+  
+  .monthly-grid-container {
+    padding: 0px 0px 80px 0px !important; /* Add bottom padding for last day visibility */
+    max-height: none !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    overflow: auto !important;
+    z-index: 1 !important; /* Lower z-index so buttons appear above */
+    box-sizing: border-box !important;
+  }
+  
+  /* Ensure floating buttons stay above the grid */
+  .quick-expense-btn {
+    z-index: 9999 !important; /* Higher z-index to appear above grid */
+  }
+  
+  /* Ensure sidebar toggle stays above the grid */
+  #mobileSidebarToggle, .sidebar-toggle {
+    z-index: 9999 !important; /* Higher z-index to appear above grid */
+  }
+  
+  /* MOBILE: Hide category names, show only emojis */
+  .category-name {
+    display: none !important;
+  }
+  
+  .category-emoji {
+    font-size: 18px;
+    padding: 4px 0;
+  }
+  
+  .category-header {
+    min-width: 40px !important;
+    width: 40px !important;
+    padding: 4px 2px !important;
+  }
+  
+  .monthly-grid th.date-header, 
+  .monthly-grid td.date-cell {
+    width: 45px !important;
+    min-width: 45px !important;
+    max-width: 45px !important;
+  }
+  
+  .day-name {
+    font-size: 8px;
+  }
+  
+  .day-number {
+    font-size: 12px;
+  }
+  
+  .total-header {
+    width: 55px !important;
+  }
+  
+  /* MOBILE: Transaction row optimization */
+  .transaction-row {
+    grid-template-columns: 45px 1fr 40px 40px;
+    gap: 8px;
+  }
+  
+  .transaction-item {
+    padding: 6px;
+  }
+  
+  .modal-header {
+    padding: 16px;
+  }
+  
+  .modal-content {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .notes-header, .notes-cell {
+    display: none;
+  }
+  
+  .monthly-grid td, .monthly-grid th {
+    padding: 1px !important;
+  }
+  
+  .category-header, .total-header {
+    min-width: 35px !important;
+    width: 35px !important;
+  }
+  
+  .amount {
+    font-size: 10px;
+  }
+  
+  .transaction-count {
+    display: none;
+  }
+  
+  .integrated-title {
+    font-size: 15px;
+  }
+}
+
+/* ============= DARK MODE STYLES ============= */
+/* Main container becomes dark */
+body.dark-mode .monthly-grid-container {
+  background-color: var(--dark-surface, #1e1e1e) !important;
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87)) !important;
+}
+
+/* Header becomes dark */
+body.dark-mode .grid-header {
+  background-color: var(--dark-surface, #1e1e1e) !important;
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87)) !important;
+}
+
+body.dark-mode .month-nav-btn {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+body.dark-mode .month-year-display {
+  color: rgba(255, 255, 255, 0.87) !important;
+}
+
+/* Table headers */
+body.dark-mode .monthly-grid th {
+  background-color: #334960 !important;
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-bottom: 1px solid var(--dark-border, rgba(255, 255, 255, 0.12));
+  border-right: 1px solid var(--dark-border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .monthly-grid th.date-header {
+  background-color: #344960 !important;
+}
+
+body.dark-mode .monthly-grid th.total-header {
+  background-color: #5f5f5f !important;
+  box-shadow: 0 3px 4px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Table cells */
+body.dark-mode .monthly-grid td {
+  border-bottom: 1px solid var(--dark-border, rgba(255, 255, 255, 0.12));
+  border-right: 1px solid var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .cell-content {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: #e6e6e6;
+}
+
+body.dark-mode .date-cell {
+  background-color: var(--dark-surface, #1e1e1e) !important;
+}
+
+body.dark-mode .weekend-row .date-cell {
+  background-color: rgba(255, 249, 219, 0.05) !important;
+}
+
+body.dark-mode .today-row .date-cell {
+  background-color: rgba(255, 235, 156, 0.08) !important;
+}
+
+body.dark-mode .day-name {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .day-number {
+  color: #DDA15E !important;
+}
+
+body.dark-mode .day-row {
+  background-color: var(--dark-surface, #1e1e1e);
+}
+
+body.dark-mode .day-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .weekend-row {
+  background-color: rgba(255, 249, 219, 0.05) !important;
+}
+
+body.dark-mode .weekend-row:hover {
+  background-color: rgba(255, 249, 219, 0.1) !important;
+}
+
+body.dark-mode .today-row {
+  background-color: rgba(255, 235, 156, 0.08) !important;
+}
+
+body.dark-mode .today-row:hover {
+  background-color: rgba(255, 235, 156, 0.12) !important;
+}
+
+body.dark-mode .total-cell {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+/* Values get golden color */
+body.dark-mode .amount,
+body.dark-mode .total-amount,
+body.dark-mode .category-total {
+  color: #DDA15E !important;
+}
+
+body.dark-mode .grid-cell:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .notes-content {
+  background-color: rgba(58, 58, 58, 0.5);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .notes-content:hover,
+body.dark-mode .notes-content:focus {
+  background-color: rgba(58, 58, 58, 0.8);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .notes-content:focus {
+  background-color: rgba(40, 40, 40, 0.9);
+}
+
+/* Color coding in dark mode */
+body.dark-mode .amount-small {
+  background-color: rgba(76, 175, 80, 0.2);
+  border-left-color: #4CAF50;
+}
+
+body.dark-mode .amount-medium {
+  background-color: rgba(255, 193, 7, 0.2);
+  border-left-color: #FFC107;
+}
+
+body.dark-mode .amount-large {
+  background-color: rgba(244, 67, 54, 0.2);
+  border-left-color: #F44336;
+}
+
+body.dark-mode .transaction-count {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Modal dark mode */
+body.dark-mode .modal-card {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .modal-header {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .transaction-item {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .transaction-amount,
+body.dark-mode .transaction-description {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .transaction-account {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+}
+
+body.dark-mode .title-divider {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+body.dark-mode .title-date {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .title-total {
+  color: #DDA15E !important;
+}
+
+body.dark-mode .empty-transactions {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .add-transaction-btn {
+  background-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .add-transaction-btn:hover {
+  background-color: #c9955a;
+}
+
+/* Error states dark mode */
+body.dark-mode .grid-error {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: #ef5350;
+}
+
+body.dark-mode .loading-indicator {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body.dark-mode .loading-spinner {
+  border-color: #666;
+  border-top-color: #DDA15E;
+}
+
+/* ============= LARGE SCREEN OPTIMIZATION ============= */
+@media (min-width: 1400px) {
+  .monthly-grid-container {
+    max-width: 1400px;
+    padding: 0;
+  }
+  
+  .category-header {
+    min-width: 85px;
+    width: 85px;
+  }
+  
+  .total-header {
+    width: 90px;
+  }
+  
+  .notes-header {
+    width: 150px;
+  }
+}
+
+/* Utility classes */
+.hidden {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+</style>

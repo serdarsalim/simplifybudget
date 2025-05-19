@@ -36,8 +36,8 @@ function getExpenseData(month, year) {
     const lastRow = donteditSheet.getLastRow();
     Logger.log("getExpenseData: Sheet has " + lastRow + " rows");
     
-    // FIXED: Read headers from row 4
-    const headerRange = "FU4:FZ4"; // Headers are in row 4
+    // Read headers from row 4
+    const headerRange = "FU4:FZ4";
     const headers = donteditSheet.getRange(headerRange).getValues()[0];
     Logger.log("Headers found: " + JSON.stringify(headers));
     
@@ -82,9 +82,9 @@ function getExpenseData(month, year) {
       return { success: false, error: "Missing required columns: " + missing.join(', ') };
     }
     
-    // FIXED: Start from row 5 (since headers are in row 4)
+    // Start from row 5 (since headers are in row 4)
     const startRow = 5;
-    const endRow = Math.min(lastRow, startRow + 1000); // Read max 1000 rows from start
+    const endRow = Math.min(lastRow, startRow + 1000);
     const range = "FU" + startRow + ":FZ" + endRow;
     Logger.log("getExpenseData: Reading range " + range + " (starting from row 5)");
     
@@ -96,6 +96,7 @@ function getExpenseData(month, year) {
     const expenses = [];
     let monthMatches = 0;
     let skippedCount = 0;
+    let incomeSkipped = 0; // Track income transactions skipped
     
     for (let i = 0; i < expenseData.length; i++) {
       const row = expenseData[i];
@@ -113,6 +114,15 @@ function getExpenseData(month, year) {
       
       if (!dateValue || !categoryValue || !amountValue) {
         skippedCount++;
+        continue;
+      }
+      
+      // FILTER OUT INCOME TRANSACTIONS
+      const categoryString = categoryValue.toString().toLowerCase();
+      if (categoryString.includes('income')) {
+        incomeSkipped++;
+        skippedCount++;
+        Logger.log("Skipping income transaction: " + categoryValue);
         continue;
       }
       
@@ -157,9 +167,10 @@ function getExpenseData(month, year) {
     
     Logger.log("getExpenseData: SUMMARY for " + month + "/" + year + ":");
     Logger.log("  - Total rows: " + expenseData.length);
+    Logger.log("  - Income transactions skipped: " + incomeSkipped);
     Logger.log("  - Month matches: " + monthMatches);
     Logger.log("  - Final expenses: " + expenses.length);
-    Logger.log("  - Skipped: " + skippedCount);
+    Logger.log("  - Total skipped: " + skippedCount);
     
     return {
       success: true,
@@ -171,6 +182,7 @@ function getExpenseData(month, year) {
         monthMatches: monthMatches,
         processedRows: expenses.length,
         skippedRows: skippedCount,
+        incomeSkipped: incomeSkipped,
         range: range,
         columnMap: columns
       }

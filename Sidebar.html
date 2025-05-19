@@ -109,17 +109,15 @@
   list-style: none;
 }
 
-.sb-settings-link .sb-nav-link {
-  border-radius: 0 24px 24px 0;
-}
-
 /* Update active state selector to include settings */
 .sb-nav-item.active .sb-nav-link,
 .sb-settings-link .sb-nav-link.active {
-  background-color: rgba(25, 118, 210, 0.12);
+  background-color: rgba(44, 62, 80, 0.12);
   color: var(--sb-primary);
   font-weight: 500;
-}/* App container enhancement */
+}
+
+/* App container enhancement */
 .app-container {
   display: flex !important; /* Keep flex display */
   position: relative; /* Ensure proper positioning context */
@@ -157,27 +155,29 @@
   .sb-sidebar.sb-open {
     transform: translateX(0) !important;
   }
-}/* SimBudget Sidebar - Mobile First Approach */
+}
 
-/* Variables */
+/* SimBudget Sidebar - Dashboard Style Matching */
+
+/* Variables - Updated to Match Dashboard */
 :root {
-  /* Colors - Warm Orange/Yellow Palette */
-  --sb-primary: #a96322;
-  --sb-primary-light: #ffb067;
-  --sb-primary-dark: #e67e00;
-  --sb-accent: #ffd166;
+  /* Colors - Dashboard Palette */
+  --sb-primary: #2c3e50;
+  --sb-primary-light: #DDA15E;
+  --sb-primary-dark: #1e2b37;
+  --sb-accent: #fe9aa1;
   --sb-background: #fffaf1;
   --sb-surface: #ffffff;
-  --sb-text-primary: rgba(43, 31, 10, 0.87);
-  --sb-text-secondary: rgba(43, 31, 10, 0.6);
-  --sb-border: rgba(43, 31, 10, 0.12);
+  --sb-text-primary: rgba(44, 62, 80, 0.87);
+  --sb-text-secondary: rgba(44, 62, 80, 0.6);
+  --sb-border: rgba(44, 62, 80, 0.12);
   
   /* Dark mode colors */
-  --sb-dark-background: #2d2418;
-  --sb-dark-surface: #334960;
-  --sb-dark-text-primary: rgba(255, 243, 224, 0.87);
-  --sb-dark-text-secondary: rgba(255, 243, 224, 0.6);
-  --sb-dark-border: rgba(255, 243, 224, 0.12);
+  --sb-dark-background: #1e1e1e;
+  --sb-dark-surface: #1e1e1e;
+  --sb-dark-text-primary: rgba(255, 255, 255, 0.87);
+  --sb-dark-text-secondary: rgba(255, 255, 255, 0.6);
+  --sb-dark-border: rgba(255, 255, 255, 0.12);
   
   /* Layout */
   --sb-sidebar-width: 260px;
@@ -198,7 +198,8 @@
   display: flex;
   flex-direction: column;
   z-index: 1000;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  border-radius: 0px;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
   overflow-y: auto;
   scrollbar-width: thin;
   flex: 0 0 auto; /* Don't grow or shrink in flexbox */
@@ -226,7 +227,7 @@
 
 .sb-sidebar::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
+  border-radius: 0px;
 }
 
 .sb-sidebar.sb-open {
@@ -252,7 +253,7 @@
   visibility: visible;
 }
 
-/* Sidebar Header */
+/* Sidebar Header - Coral Background */
 .sb-sidebar-header {
   height: var(--sb-header-height);
   display: flex;
@@ -260,6 +261,8 @@
   justify-content: space-between;
   padding: 0 16px;
   border-bottom: 1px solid var(--sb-border);
+  background-color: #fe9aa1;
+  border-radius: 0px;
 }
 
 .sb-logo {
@@ -267,22 +270,24 @@
   align-items: center;
   font-weight: 500;
   font-size: 1.2rem;
-  color: var(--sb-primary);
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
 .sb-logo i {
   margin-right: 10px;
-  color: var(--sb-primary); /* Ensure icon has the same color */
+  color: #2c3e50; /* Ensure icon has the same color */
 }
 
 .sb-toggle-btn {
   background: none;
   border: none;
-  color: var(--sb-text-secondary);
+  color: #2c3e50;
   cursor: pointer;
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: 0px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -314,9 +319,9 @@
   align-items: center;
   padding: 12px 16px;
   text-decoration: none;
-  color: var(--sb-text-secondary);
+  color: var(--sb-text-primary);
   transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
-  border-radius: 0 24px 24px 0;
+  border-radius: 0px;
 }
 
 .sb-nav-link:hover {
@@ -324,7 +329,7 @@
 }
 
 .sb-nav-item.active .sb-nav-link {
-  background-color: rgba(25, 118, 210, 0.12);
+  background-color: rgba(44, 62, 80, 0.12);
   color: var(--sb-primary);
   font-weight: 500;
 }
@@ -367,23 +372,25 @@
   margin-left: 0 !important; /* Ensure no margin on mobile */
 }
 
-/* Toggle Button in Main Content for Mobile */
+/* Toggle Button in Main Content for Mobile - Sharp Design */
 .sb-mobile-toggle {
   position: fixed;
   bottom: 20px;
   left: 20px;
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: 0px;
   background-color: var(--sb-primary);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 10px rgba(230, 126, 0, 0.3);
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
   cursor: pointer;
   z-index: 998;
-  border: none;
   transition: transform var(--sb-transition-fast), background-color var(--sb-transition-fast);
 }
 
@@ -392,28 +399,59 @@
   transform: scale(1.05);
 }
 
-/* Dark Mode */
+/* Dark Mode - Dashboard Style */
 body.dark-mode .sb-sidebar {
-  background-color: var(--sb-dark-surface);
+  background-color: #344960 !important;
   color: var(--sb-dark-text-primary);
   border-color: var(--sb-dark-border);
 }
 
-body.dark-mode .sb-nav-link:hover {
-  background-color: #334960;
-  
+/* Header becomes dark in dark mode */
+body.dark-mode .sb-sidebar-header {
+  background-color: #344960 !important;
+  border-color: var(--sb-dark-border);
 }
-body.dark-mode .sb-sidebar * { color: rgba(255, 243, 224, 0.95) !important; }
 
+body.dark-mode .sb-logo {
+  color: var(--sb-dark-text-primary) !important;
+}
+
+body.dark-mode .sb-logo i {
+  color: var(--sb-dark-text-primary) !important;
+}
+
+body.dark-mode .sb-toggle-btn {
+  color: var(--sb-dark-text-primary) !important;
+}
+
+body.dark-mode .sb-nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .sb-sidebar * { 
+  color: rgba(255, 255, 255, 0.87) !important; 
+}
+
+/* Active nav items get golden color in dark mode */
 body.dark-mode .sb-nav-item.active .sb-nav-link,
 body.dark-mode .sb-settings-link .sb-nav-link.active {
-  background-color: rgba(255, 209, 102, 0.25);
-  color: var(--sb-accent);
+  background-color: rgba(221, 161, 94, 0.25);
+  color: #DDA15E !important;
 }
 
 body.dark-mode .sb-sidebar-header,
 body.dark-mode .sb-sidebar-footer {
   border-color: var(--sb-dark-border);
+}
+
+/* Mobile toggle dark mode */
+body.dark-mode .sb-mobile-toggle {
+  background-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .sb-mobile-toggle:hover {
+  background-color: #c9955a;
 }
 
 /* Desktop Styles (Media Queries) */
