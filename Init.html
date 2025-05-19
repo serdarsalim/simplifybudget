@@ -2062,13 +2062,12 @@ loadExpenseData: function() {
   // 2. THEN initialize MonthlyGrid with the container
   //    This will show the grid with sample data immediately
   if (window.MonthlyGrid) {
-    console.log("LoadExpenseData: Initializing MonthlyGrid with container:", containerId);
     MonthlyGrid.init(containerId);
 
     // 3. FINALLY (optionally) fetch real data
     //    Grid is already visible, so this is non-blocking
     if (window.API && typeof API.getExpenseData === "function") {
-      console.log("LoadExpenseData: Fetching real expense data...");
+     
 
       // Show subtle loading indicator
       const loadingIndicator = document.createElement("div");
@@ -2084,7 +2083,6 @@ loadExpenseData: function() {
 
       API.getExpenseData(
         function(result) {
-          console.log("LoadExpenseData: Real expense data loaded successfully");
 
           // Update grid with real data if available
           if (result && result.success && result.expenses) {
