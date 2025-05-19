@@ -15,6 +15,7 @@ var MonthlyGrid = (function() {
   const CACHE_PREFIX = 'monthlyGrid_expenses_';
   const CACHE_VERSION = '1.0';
   const MAX_CACHE_MONTHS = 6; // Limit cache size
+  const SESSION_STORAGE_KEY = 'monthlyGrid_sessionActive'; // Track if session is new
   
   // DOM element cache for performance
   const _elements = {};
@@ -24,6 +25,23 @@ var MonthlyGrid = (function() {
    */
   function getCacheKey(month, year) {
     return `${year}-${String(month).padStart(2, '0')}`;
+  }
+  
+  /**
+   * Check if this is a new session (page refresh/new tab) and clear cache if so
+   */
+  function handleSessionStart() {
+    // Check if this is a new session
+    const isSessionActive = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    
+    if (!isSessionActive) {
+      // This is a new session (page refresh/new tab)
+      console.log('New session detected - clearing all cache');
+      clearCache();
+      sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
+    } else {
+      console.log('Continuing existing session - cache preserved');
+    }
   }
   
   /**
@@ -45,11 +63,12 @@ var MonthlyGrid = (function() {
       if (cached) {
         const data = JSON.parse(cached);
         
-        // Check cache version and expiry (24 hours)
-        if (data.version === CACHE_VERSION && 
-            Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
-          
-          console.log(`Found expenses in localStorage cache for ${month}/${year}`);
+        // Check cache version and 24-hour expiry (within session)
+        const cacheAge = Date.now() - data.timestamp;
+        const isExpired = cacheAge > 24 * 60 * 60 * 1000; // 24 hours
+        
+        if (data.version === CACHE_VERSION && !isExpired) {
+          console.log(`Found expenses in localStorage cache for ${month}/${year} (age: ${Math.round(cacheAge / 1000 / 60)} minutes)`);
           
           // Store in memory cache for faster access
           _expenseCache.set(key, data.expenses);
@@ -58,7 +77,7 @@ var MonthlyGrid = (function() {
         } else {
           // Cache expired, remove it
           localStorage.removeItem(storageKey);
-          console.log(`Cache expired for ${month}/${year}, removed`);
+          console.log(`Cache expired for ${month}/${year}, removed (age: ${Math.round(cacheAge / 1000 / 60 / 60)} hours)`);
         }
       }
     } catch (error) {
@@ -77,7 +96,7 @@ var MonthlyGrid = (function() {
     // Store in memory cache
     _expenseCache.set(key, expenses);
     
-    // Store in localStorage with metadata
+    // Store in localStorage with timestamp for 24-hour expiry
     try {
       const storageKey = CACHE_PREFIX + key;
       const data = {
@@ -89,7 +108,7 @@ var MonthlyGrid = (function() {
       };
       
       localStorage.setItem(storageKey, JSON.stringify(data));
-      console.log(`Cached expenses for ${month}/${year} in localStorage`);
+      console.log(`Cached expenses for ${month}/${year} in localStorage (valid for 24 hours)`);
       
       // Clean up old cache entries if we exceed the limit
       cleanupCache();
@@ -249,6 +268,9 @@ var MonthlyGrid = (function() {
     }
     
     console.log('Initializing Monthly Grid View...');
+    
+    // Handle session start (clear cache on page refresh/new session)
+    handleSessionStart();
     
     // Load currency symbol from user settings
     loadCurrencyFromSettings();
@@ -884,6 +906,23 @@ var MonthlyGrid = (function() {
       console.error('nextMonth button not found in DOM');
     }
     
+    // ENHANCED: Add refresh button handler
+    const refreshExpenses = document.getElementById('refreshExpenses');
+    if (refreshExpenses) {
+      refreshExpenses.removeEventListener('click', refreshExpenses._monthlyGridHandler);
+      
+      refreshExpenses._monthlyGridHandler = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Refresh expenses clicked - clearing cache and reloading');
+        refresh();
+      };
+      
+      refreshExpenses.addEventListener('click', refreshExpenses._monthlyGridHandler);
+    } else {
+      console.warn('Refresh expenses button not found in DOM - make sure to add it to Index.html');
+    }
+    
     // Cell click handlers (using event delegation)
     const gridContainer = getElement('monthly-grid-container');
     if (gridContainer) {
@@ -922,6 +961,7 @@ var MonthlyGrid = (function() {
   function unbindEvents() {
     const prevMonth = document.getElementById('prevMonth');
     const nextMonth = document.getElementById('nextMonth');
+    const refreshExpenses = document.getElementById('refreshExpenses');
     
     if (prevMonth && prevMonth._monthlyGridHandler) {
       prevMonth.removeEventListener('click', prevMonth._monthlyGridHandler);
@@ -933,6 +973,10 @@ var MonthlyGrid = (function() {
       nextMonth._monthlyGridHandler = null;
     }
     
+    if (refreshExpenses && refreshExpenses._monthlyGridHandler) {
+      refreshExpenses.removeEventListener('click', refreshExpenses._monthlyGridHandler);
+      refreshExpenses._monthlyGridHandler = null;
+    }
   }
   
   function handleDocumentClick(e) {
@@ -1836,7 +1880,6 @@ window.testRawDateData = testRawDateData;
 window.MonthlyGrid = MonthlyGrid;
 
 </script>
-
 <style>
 /* ======================================================
    MONTHLY GRID VIEW STYLES - DASHBOARD STYLE MATCHING

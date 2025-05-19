@@ -26,13 +26,12 @@
         <!-- Default content on load - Budget View -->
         <?!= include('dashboard.html'); ?>
         
-        <!-- Expense View - Initially Hidden -->
-          <!-- Expense View - Using Grid by Default -->
+                 <!-- Expense View - Using Grid by Default -->
           <div id="expenseView" class="view">
           <div class="view-header">
             <h1><i class="material-icons">receipt_long</i> <span data-translate="expenses">Expenses</span></h1>
             <div class="view-actions">
-              <!-- Month/Year Selector - Add this -->
+              <!-- Month/Year Selector -->
               <div class="month-selector">
                 <button id="prevMonth" class="month-nav-btn" aria-label="Previous month">
                   <i class="material-icons">chevron_left</i>
@@ -44,6 +43,11 @@
                   <i class="material-icons">chevron_right</i>
                 </button>
               </div>
+              <!-- ENHANCED: Add refresh button next to month selector -->
+              <button id="refreshExpenses" class="btn">
+                <i class="material-icons">refresh</i> 
+                <span data-translate="refresh">Refresh</span>
+              </button>
                 </div>
               </div>
             
