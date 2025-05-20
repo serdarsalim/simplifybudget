@@ -376,11 +376,14 @@ const _preloader = {
 
           // Save all settings to server
           saveAll: function (settings) {
-            // Save to server 
+            // After successful save to server
             API.setUserSettings(settings, 
               function() {
-                // Success - store in memory for fast access
+                // Success - apply changes immediately
                 Settings._cachedSettings = settings;
+                
+                // Update all grid views with new currency
+                if (window.MonthlyGrid) MonthlyGrid.updateCurrency();
               },
               function(error) {
                 console.error("Error saving settings to server:", error);

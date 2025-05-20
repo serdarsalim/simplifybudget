@@ -259,25 +259,31 @@ function prefetchMonth(month, year) {
   /**
    * Get currency symbol from user settings
    */
-  function loadCurrencyFromSettings() {
-    try {
-      if (window.SimBudget && SimBudget.Settings) {
-        _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '€';
-      } else {
-        // Fallback: try localStorage directly
-        const saved = localStorage.getItem('simbudget_settings');
-        if (saved) {
-          const settings = JSON.parse(saved);
-          _currencySymbol = settings.currencySymbol || '€';
-        }
-      }
-      console.log('MonthlyGrid: Using currency symbol:', _currencySymbol);
-    } catch (error) {
-      console.warn('MonthlyGrid: Error loading currency from settings, using default:', error);
+  /**
+ * Get currency symbol from server-side user settings
+ */
+function loadCurrencyFromSettings() {
+  try {
+    if (window.SimBudget && SimBudget.Settings) {
+      _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '€';
+    } else {
+      // If SimBudget is not available yet, use default (temporary)
       _currencySymbol = '€';
+      
+      // Queue up a retry when SimBudget becomes available
+      setTimeout(() => {
+        if (window.SimBudget && SimBudget.Settings) {
+          _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '€';
+          renderGrid(); // Re-render once settings are loaded
+        }
+      }, 100);
     }
+    console.log('MonthlyGrid: Using currency symbol:', _currencySymbol);
+  } catch (error) {
+    console.warn('MonthlyGrid: Error loading currency from settings, using default:', error);
+    _currencySymbol = '€';
   }
-
+}
   /**
    * Format currency amount consistently
    * @param {number} amount - Amount to format
@@ -2731,8 +2737,7 @@ window.MonthlyGrid = MonthlyGrid;
 .modal-actions {
   display: flex;
   justify-content: center;
-  margin-top: 8px;
-  padding-top: 16px;
+  margin-bottom: 5px;
 }
 
 .add-transaction-btn {
