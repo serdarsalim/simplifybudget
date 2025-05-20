@@ -74,7 +74,7 @@ var NetWorthManager = (function() {
     
     // Load sample data for immediate display
     loadSampleData();
-    
+    initMonthYearSelector();
     // Render the net worth view
     renderNetWorthView();
     
@@ -181,6 +181,43 @@ var NetWorthManager = (function() {
     return viewDate.getTime() === realNextMonthDate.getTime();
   }
   
+
+  /**
+ * Initialize month-year selector for Net Worth view
+ */
+function initMonthYearSelector() {
+  // Set up initial month/year display
+  updateMonthYearDisplay();
+  
+  // Attach event listeners for month navigation buttons
+  const prevMonthBtn = document.getElementById('prevMonthNetWorth');
+  const nextMonthBtn = document.getElementById('nextMonthNetWorth');
+  
+  if (prevMonthBtn) {
+    prevMonthBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateMonth(-1);
+    });
+  }
+  
+  if (nextMonthBtn) {
+    nextMonthBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      navigateMonth(1);
+    });
+  }
+}
+
+/**
+ * Update month/year display text
+ */
+function updateMonthYearDisplay() {
+  const displayElement = document.getElementById('monthYearDisplayNetWorth');
+  if (displayElement) {
+    displayElement.textContent = `${_currentMonth} ${_currentYear}`;
+  }
+}
+
   /**
    * Navigate to a different month
    * @param {number} direction - -1 for previous, 1 for next
@@ -209,7 +246,7 @@ var NetWorthManager = (function() {
       // Get current real month as string for display
       const currentMonthName = getMonthName(realCurrentDate.getMonth());
       const nextMonthName = getMonthName(realNextMonthDate.getMonth());
-      
+        updateMonthYearDisplay();
       showFutureMonthScreen(
         nextMonthName,
         realNextMonthDate.getFullYear(),
@@ -234,7 +271,7 @@ var NetWorthManager = (function() {
     _netWorthData.summary.currentYear = _currentYear;
     _netWorthData.summary.previousMonth = _previousMonth;
     _netWorthData.summary.previousYear = _previousYear;
-    
+      updateMonthYearDisplay();
     // Re-render the view with the new month
     renderNetWorthView();
   }
@@ -249,15 +286,7 @@ var NetWorthManager = (function() {
     if (!container) return;
     
     container.innerHTML = `
-      <div class="nw-month-nav">
-        <button id="prevMonthBtn" class="nw-month-btn">
-          <i class="material-icons">chevron_left</i> Previous Month
-        </button>
-        <h2 class="nw-month-title">${month} ${year}</h2>
-        <button id="nextMonthBtn" class="nw-month-btn" disabled>
-          Next Month <i class="material-icons">chevron_right</i>
-        </button>
-      </div>
+ 
       
       <div class="nw-future-message">
         <div class="nw-future-icon"><i class="material-icons">event_busy</i></div>
@@ -621,15 +650,7 @@ var NetWorthManager = (function() {
     container.innerHTML = `
       <div class="nw-message" id="netWorthMessage" style="display: none;"></div>
       
-      <div class="nw-month-nav">
-        <button id="prevMonthBtn" class="nw-month-btn">
-          <i class="material-icons">chevron_left</i> Previous Month
-        </button>
-        <h2 class="nw-month-title">${monthYearDisplay}</h2>
-        <button id="nextMonthBtn" class="nw-month-btn">
-          Next Month <i class="material-icons">chevron_right</i>
-        </button>
-      </div>
+
       
       <div class="nw-summary-card">
         <div class="nw-summary-content">
@@ -1064,60 +1085,6 @@ SimBudget.loadNetWorthData = function() {
   color: #1976d2;
 }
 
-/* ======== MONTH NAVIGATION ======== */
-.nw-month-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-  background-color: #fe9aa1;
-  border-radius: 0px;
-  padding: 8px 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.5);
-  border-left: 1px solid rgba(0, 0, 0, 0.5);
-  border-right: 4px solid #334a60;
-  border-bottom: 4px solid #334a60;
-}
-
-.nw-month-title {
-  font-size: 16px;
-  font-weight: 500;
-  margin: 0;
-  text-align: center;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-  color: #2c3e50;
-}
-
-.nw-month-btn {
-  background: none;
-  border: none;
-  color: #2c3e50;
-  cursor: pointer;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 0px;
-  transition: background-color 0.2s;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.nw-month-btn:hover,
-.nw-month-btn:active {
-  background-color: rgba(0,0,0,0.04);
-}
-
-.nw-month-btn:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.nw-month-btn i {
-  font-size: 18px;
-}
-
 /* ======== SUMMARY CARD ======== */
 .nw-summary-card {
   background-color: #fe9aa1;
@@ -1129,6 +1096,7 @@ SimBudget.loadNetWorthData = function() {
   border-right: 4px solid #334a60;
   border-bottom: 4px solid #334a60;
   padding: 10px 70px;
+  margin-top: 20px;
 }
 
 .nw-summary-content {

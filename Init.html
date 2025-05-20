@@ -375,22 +375,30 @@ const _preloader = {
           },
 
           // Save all settings to server
-          saveAll: function (settings) {
-            // After successful save to server
-            API.setUserSettings(settings, 
-              function() {
-                // Success - apply changes immediately
-                Settings._cachedSettings = settings;
-                
-                // Update all grid views with new currency
-                if (window.MonthlyGrid) MonthlyGrid.updateCurrency();
-              },
-              function(error) {
-                console.error("Error saving settings to server:", error);
+        saveAll: function (settings) {
+          // After successful save to server
+          API.setUserSettings(settings, 
+            function() {
+              // Success - apply changes immediately
+              Settings._cachedSettings = settings;
+              
+              // Update all grid views with new currency
+              if (window.MonthlyGrid) MonthlyGrid.updateCurrency();
+              
+              // NEW: Broadcast currency change to other components
+              if (settings.currencySymbol) {
+                // Dispatch a custom event that other components can listen for
+                document.dispatchEvent(new CustomEvent('currency-changed', {
+                  detail: { symbol: settings.currencySymbol }
+                }));
               }
-            );
-            return true;
-          },
+            },
+            function(error) {
+              console.error("Error saving settings to server:", error);
+            }
+          );
+          return true;
+        },
 
           // Get all settings (from memory cache or defaults)
           getAll: function () {

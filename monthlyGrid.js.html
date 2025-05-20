@@ -7,7 +7,7 @@ var MonthlyGrid = (function() {
   let _categories = [];
   let _transactions = [];
   let _isLoading = false;
-  let _currencySymbol = '€'; 
+ let _currencySymbol = '$';
   
   // ENHANCED: Smart caching system
   let _expenseCache = new Map(); // In-memory cache for current session
@@ -256,34 +256,36 @@ function prefetchMonth(month, year) {
     return _elements[id];
   }
 
-  /**
-   * Get currency symbol from user settings
-   */
-  /**
- * Get currency symbol from server-side user settings
- */
-function loadCurrencyFromSettings() {
-  try {
-    if (window.SimBudget && SimBudget.Settings) {
-      _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '€';
-    } else {
-      // If SimBudget is not available yet, use default (temporary)
-      _currencySymbol = '€';
-      
-      // Queue up a retry when SimBudget becomes available
-      setTimeout(() => {
-        if (window.SimBudget && SimBudget.Settings) {
-          _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '€';
-          renderGrid(); // Re-render once settings are loaded
+        /**
+         * Get currency symbol from user settings
+         */
+        /**
+       * Get currency symbol from server-side user settings
+       */
+      function loadCurrencyFromSettings() {
+        try {
+          if (window.SimBudget && SimBudget.Settings) {
+            _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
+          } else {
+            // If SimBudget is not available yet, use default
+            _currencySymbol = '$';
+            
+            // Queue up a retry when SimBudget becomes available
+            setTimeout(() => {
+              if (window.SimBudget && SimBudget.Settings) {
+                _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
+                renderGrid(); // Re-render once settings are loaded
+              }
+            }, 100);
+          }
+          console.log('MonthlyGrid: Using currency symbol:', _currencySymbol);
+        } catch (error) {
+          console.warn('MonthlyGrid: Error loading currency from settings, using default:', error);
+          _currencySymbol = '$';
         }
-      }, 100);
-    }
-    console.log('MonthlyGrid: Using currency symbol:', _currencySymbol);
-  } catch (error) {
-    console.warn('MonthlyGrid: Error loading currency from settings, using default:', error);
-    _currencySymbol = '€';
-  }
-}
+      }
+
+      
   /**
    * Format currency amount consistently
    * @param {number} amount - Amount to format
@@ -358,6 +360,8 @@ function loadCurrencyFromSettings() {
       }
     });
   }
+  
+
   
   // Load real data from spreadsheet (with smart caching)
   loadRealExpenseData();
@@ -1689,7 +1693,7 @@ function createTransactionItem(tx) {
   
   // Use placeholders instead of default values for better UX
   const amountValue = tx.amount && tx.amount > 0 ? tx.amount : '';
-  const amountPlaceholder = _currencySymbol; // Just the currency symbol
+  const amountPlaceholder = _currencySymbol;
   const descriptionValue = tx.description || '';
   const descriptionPlaceholder = 'Name';
   

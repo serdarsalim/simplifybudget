@@ -1,4 +1,4 @@
-<!-- recurring.js.html - Advanced Version With Safe Loading -->
+<!-- recurring.js.html - Simplified Version With Emoji-Only Display -->
 <script>
 /**
  * RecurringManager - Recurring transactions management component for SimBudget
@@ -10,12 +10,13 @@ var RecurringManager = (function() {
   let _categories = [];
   let _activeFilter = 'active'; // Default filter: show active items
   let _editingRow = null;
+  let _isAddingNew = false; // Flag to track if we're adding a new subscription
   
-  // Constants for status types with matching color scheme
+  // Constants for status types with matching color scheme (more transparent)
   const STATUS_TYPES = {
-    ACTIVE: {value: 'Active', color: '#d6eacc'}, // Green
-    EXPIRES: {value: 'Expires', color: '#ffe8b3'}, // Yellow
-    ENDED: {value: 'Ended', color: '#f8d7da'}  // Pink
+    ACTIVE: {value: 'Active', color: 'rgba(214, 234, 204, 0.3)'}, // Green with 30% opacity
+    EXPIRES: {value: 'Expires', color: 'rgba(255, 232, 179, 0.3)'}, // Yellow with 30% opacity
+    ENDED: {value: 'Ended', color: 'rgba(248, 215, 218, 0.3)'}  // Pink with 30% opacity
   };
 
   // Constants for frequency options - only the ones used in the spreadsheet
@@ -112,6 +113,31 @@ var RecurringManager = (function() {
   }
 
   /**
+   * Parse category string to extract name and emoji
+   * Format: "Business 💼" -> {name: "Business", emoji: "💼"}
+   */
+  function parseCategoryNameAndEmoji(categoryString) {
+    // Split by space and check if last part is an emoji
+    const parts = categoryString.trim().split(' ');
+    
+    if (parts.length >= 2) {
+      // Check if the last part contains emoji characters
+      const lastPart = parts[parts.length - 1];
+      const emojiRegex = /[\u{1F600}-\u{1F6FF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+      
+      if (emojiRegex.test(lastPart)) {
+        // Last part contains emoji, split name and emoji
+        const name = parts.slice(0, -1).join(' ');
+        const emoji = lastPart;
+        return { name, emoji };
+      }
+    }
+    
+    // No emoji found, return the whole string as name
+    return { name: categoryString, emoji: '' };
+  }
+
+  /**
    * Load categories from CategoriesManager or create defaults
    */
   function loadCategories() {
@@ -119,8 +145,27 @@ var RecurringManager = (function() {
     
     try {
       if (window.CategoriesManager && typeof CategoriesManager.getCategories === 'function') {
-        _categories = CategoriesManager.getCategories();
-        console.log('Loaded categories from CategoriesManager:', _categories.length);
+        const rawCategories = CategoriesManager.getCategories();
+        console.log('Loaded raw categories from CategoriesManager:', rawCategories.length);
+        
+        // Process categories to extract emojis
+        _categories = rawCategories.map(cat => {
+          // If category is already an object with name and emoji
+          if (typeof cat === 'object' && cat.name) {
+            return cat;
+          }
+          
+          // Otherwise parse from string format
+          const categoryString = typeof cat === 'string' ? cat : cat.name || '';
+          const parsed = parseCategoryNameAndEmoji(categoryString);
+          return {
+            name: parsed.name,
+            fullName: categoryString, // Store the full name for filtering/matching
+            emoji: parsed.emoji
+          };
+        });
+        
+        console.log('Processed categories with emoji extraction:', _categories.length);
       } else {
         throw new Error('CategoriesManager not available');
       }
@@ -128,13 +173,13 @@ var RecurringManager = (function() {
       console.log('Using default categories:', err.message);
       // Default categories with emoji icons if CategoriesManager not available
       _categories = [
-        {name: 'Housing 🏡', icon: '🏡'},
-        {name: 'Transport 🚗', icon: '🚗'},
-        {name: 'Utilities 💡', icon: '💡'},
-        {name: 'Fun 🎬', icon: '🎬'},
-        {name: 'Business 💼', icon: '💼'},
-        {name: 'Personal care ❤️', icon: '❤️'},
-        {name: 'Donation 🎗️', icon: '🎗️'}
+        {name: 'Housing', emoji: '🏡', fullName: 'Housing 🏡'},
+        {name: 'Transport', emoji: '🚗', fullName: 'Transport 🚗'},
+        {name: 'Utilities', emoji: '💡', fullName: 'Utilities 💡'},
+        {name: 'Fun', emoji: '🎬', fullName: 'Fun 🎬'},
+        {name: 'Business', emoji: '💼', fullName: 'Business 💼'},
+        {name: 'Personal care', emoji: '❤️', fullName: 'Personal care ❤️'},
+        {name: 'Donation', emoji: '🎗️', fullName: 'Donation 🎗️'}
       ];
     }
   }
@@ -192,7 +237,7 @@ var RecurringManager = (function() {
       } else if (randomStatus > 0.6) {
         // Expires soon
         endDate = new Date(today);
-        endDate.setMonth(endDate.getMonth() + Math.floor(Math.random() * 3) + 1);
+        endDate.setMonth(today.getMonth() + Math.floor(Math.random() * 3) + 1);
         status = STATUS_TYPES.EXPIRES.value;
       }
       
@@ -208,7 +253,7 @@ var RecurringManager = (function() {
       
       // Get random category
       const categoryIndex = Math.floor(Math.random() * _categories.length);
-      const category = _categories[categoryIndex].name;
+      const category = _categories[categoryIndex].fullName || _categories[categoryIndex].name;
       
       // Generate amount between 5 and 100
       const amount = Math.floor(Math.random() * 95) + 5;
@@ -267,15 +312,6 @@ var RecurringManager = (function() {
     console.log('Binding recurring events...');
     
     try {
-      // Add recurring form submission
-      const addRecurringForm = getElement('addRecurringForm');
-      if (addRecurringForm) {
-        addRecurringForm.addEventListener('submit', function(e) {
-          e.preventDefault();
-          addRecurringEntry();
-        });
-      }
-      
       // Status filter buttons
       const filterButtons = document.querySelectorAll('.rec-filter-btn');
       filterButtons.forEach(button => {
@@ -303,14 +339,11 @@ var RecurringManager = (function() {
         });
       }
       
-      // Clear end date button
-      const clearEndDateBtn = getElement('clearEndDate');
-      if (clearEndDateBtn) {
-        clearEndDateBtn.addEventListener('click', function() {
-          const endDateInput = getElement('recurringEndDate');
-          if (endDateInput) {
-            endDateInput.value = '';
-          }
+      // Add New Subscription button
+      const addNewBtn = getElement('addNewSubscription');
+      if (addNewBtn) {
+        addNewBtn.addEventListener('click', function() {
+          addNewRecurringEntry();
         });
       }
       
@@ -359,6 +392,32 @@ var RecurringManager = (function() {
   }
   
   /**
+   * Find category details by name (full name or clean name)
+   * This helps us get the emoji for a given category string
+   */
+  function findCategoryByName(categoryName) {
+    // Try exact match on fullName first
+    let category = _categories.find(c => c.fullName === categoryName);
+    
+    // If not found, try match on name
+    if (!category) {
+      category = _categories.find(c => c.name === categoryName);
+    }
+    
+    // If still not found, parse the category name to extract emoji
+    if (!category) {
+      const parsed = parseCategoryNameAndEmoji(categoryName);
+      category = {
+        name: parsed.name,
+        emoji: parsed.emoji,
+        fullName: categoryName
+      };
+    }
+    
+    return category;
+  }
+  
+  /**
    * Filter subscriptions based on current filters
    */
   function filterSubscriptions() {
@@ -376,6 +435,12 @@ var RecurringManager = (function() {
     console.log('Filtering with status:', _activeFilter, 'and category:', selectedCategory);
     
     rows.forEach(row => {
+      // Skip rows that are being edited or added new
+      if (row.classList.contains('rec-editing') || row.classList.contains('rec-adding-new')) {
+        visibleCount++;
+        return;
+      }
+      
       // Get row data attributes
       const status = row.getAttribute('data-status');
       const category = row.getAttribute('data-category');
@@ -451,8 +516,9 @@ var RecurringManager = (function() {
     // Category (dropdown)
     let categoryOptions = '<select class="rec-edit-input" data-field="category">';
     _categories.forEach(cat => {
-      const selected = cat.name === item.category ? 'selected' : '';
-      categoryOptions += `<option value="${cat.name}" ${selected}>${cat.icon || ''} ${cat.name}</option>`;
+      const catFullName = cat.fullName || `${cat.name} ${cat.emoji}`;
+      const selected = catFullName === item.category ? 'selected' : '';
+      categoryOptions += `<option value="${catFullName}" ${selected}>${cat.emoji} ${cat.name}</option>`;
     });
     categoryOptions += '</select>';
     cells[2].innerHTML = categoryOptions;
@@ -501,6 +567,114 @@ var RecurringManager = (function() {
   }
   
   /**
+   * Add a new empty row for entering a new subscription
+   */
+  function addNewRecurringEntry() {
+    if (_editingRow || _isAddingNew) {
+      // Already editing or adding - finish that first
+      showMessage('Please complete or cancel your current edit first', 'error');
+      return;
+    }
+    
+    console.log('Adding new empty row for subscription entry...');
+    _isAddingNew = true;
+    
+    // Create a new empty row with today's date as start date
+    const today = new Date();
+    const newId = `new-subscription-${Date.now()}`;
+    
+    const tbody = document.querySelector('#recurringTable tbody');
+    if (!tbody) {
+      console.error('Table body not found');
+      _isAddingNew = false;
+      return;
+    }
+    
+    // Create new row
+    const newRow = document.createElement('tr');
+    newRow.setAttribute('data-id', newId);
+    newRow.classList.add('rec-editing', 'rec-adding-new');
+    newRow.setAttribute('data-status', STATUS_TYPES.ACTIVE.value);
+    
+    // Get default category (first one)
+    const defaultCategory = _categories.length > 0 ? 
+      (_categories[0].fullName || `${_categories[0].name} ${_categories[0].emoji}`) : 
+      '';
+    
+    // Set row content with empty fields to fill in
+    const currencySymbol = getCurrencySymbol();
+    
+    // Create editable cells
+    newRow.innerHTML = `
+      <td class="rec-startdate-cell">
+        <input type="date" class="rec-edit-input" value="${formatDateForInput(today)}" data-field="startDate">
+      </td>
+      <td class="rec-name-cell">
+        <input type="text" class="rec-edit-input" value="" data-field="name" placeholder="Subscription name" required>
+      </td>
+      <td class="rec-category-cell">
+        <select class="rec-edit-input" data-field="category">
+          ${_categories.map(cat => {
+            const catFullName = cat.fullName || `${cat.name} ${cat.emoji}`;
+            return `<option value="${catFullName}">${cat.emoji} ${cat.name}</option>`;
+          }).join('')}
+        </select>
+      </td>
+      <td class="rec-frequency-cell">
+        <select class="rec-edit-input" data-field="frequency">
+          ${FREQUENCY_OPTIONS.map(freq => 
+            `<option value="${freq}">${freq}</option>`
+          ).join('')}
+        </select>
+      </td>
+      <td class="rec-amount-cell">
+        <div class="rec-amount-wrapper">
+          <span class="rec-currency">${currencySymbol}</span>
+          <input type="number" class="rec-edit-input rec-amount" value="" data-field="amount" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+      </td>
+      <td class="rec-payment-cell">
+        <input type="text" class="rec-edit-input" value="" data-field="payMethod" placeholder="e.g. Revolut">
+      </td>
+      <td class="rec-enddate-cell">
+        <input type="date" class="rec-edit-input" value="" data-field="endDate">
+      </td>
+      <td class="rec-nextpayment-cell">
+        <span class="rec-noneditable">Auto-calculated</span>
+      </td>
+      <td class="rec-notes-cell">
+        <input type="text" class="rec-edit-input" value="" data-field="notes" placeholder="Optional notes">
+      </td>
+      <td class="rec-actions-cell">
+        <button class="rec-action-btn rec-save-btn" title="Save">
+          <i class="material-icons">save</i>
+        </button>
+        <button class="rec-action-btn rec-cancel-btn" title="Cancel">
+          <i class="material-icons">close</i>
+        </button>
+      </td>
+    `;
+    
+    // Insert at the beginning of the table
+    if (tbody.firstChild) {
+      tbody.insertBefore(newRow, tbody.firstChild);
+    } else {
+      tbody.appendChild(newRow);
+    }
+    
+    // Set focus on the name field
+    setTimeout(() => {
+      const nameInput = newRow.querySelector('input[data-field="name"]');
+      if (nameInput) nameInput.focus();
+    }, 100);
+    
+    // Set editing row to the new ID
+    _editingRow = newId;
+    
+    console.log('New empty row added with ID:', newId);
+  }
+  
+  /**
    * Save edits to a recurring entry
    */
   function saveEdits(itemId) {
@@ -510,52 +684,163 @@ var RecurringManager = (function() {
     const row = document.querySelector(`tr[data-id="${itemId}"]`);
     if (!row) return;
     
-    // Get item data
-    const itemIndex = _recurringData.findIndex(i => i.id === itemId);
-    if (itemIndex === -1) return;
+    // Check if this is a new entry
+    const isNewEntry = row.classList.contains('rec-adding-new');
     
-    // Get values from inputs
+    // Get inputs
     const inputs = row.querySelectorAll('.rec-edit-input');
     
-    // Create updated item
-    const updatedItem = {..._recurringData[itemIndex]};
+    // Collect values
+    const updatedValues = {};
+    let hasErrors = false;
     
-    // Update values from inputs
     inputs.forEach(input => {
       const field = input.getAttribute('data-field');
       
-      if (field === 'endDate') {
-        updatedItem.endDate = input.value ? new Date(input.value) : null;
+      // Required field validation for new entries
+      if (isNewEntry && input.required && (input.value.trim() === '')) {
+        input.classList.add('rec-input-error');
+        hasErrors = true;
+        return;
+      } else {
+        input.classList.remove('rec-input-error');
+      }
+      
+      if (field === 'startDate' || field === 'endDate') {
+        updatedValues[field] = input.value ? new Date(input.value) : null;
       } else if (field === 'amount') {
-        updatedItem.amount = parseFloat(input.value) || 0;
+        updatedValues[field] = parseFloat(input.value) || 0;
+        
+        // Validate amount
+        if (isNewEntry && (isNaN(updatedValues[field]) || updatedValues[field] <= 0)) {
+          input.classList.add('rec-input-error');
+          hasErrors = true;
+        }
       } else if (field) {
-        updatedItem[field] = input.value;
+        updatedValues[field] = input.value;
       }
     });
     
-    // In a real implementation, we would:
-    // 1. Send the updated data to the spreadsheet via API
-    // 2. Get updated calculated values (status, next payment) from the spreadsheet
-    // 3. Update the UI with the response values
+    // Handle validation errors
+    if (hasErrors) {
+      showMessage('Please fill in all required fields correctly', 'error');
+      return;
+    }
     
-    // For now, we'll simulate this by keeping the original status/nextPayment
-    // In production, these would come from the spreadsheet's calculations
+    try {
+      if (isNewEntry) {
+        // Create a new subscription entry
+        const newEntry = {
+          id: itemId,
+          startDate: updatedValues.startDate || new Date(),
+          endDate: updatedValues.endDate,
+          name: updatedValues.name,
+          category: updatedValues.category,
+          frequency: updatedValues.frequency || 'Monthly',
+          amount: updatedValues.amount,
+          payMethod: updatedValues.payMethod,
+          notes: updatedValues.notes || '',
+          status: STATUS_TYPES.ACTIVE.value, // Start as active
+          nextPayment: calculateNextPayment(updatedValues.startDate, updatedValues.frequency)
+        };
+        
+        // Add to data array
+        _recurringData.unshift(newEntry);
+        
+        // Reset adding flag
+        _isAddingNew = false;
+        
+        // Show success message
+        showMessage('New subscription added successfully', 'success');
+      } else {
+        // Update existing item
+        const itemIndex = _recurringData.findIndex(i => i.id === itemId);
+        if (itemIndex === -1) return;
+        
+        // Create updated item
+        const updatedItem = {..._recurringData[itemIndex], ...updatedValues};
+        
+        // Update status and next payment based on dates
+        // Note: In production, these would be calculated by the spreadsheet
+        updatedItem.nextPayment = calculateNextPayment(updatedItem.startDate, updatedItem.frequency, updatedItem.endDate);
+        updatedItem.status = calculateStatus(updatedItem.endDate);
+        
+        // Update the data
+        _recurringData[itemIndex] = updatedItem;
+        
+        // Show success message
+        showMessage('Subscription updated successfully', 'success');
+      }
+      
+      // Render the row with updated data
+      renderRecurringTable();
+      
+      // Clear editing state
+      row.classList.remove('rec-editing', 'rec-adding-new');
+      _editingRow = null;
+      
+      // Update summary
+      updateSummary();
+      
+      // Apply filters
+      filterSubscriptions();
+    } catch (err) {
+      console.error('Error saving subscription:', err);
+      showMessage('Error saving: ' + err.message, 'error');
+    }
+  }
+  
+  /**
+   * Calculate next payment date (for sample data only)
+   * In production, this would be calculated by the spreadsheet
+   */
+  function calculateNextPayment(startDate, frequency, endDate) {
+    const today = new Date();
     
-    // Update the data
-    _recurringData[itemIndex] = updatedItem;
+    // If ended (end date in past), no next payment
+    if (endDate && endDate < today) {
+      return null;
+    }
     
-    // Render the row with updated data
-    renderRow(row, updatedItem);
+    // Simple calculation for sample data
+    const nextPayment = new Date();
     
-    // Clear editing state
-    row.classList.remove('rec-editing');
-    _editingRow = null;
+    // Add days based on frequency for sample data only
+    if (frequency === 'Monthly') {
+      nextPayment.setDate(nextPayment.getDate() + 30);
+    } else if (frequency === 'Quarterly') {
+      nextPayment.setDate(nextPayment.getDate() + 90);
+    } else if (frequency === 'Yearly') {
+      nextPayment.setDate(nextPayment.getDate() + 365);
+    }
     
-    // Update summary
-    updateSummary();
+    return nextPayment;
+  }
+  
+  /**
+   * Calculate status based on end date (for sample data only)
+   * In production, this would be calculated by the spreadsheet
+   */
+  function calculateStatus(endDate) {
+    if (!endDate) {
+      return STATUS_TYPES.ACTIVE.value;
+    }
     
-    // Show success message
-    showMessage('Subscription updated successfully', 'success');
+    const today = new Date();
+    
+    if (endDate < today) {
+      return STATUS_TYPES.ENDED.value;
+    }
+    
+    // If end date is within 3 months, it "expires soon"
+    const threeMonthsFromNow = new Date(today);
+    threeMonthsFromNow.setMonth(today.getMonth() + 3);
+    
+    if (endDate < threeMonthsFromNow) {
+      return STATUS_TYPES.EXPIRES.value;
+    }
+    
+    return STATUS_TYPES.ACTIVE.value;
   }
   
   /**
@@ -568,164 +853,23 @@ var RecurringManager = (function() {
     const row = document.querySelector(`tr[data-id="${_editingRow}"]`);
     if (!row) return;
     
-    // Get original item data
-    const item = _recurringData.find(i => i.id === _editingRow);
-    if (!item) return;
+    // Check if this is a new entry being added
+    const isNewEntry = row.classList.contains('rec-adding-new');
     
-    // Re-render the row with original data
-    renderRow(row, item);
+    if (isNewEntry) {
+      // Remove the row completely if it was a new entry
+      row.remove();
+      _isAddingNew = false;
+    } else {
+      // Otherwise revert to non-editing state
+      const item = _recurringData.find(i => i.id === _editingRow);
+      if (item) {
+        renderRow(row, item);
+      }
+    }
     
     // Clear editing state
-    row.classList.remove('rec-editing');
     _editingRow = null;
-  }
-  
-  /**
-   * Add a new recurring entry from form data
-   */
-  function addRecurringEntry() {
-    console.log('Adding new recurring entry...');
-    
-    const startDateInput = getElement('recurringStartDate');
-    const endDateInput = getElement('recurringEndDate');
-    const nameInput = getElement('recurringName');
-    const categorySelect = getElement('recurringCategory');
-    const frequencySelect = getElement('recurringFrequency');
-    const amountInput = getElement('recurringAmount');
-    const payMethodInput = getElement('recurringPayMethod');
-    const notesInput = getElement('recurringNotes');
-    
-    // Basic validation
-    if (!startDateInput || !nameInput || !categorySelect || !frequencySelect || !amountInput || !payMethodInput) {
-      console.error('Form inputs missing');
-      return;
-    }
-    
-    try {
-      const startDate = new Date(startDateInput.value);
-      const endDate = endDateInput.value ? new Date(endDateInput.value) : null;
-      const name = nameInput.value.trim();
-      const category = categorySelect.value;
-      const frequency = frequencySelect.value;
-      const amount = parseFloat(amountInput.value);
-      const payMethod = payMethodInput.value.trim();
-      const notes = notesInput ? notesInput.value.trim() : '';
-      
-      // Validate required fields
-      if (isNaN(startDate.getTime())) {
-        showMessage('Please enter a valid start date', 'error');
-        startDateInput.focus();
-        return;
-      }
-      
-      if (endDate && isNaN(endDate.getTime())) {
-        showMessage('Please enter a valid end date or leave it empty', 'error');
-        endDateInput.focus();
-        return;
-      }
-      
-      if (endDate && endDate < startDate) {
-        showMessage('End date must be after start date', 'error');
-        endDateInput.focus();
-        return;
-      }
-      
-      if (name === '') {
-        showMessage('Please enter a name', 'error');
-        nameInput.focus();
-        return;
-      }
-      
-      if (isNaN(amount) || amount <= 0) {
-        showMessage('Please enter a valid amount', 'error');
-        amountInput.focus();
-        return;
-      }
-      
-      if (payMethod === '') {
-        showMessage('Please enter a payment method', 'error');
-        payMethodInput.focus();
-        return;
-      }
-      
-      // Create new recurring entry
-      // In production, we'd send this to the spreadsheet and get back
-      // calculated values for nextPayment, status, etc.
-      
-      // For sample data, we'll generate a plausible next payment date
-      // In production this would come from the spreadsheet
-      function getSampleNextPayment() {
-        const nextPayment = new Date();
-        nextPayment.setDate(nextPayment.getDate() + Math.floor(Math.random() * 28) + 1);
-        return nextPayment;
-      }
-      
-      // Determine initial status for sample data
-      // In production, this would come from the spreadsheet
-      const today = new Date();
-      let status = STATUS_TYPES.ACTIVE.value;
-      
-      if (endDate) {
-        if (endDate < today) {
-          status = STATUS_TYPES.ENDED.value;
-        } else {
-          // If end date is within 3 months, it "expires soon"
-          const threeMonthsFromNow = new Date(today);
-          threeMonthsFromNow.setMonth(today.getMonth() + 3);
-          
-          if (endDate < threeMonthsFromNow) {
-            status = STATUS_TYPES.EXPIRES.value;
-          }
-        }
-      }
-      
-      // Create new recurring entry
-      const newEntry = {
-        id: `recurring-new-${Date.now()}`,
-        startDate: startDate,
-        endDate: endDate,
-        name: name,
-        category: category,
-        frequency: frequency,
-        amount: amount,
-        payMethod: payMethod,
-        notes: notes,
-        status: status,
-        nextPayment: status !== STATUS_TYPES.ENDED.value ? getSampleNextPayment() : null
-      };
-      
-      // In production: 
-      // 1. We would send this to the API to add to the spreadsheet
-      // 2. Get back the updated entry with calculated fields
-      // 3. Then add that to our data and update the UI
-      
-      // For now, we'll add it locally
-      _recurringData.unshift(newEntry); // Add to beginning of array
-      
-      // Reset form
-      startDateInput.value = formatDateForInput(new Date()); // Today's date
-      endDateInput.value = '';
-      nameInput.value = '';
-      amountInput.value = '';
-      notesInput.value = '';
-      
-      // Re-render
-      renderRecurringTable();
-      
-      // Update summary
-      updateSummary();
-      
-      // Show success message
-      showMessage('Subscription added successfully', 'success');
-      
-      // Apply filters to show the new item if applicable
-      filterSubscriptions();
-      
-      console.log('New recurring entry added:', newEntry.name);
-    } catch (err) {
-      console.error('Error adding recurring entry:', err);
-      showMessage('Error adding subscription: ' + err.message, 'error');
-    }
   }
   
   /**
@@ -887,9 +1031,12 @@ var RecurringManager = (function() {
     const endDateFormatted = item.endDate ? formatDate(item.endDate) : '';
     const nextPaymentFormatted = item.nextPayment ? formatDate(item.nextPayment) : 'N/A';
     
-    // Get category icon if available
-    const categoryObj = _categories.find(c => c.name === item.category);
-    const categoryIcon = categoryObj && categoryObj.icon ? categoryObj.icon : '';
+    // Find the category object matching this item's category
+    const categoryInfo = findCategoryByName(item.category);
+    
+    // Get emoji and clean name
+    const emoji = categoryInfo ? categoryInfo.emoji : '';
+    const categoryName = categoryInfo ? categoryInfo.name : item.category;
     
     // Get background color based on status
     let statusColor = STATUS_TYPES.ACTIVE.color;
@@ -906,12 +1053,21 @@ var RecurringManager = (function() {
     row.setAttribute('data-status', item.status);
     row.setAttribute('data-category', item.category);
     
-    // Create row HTML
+    // Format frequency for both mobile and desktop
+    // Mobile will show just the first letter using CSS
+    const frequencyLetter = item.frequency.charAt(0);
+    
+    // Create row HTML - SHOWING ONLY EMOJI IN TABLE CELL
     row.innerHTML = `
       <td class="rec-startdate-cell">${startDateFormatted}</td>
       <td class="rec-name-cell">${item.name}</td>
-      <td class="rec-category-cell">${categoryIcon} ${item.category}</td>
-      <td class="rec-frequency-cell">${item.frequency}</td>
+      <td class="rec-category-cell" title="${categoryName}">
+        <span class="category-emoji-only">${emoji}</span>
+      </td>
+      <td class="rec-frequency-cell" data-frequency="${item.frequency}" title="${item.frequency}">
+        <span class="frequency-full">${item.frequency}</span>
+        <span class="frequency-letter">${frequencyLetter}</span>
+      </td>
       <td class="rec-amount-cell">${formatCurrency(item.amount)}</td>
       <td class="rec-payment-cell">${item.payMethod}</td>
       <td class="rec-enddate-cell">${endDateFormatted}</td>
@@ -978,14 +1134,15 @@ var RecurringManager = (function() {
       // Get unique categories from data
       const uniqueCategories = [...new Set(_recurringData.map(item => item.category))];
       
-      // Add options for each category
-      uniqueCategories.forEach(category => {
-        // Find category icon if available
-        const categoryObj = _categories.find(c => c.name === category);
-        const categoryIcon = categoryObj && categoryObj.icon ? categoryObj.icon : '';
+      // Add options for each category - SHOWING EMOJI FIRST, THEN NAME
+      uniqueCategories.forEach(categoryString => {
+        // Find category details to get emoji
+        const categoryInfo = findCategoryByName(categoryString);
+        const emoji = categoryInfo ? categoryInfo.emoji : '';
+        const name = categoryInfo ? categoryInfo.name : categoryString;
         
         categoryFilter.innerHTML += `
-          <option value="${category}">${categoryIcon} ${category}</option>
+          <option value="${categoryString}">${emoji} ${name}</option>
         `;
       });
       
@@ -1010,13 +1167,6 @@ var RecurringManager = (function() {
     try {
       // Get summary data
       const summary = calculateRecurringSummary();
-      
-      // Get currency symbol
-      const currencySymbol = getCurrencySymbol();
-      
-      // Current date for default start date
-      const today = new Date();
-      const startDateValue = formatDateForInput(today);
       
       // Start with fresh HTML
       container.innerHTML = `
@@ -1050,86 +1200,21 @@ var RecurringManager = (function() {
           </div>
         </div>
         
-        <!-- Add Recurring Form -->
-        <div class="rec-form-container">
-          <h3 class="rec-section-title">Add New Subscription</h3>
-          <form id="addRecurringForm" class="rec-form">
-            <div class="rec-form-grid">
-              <div class="rec-grid-item">
-                <label for="recurringStartDate">Start Date*</label>
-                <input type="date" id="recurringStartDate" required class="rec-input" value="${startDateValue}">
-              </div>
-              
-              <div class="rec-grid-item">
-                <label for="recurringEndDate">End Date</label>
-                <div class="rec-end-date-wrapper">
-                  <input type="date" id="recurringEndDate" class="rec-input">
-                  <button type="button" id="clearEndDate" class="rec-clear-btn" title="Clear end date">
-                    <i class="material-icons">close</i>
-                  </button>
-                </div>
-              </div>
-              
-              <div class="rec-grid-item">
-                <label for="recurringName">Name*</label>
-                <input type="text" id="recurringName" placeholder="Subscription name" required class="rec-input">
-              </div>
-              
-              <div class="rec-grid-item">
-                <label for="recurringCategory">Category*</label>
-                <select id="recurringCategory" required class="rec-input">
-                  ${_categories.map(cat => 
-                    `<option value="${cat.name}">${cat.icon || ''} ${cat.name}</option>`
-                  ).join('')}
-                </select>
-              </div>
-              
-              <div class="rec-grid-item">
-                <label for="recurringFrequency">Frequency*</label>
-                <select id="recurringFrequency" required class="rec-input">
-                  ${FREQUENCY_OPTIONS.map(freq => 
-                    `<option value="${freq}">${freq}</option>`
-                  ).join('')}
-                </select>
-              </div>
-              
-              <div class="rec-grid-item">
-                <label for="recurringAmount">Amount*</label>
-                <div class="rec-amount-wrapper">
-                  <span class="rec-currency">${currencySymbol}</span>
-                  <input type="number" id="recurringAmount" placeholder="0.00" min="0.01" step="0.01" required class="rec-input rec-amount">
-                </div>
-              </div>
-              
-              <div class="rec-grid-item">
-                <label for="recurringPayMethod">Payment Method*</label>
-                <input type="text" id="recurringPayMethod" placeholder="e.g. Revolut, QNB" required class="rec-input">
-              </div>
-              
-              <div class="rec-grid-item rec-notes-item">
-                <label for="recurringNotes">Notes</label>
-                <input type="text" id="recurringNotes" placeholder="Optional notes" class="rec-input">
-              </div>
-              
-              <div class="rec-grid-item rec-submit-item">
-                <button type="submit" class="btn primary rec-add-btn">
-                  <i class="material-icons">add</i> Add
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-        
         <!-- Recurring Table Section -->
         <div class="rec-table-container">
           <div class="rec-table-header">
-            <h3 class="rec-section-title">My Subscriptions</h3>
+            <div class="rec-title-bar">
+              <h3 class="rec-section-title">My Subscriptions</h3>
+            </div>
             <div class="rec-filters">
               <div class="rec-status-filters">
                 <button class="rec-filter-btn active" data-status="Active">Active</button>
                 <button class="rec-filter-btn" data-status="Expires">Expiring</button>
                 <button class="rec-filter-btn" data-status="Ended">Ended</button>
                 <button class="rec-filter-btn" data-status="all">All</button>
+                <button id="addNewSubscription" class="rec-add-subscription-btn">
+                  <i class="material-icons">add</i> Add Subscription
+                </button>
               </div>
               <div class="rec-category-filter">
                 <select id="categoryFilter" class="rec-filter-select">
@@ -1145,7 +1230,7 @@ var RecurringManager = (function() {
                 <tr>
                   <th>Start Date</th>
                   <th>Name</th>
-                  <th>Category</th>
+                  <th title="Category">Cat</th>
                   <th>Frequency</th>
                   <th>Amount</th>
                   <th>Payment</th>
@@ -1218,7 +1303,7 @@ var RecurringManager = (function() {
           payMethod: item.payMethod || 'Other',
           notes: item.notes || '',
           status: item.status || STATUS_TYPES.ACTIVE.value,
-          nextPayment: item.nextPayment ? new Date(item.nextPayment) : calculateNextPayment(startDate, item.frequency, endDate)
+          nextPayment: item.nextPayment ? new Date(item.nextPayment) : null
         };
       });
       
@@ -1349,32 +1434,13 @@ SimBudget.loadRecurringData = function() {
 
 <style>
 /* iOS-specific fix for date inputs - force full width */
-.rec-grid-item:nth-child(1) input[type="date"].rec-input,
-input[type="date"].rec-input {
+input[type="date"].rec-edit-input {
   width: 100% !important;
   min-width: 100% !important;
   max-width: 100% !important;
   -webkit-appearance: none; /* Remove iOS default styling */
   appearance: none;
   display: block !important; /* Force block display */
-}
-
-/* Additional specificity for start date */
-.rec-grid-item:nth-child(1) {
-  width: 100% !important;
-  flex: 1 1 100% !important;
-  padding-right: 0 !important;
-}
-
-.rec-grid-item:nth-child(1) .rec-input[type="date"] {
-  display: block !important;
-  width: 100% !important;
-}
-
-/* Style for regular placeholders */
-.rec-input::placeholder {
-  color: #9e9e9e;
-  opacity: 1; /* Firefox needs this */
 }
 
 /* Currency symbol regular positioning - more space for placeholder */
@@ -1397,11 +1463,10 @@ input[type="date"].rec-input {
   font-weight: 700;
 }
 
-/* Dark mode support for date floating labels only */
-body.dark-mode .rec-grid-item:nth-child(1) label,
-body.dark-mode .rec-grid-item:nth-child(2) label {
+/* Dark mode support for date inputs */
+body.dark-mode input[type="date"].rec-edit-input {
   background-color: var(--dark-surface, #1e1e1e);
-  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
 }
 
 /* More aggressive fix for amount placeholder position */
@@ -1440,6 +1505,62 @@ input[type="number"].rec-amount::placeholder {
    Mobile-first approach with desktop adjustments after.
    Matching dashboard's signature border style and color scheme.
 */
+
+/* ======== NEW: FREQUENCY DISPLAY ON MOBILE ======== */
+/* Hide the letter on desktop and full text on mobile */
+.frequency-letter {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .frequency-full {
+    display: none;
+  }
+  
+  .frequency-letter {
+    display: inline-block;
+    font-weight: bold;
+  }
+  
+  /* Make frequency cell narrower on mobile */
+  .rec-frequency-cell,
+  .rec-table th:nth-child(4) {
+    width: 30px !important;
+    max-width: 30px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    text-align: center !important;
+  }
+}
+
+/* ======== NEW: EMOJI-ONLY CATEGORY DISPLAY ======== */
+.category-emoji-only {
+  font-size: 16px !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+}
+
+/* Highlight the emoji when hovered */
+.rec-category-cell:hover .category-emoji-only {
+  transform: scale(1.1);
+  transition: transform 0.2s ease;
+}
+
+/* Header styling for Category column */
+.rec-table th:nth-child(3) {
+  text-align: center !important;
+  width: 40px !important;
+}
+
+/* Cell styling for Category column */
+.rec-category-cell {
+  text-align: center !important;
+  width: 40px !important;
+  cursor: help;
+}
 
 /* ======== LOADING & ERROR STATES ======== */
 .rec-loading, .rec-error {
@@ -1566,253 +1687,28 @@ input[type="number"].rec-amount::placeholder {
   }
 }
 
-/* ======== FORM SECTION ======== */
-.rec-form-container {
-  background-color: #ffffff;
-  border-radius: 0px;
-  padding: 20px;
-  margin-bottom: 16px;
-  border-top: 1px solid rgba(0, 0, 0, 0.5);
-  border-left: 1px solid rgba(0, 0, 0, 0.5);
-  border-right: 4px solid #334a60;
-  border-bottom: 4px solid #334a60;
-}
-
-.rec-section-title {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  font-weight: 500;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-.rec-form {
-  width: 100%;
-}
-
-/* Form adjustments for no labels */
-.rec-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr; /* Two columns for mobile */
-  grid-template-rows: auto auto auto auto; /* Four rows */
-  gap: 12px;
-  margin-top: 16px; /* Add some space at the top */
-}
-
-/* Mobile layout positioning */
-.rec-grid-item:nth-child(1) { /* Start Date */
-  grid-column: 1 / 2;
-  grid-row: 1;
-}
-
-.rec-grid-item:nth-child(2) { /* End Date */
-  grid-column: 2 / 3;
-  grid-row: 1;
-}
-
-.rec-grid-item:nth-child(3) { /* Name */
-  grid-column: 1 / 2;
-  grid-row: 2;
-}
-
-.rec-grid-item:nth-child(4) { /* Category */
-  grid-column: 2 / 3;
-  grid-row: 2;
-}
-
-.rec-grid-item:nth-child(5) { /* Frequency */
-  grid-column: 1 / 2;
-  grid-row: 3;
-}
-
-.rec-grid-item:nth-child(6) { /* Amount */
-  grid-column: 2 / 3;
-  grid-row: 3;
-}
-
-.rec-grid-item:nth-child(7) { /* Payment Method */
-  grid-column: 1 / 2;
-  grid-row: 4;
-}
-
-.rec-grid-item.rec-submit-item { /* Add button */
-  grid-column: 2 / 3;
-  grid-row: 4;
-}
-
-/* Hide notes on mobile */
-.rec-grid-item.rec-notes-item {
-  display: none;
-}
-
-.rec-grid-item {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Hide all labels by default */
-.rec-grid-item label {
-  display: none;
-}
-
-/* Only show labels for date inputs as floating labels */
-.rec-grid-item:nth-child(1) label,
-.rec-grid-item:nth-child(2) label {
-  display: block;
-  position: absolute;
-  top: 4px;
-  left: 12px;
-  font-size: 11px;
-  color: #9e9e9e;
-  pointer-events: none;
-  margin: 0;
-  font-weight: normal;
-  background-color: white;
-  padding: 0 4px;
-  z-index: 2;
-}
-
-/* Position date input containers as relative for floating labels */
-.rec-grid-item:nth-child(1),
-.rec-grid-item:nth-child(2) {
-  position: relative;
-}
-
-/* Ensure all inputs have 100% width */
-.rec-input {
-  height: 48px;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 0px;
-  font-size: 15px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Make all input containers fill width */
-.rec-grid-item {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-
-/* Date inputs - special styling with top padding for floating label and full width */
-.rec-grid-item:nth-child(1) .rec-input,
-.rec-grid-item:nth-child(2) .rec-input {
-  padding: 16px 12px 8px 12px; /* More padding at top for label */
-  height: 50px; /* Slightly taller for the label */
-  width: 100%; /* Full width */
-  box-sizing: border-box; /* Ensure padding is included in width */
-  flex: 1 1 auto; /* Allow flex growth and shrinking */
-}
-
-/* Force date inputs to span full column */
-.rec-grid-item:nth-child(1),
-.rec-grid-item:nth-child(2) {
-  position: relative;
-  width: 100%;
-  display: flex;
-}
-
-.rec-end-date-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.rec-clear-btn {
-  position: absolute;
-  right: 10px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #999;
-  z-index: 2;
-}
-
-.rec-clear-btn:hover {
-  color: #333;
-}
-
-/* Remove date input placeholder handling that doesn't work */
-input[type="date"].rec-input {
-  color: var(--text-primary, #000);
-}
-
-/* Make Add button prominent */
-.rec-add-btn {
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+/* Adjust Add Subscription button to match filter buttons but stand out */
+.rec-add-subscription-btn {
   background-color: #2c3e50;
   color: white;
   border: none;
-  font-weight: 500;
-  width: 100%;
   border-radius: 0px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-left: 8px; /* Add spacing from the All button */
 }
 
-/* Five-column form layout for desktop */
-@media (min-width: 769px) {
-  .rec-form-grid {
-    grid-template-columns: repeat(5, 1fr); /* 5 columns for first row */
-    grid-template-rows: auto auto; /* 2 rows */
-    gap: 16px;
-  }
-  
-  /* First row layout */
-  .rec-grid-item:nth-child(1) { /* Start Date */
-    grid-column: 1 / 2;
-    grid-row: 1;
-  }
-  
-  .rec-grid-item:nth-child(2) { /* End Date */
-    grid-column: 2 / 3;
-    grid-row: 1;
-  }
-  
-  .rec-grid-item:nth-child(3) { /* Name */
-    grid-column: 3 / 4;
-    grid-row: 1;
-  }
-  
-  .rec-grid-item:nth-child(4) { /* Category */
-    grid-column: 4 / 5;
-    grid-row: 1;
-  }
-  
-  .rec-grid-item:nth-child(6) { /* Amount */
-    grid-column: 5 / 6;
-    grid-row: 1;
-  }
-  
-  /* Second row layout */
-  .rec-grid-item:nth-child(5) { /* Frequency */
-    grid-column: 1 / 2;
-    grid-row: 2;
-  }
-  
-  .rec-grid-item:nth-child(7) { /* Payment Method */
-    grid-column: 2 / 3;
-    grid-row: 2;
-  }
-  
-  .rec-grid-item.rec-notes-item { /* Notes */
-    grid-column: 3 / 5;
-    grid-row: 2;
-    display: flex; /* Show notes on desktop */
-  }
-  
-  .rec-grid-item.rec-submit-item { /* Add button */
-    grid-column: 5 / 6;
-    grid-row: 2;
-    align-self: flex-end;
-  }
+.rec-add-subscription-btn:hover {
+  background-color: #1e2b37;
+}
+
+.rec-add-subscription-btn i {
+  font-size: 18px;
 }
 
 /* ======== TABLE SECTION ======== */
@@ -1948,7 +1844,7 @@ input[type="date"].rec-input {
 }
 
 .rec-cancel-btn {
-  color: #f44336;
+  color: #757575; /* Neutral gray color */
 }
 
 .rec-edit-input {
@@ -1957,6 +1853,11 @@ input[type="date"].rec-input {
   border: 1px solid #ddd;
   border-radius: 0px;
   font-size: 14px;
+}
+
+.rec-input-error {
+  border-color: #f44336 !important;
+  background-color: rgba(244, 67, 54, 0.1) !important;
 }
 
 .rec-noneditable {
@@ -1996,15 +1897,6 @@ input[type="date"].rec-input {
   .rec-name-cell,
   .rec-table th:nth-child(2) {
     max-width: 80px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  /* Category column */
-  .rec-category-cell,
-  .rec-table th:nth-child(3) {
-    max-width: 70px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2069,6 +1961,11 @@ input[type="date"].rec-input {
     padding: 6px 8px;
     font-size: 11px;
   }
+  
+  /* Enhanced category column - bigger emoji on mobile */
+  .category-emoji-only {
+    font-size: 18px !important; /* Slightly larger on mobile */
+  }
 }
 
 /* Sample table for fallback */
@@ -2098,7 +1995,6 @@ body.dark-mode .rec-summary-box {
 }
 
 /* White data containers stay dark */
-body.dark-mode .rec-form-container,
 body.dark-mode .rec-table-container,
 body.dark-mode .rec-sample-table table {
   background-color: var(--dark-surface, #1e1e1e);
@@ -2107,7 +2003,6 @@ body.dark-mode .rec-sample-table table {
 
 /* Labels and secondary text */
 body.dark-mode .rec-box-label,
-body.dark-mode .rec-grid-item label,
 body.dark-mode .rec-table th {
   color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6)) !important;
 }
@@ -2125,7 +2020,6 @@ body.dark-mode .rec-currency {
 }
 
 /* Form elements */
-body.dark-mode .rec-input,
 body.dark-mode .rec-filter-select,
 body.dark-mode .rec-filter-btn,
 body.dark-mode .rec-edit-input {
@@ -2154,17 +2048,23 @@ body.dark-mode .rec-action-btn:hover {
   color: #DDA15E;
 }
 
+/* Emoji cell - improved visibility in dark mode */
+body.dark-mode .category-emoji-only {
+  color: #ffffff !important;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
 /* Status row backgrounds */
 body.dark-mode .rec-table tbody tr[data-status="Active"] {
-  background-color: rgba(212, 237, 218, 0.15); /* Darker green */
+  background-color: rgba(76, 175, 80, 0.15) !important; /* Darker green with transparency */
 }
 
 body.dark-mode .rec-table tbody tr[data-status="Expires"] {
-  background-color: rgba(255, 243, 205, 0.15); /* Darker yellow */
+  background-color: rgba(255, 152, 0, 0.15) !important; /* Darker yellow with transparency */
 }
 
 body.dark-mode .rec-table tbody tr[data-status="Ended"] {
-  background-color: rgba(248, 215, 218, 0.15); /* Darker pink */
+  background-color: rgba(244, 67, 54, 0.15) !important; /* Darker red with transparency */
 }
 
 /* Filter button active state */
@@ -2174,13 +2074,13 @@ body.dark-mode .rec-filter-btn.active {
   color: #1e1e1e;
 }
 
-/* Button styling */
-body.dark-mode .rec-add-btn {
+/* Add New Subscription button - dark mode style */
+body.dark-mode .rec-add-subscription-btn {
   background-color: #DDA15E;
   color: #1e1e1e;
 }
 
-body.dark-mode .rec-add-btn:hover {
+body.dark-mode .rec-add-subscription-btn:hover {
   background-color: #c9955a;
 }
 
@@ -2224,13 +2124,11 @@ body.dark-mode .rec-add-btn:hover {
   .rec-notes-cell,
   .rec-frequency-cell,
   .rec-enddate-cell,
-  .rec-payment-cell,
-  .rec-notes-item {
+  .rec-payment-cell {
     display: table-cell;
   }
   
   /* Container width restrictions for larger screens */
-  .rec-form-container,
   .rec-table-container,
   .rec-summary-box {
     margin-left: auto;
@@ -2241,7 +2139,6 @@ body.dark-mode .rec-add-btn:hover {
 
 /* ======== PRINT STYLES ======== */
 @media print {
-  .rec-form-container,
   .rec-filters,
   .rec-action-btn {
     display: none !important;
@@ -2251,6 +2148,7 @@ body.dark-mode .rec-add-btn:hover {
   .rec-table-container {
     border: 1px solid #ccc !important;
     break-inside: avoid !important;
+    margin-top: 20px !important;
   }
   
   .rec-table-wrapper {

@@ -78,8 +78,7 @@
           <h1><i class="material-icons">repeat</i> <span data-translate="recurring">Recurring</span></h1>
           <div class="view-actions">
             <button id="refreshRecurring" class="btn icon-btn" title="Refresh Recurring Transactions">
-  <i class="material-icons">refresh</i>
-</button>
+              <i class="material-icons">refresh</i></button>
           </div>
         </div>
         <div id="recurringContent" class="view-content">
@@ -88,13 +87,26 @@
       </div>
               
         <!-- Net Worth View - Initially Hidden -->
+       <!-- Net Worth View - Update these IDs -->
         <div id="netWorthView" class="view">
           <div class="view-header">
             <h1><i class="material-icons">trending_up</i> <span data-translate="net_worth_title">Net Worth</span></h1>
             <div class="view-actions">
+              <!-- Month/Year Selector -->
+              <div class="month-selector">
+                <button id="prevMonthNetWorth" class="month-nav-btn" aria-label="Previous month">
+                  <i class="material-icons">chevron_left</i>
+                </button>
+                <div id="monthYearDisplayNetWorth" class="month-year-display">
+                  <!-- Will be populated by JS -->
+                </div>
+                <button id="nextMonthNetWorth" class="month-nav-btn" aria-label="Next month">
+                  <i class="material-icons">chevron_right</i>
+                </button>
+              </div>
               <button id="refreshNetWorth" class="btn icon-btn" title="Refresh Net Worth Data">
-  <i class="material-icons">refresh</i>
-</button>
+                <i class="material-icons">refresh</i>
+              </button>
             </div>
           </div>
           <div id="netWorthContent" class="view-content">
