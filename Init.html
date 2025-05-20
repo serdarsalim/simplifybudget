@@ -345,46 +345,84 @@ const _preloader = {
       },
     };
 
-    // Settings module
-    const Settings = {
-      // Default settings
-      defaults: {
-        currencySymbol: "$",
-        dateFormat: "MM/DD/YYYY",
-        darkMode: false,
-        showRemaining: true,
-        enableAlerts: true,
-        startingDay: "1",
-        language: "en",
-        showDecimals: true,
-      },
+        // Settings module
+      const Settings = {
+        // Default settings
+        defaults: {
+          currencySymbol: "$",
+          dateFormat: "MM/DD/YYYY",
+          darkMode: false,
+          showRemaining: true,
+          enableAlerts: true,
+          startingDay: "1",
+          language: "en",
+          showDecimals: true,
+        },
 
-      // Get a setting with fallback to default
-      getSetting: function (key) {
-        const userSettings = Utils.getLocalStorage("simbudget_settings", {});
-        return userSettings[key] !== undefined
-          ? userSettings[key]
-          : this.defaults[key];
-      },
+     
+          // Get a setting with fallback to default
+          getSetting: function (key) {
+            // From cached settings or default
+            const settings = this.getAll();
+            return settings[key] !== undefined ? settings[key] : this.defaults[key];
+          },
 
-      // Set a setting
-      setSetting: function (key, value) {
-        const userSettings = Utils.getLocalStorage("simbudget_settings", {});
-        userSettings[key] = value;
-        return Utils.setLocalStorage("simbudget_settings", userSettings);
-      },
+          // Set a single setting
+          setSetting: function (key, value) {
+            const settings = this.getAll();
+            settings[key] = value;
+            return this.saveAll(settings);
+          },
 
-      // Save all settings
-      saveAll: function (settings) {
-        return Utils.setLocalStorage("simbudget_settings", settings);
-      },
+          // Save all settings to server
+          saveAll: function (settings) {
+            // Save to server 
+            API.setUserSettings(settings, 
+              function() {
+                // Success - store in memory for fast access
+                Settings._cachedSettings = settings;
+              },
+              function(error) {
+                console.error("Error saving settings to server:", error);
+              }
+            );
+            return true;
+          },
 
-      // Get all settings
-      getAll: function () {
-        const userSettings = Utils.getLocalStorage("simbudget_settings", {});
-        // Merge with defaults for any missing settings
-        return { ...this.defaults, ...userSettings };
-      },
+          // Get all settings (from memory cache or defaults)
+          getAll: function () {
+            // If we have cached settings, use them
+            if (this._cachedSettings) {
+              return this._cachedSettings;
+            }
+            
+            // Otherwise use defaults and trigger server fetch for next time
+            this._fetchFromServer();
+            return { ...this.defaults };
+          },
+
+        // Fetch settings from server in the background
+        _fetchFromServer: function() {
+          API.getUserSettings(
+            function(result) {
+              if (result && result.settings) {
+                // Cache the server settings
+                Settings._cachedSettings = result.settings;
+                
+                // If settings view is active, apply the settings to the form
+                if (SimBudget.Views.getCurrent() === "settings") {
+                  SimBudget.applySettings();
+                }
+              }
+            },
+            function(error) {
+              console.error("Error fetching settings from server:", error);
+            }
+          );
+        },
+
+      // Cache for settings
+        _cachedSettings: null,
 
       // Convenience methods for common settings
       getCurrencySymbol: function () {
@@ -1151,7 +1189,7 @@ Views: {
       /**
        * Save settings
        */
-      saveSettings: function () {
+            saveSettings: function () {
         // Get values from form
         const settings = {
           currencySymbol: document.getElementById("currencySymbol").value,
@@ -1163,13 +1201,13 @@ Views: {
           language: document.getElementById("languageSelector").value,
           showDecimals: document.getElementById("showDecimals").checked,
         };
-
-        // Save to local storage
+        
+        // Save settings to server
         if (SimBudget.Settings.saveAll(settings)) {
-          // Apply settings
+          // Apply settings immediately
           SimBudget.applySettings();
-
-          // Save sheet URL if provided
+          
+          // Save sheet URL if provided - also server-side
           const sheetUrl = document.getElementById("budgetSheetUrl").value;
           if (sheetUrl) {
             API.setBudgetSheetUrl(
@@ -1181,7 +1219,6 @@ Views: {
                   document.getElementById("settingsStatus"),
                   3000
                 );
-
                 // Invalidate all caches when sheet URL changes
                 _cache.invalidateAll();
               },
@@ -1343,7 +1380,7 @@ loadViewData: function(viewName, forceRefresh = false) {
       this.loadCategoriesData();
       break;
     case "settings":
-      _loadingView = null; // Settings are loaded inline
+      _loadingView = null; 
       break;
     default:
       console.error(`LoadViewData: Unknown view ${viewName}`);

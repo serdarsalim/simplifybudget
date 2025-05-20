@@ -1,4 +1,5 @@
-<script>/**
+<script>
+/**
  * API.html - API abstraction layer for SimBudget
  * Creates a clean interface between UI and server code
  * Rewritten for modular loading approach
@@ -62,6 +63,65 @@ getTranslations: function(languageCode, successCallback, errorCallback, bustCach
     errorCallback(_lastError);
   }
 },
+
+
+/**
+ * Save all user settings to server-side storage
+ * @param {Object} settings - Complete settings object
+ * @param {function} successCallback - Called when successful
+ * @param {function} errorCallback - Called when error occurs
+ */
+setUserSettings: function(settings, successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .setUserSettings(settings);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Get all user settings from server-side storage
+ * @param {function} successCallback - Called with settings object
+ * @param {function} errorCallback - Called when error occurs
+ */
+getUserSettings: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getUserSettings();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+
+
 
 /**
  * Set user language preference

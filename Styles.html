@@ -647,7 +647,6 @@ body.dark-mode .view-header {
   }
   
 
-
   .expense-controls {
     flex-direction: column;
     gap: var(--spacing-md);
@@ -811,23 +810,37 @@ button {
     float: right;
     clear: right;
   }
-}
+
 
 /* Month selector in view header */
-.view-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+   /* Month selector in view header - INSIDE the media query */
+  .view-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+  }
+  
+  .month-selector {
+    order: 1 !important; /* First item (on left) */
+    flex: 1 !important; /* Allow it to take available space but not all */
+    max-width: 80% !important; /* Prevent excessive stretching */
+  }
+  
+  #refreshExpenses {
+    order: 2 !important; /* Second item (on right) */
+    margin-left: 8px !important;
+    flex: 0 0 auto !important; /* Don't grow or shrink */
+  }
 }
+
 
 .month-selector {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  background-color: var(--bg-card);
-  border-radius: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  gap: 12px;
+  background-color: transparent;
 }
 
 .month-nav-btn {

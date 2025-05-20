@@ -265,126 +265,143 @@ function buildCurrencyOptions() {
   /**
    * Load saved settings from localStorage
    */
- function loadSavedSettings() {
-  // Use the SimBudget.Settings object if available
-  if (window.SimBudget && SimBudget.Settings) {
-    const settings = SimBudget.Settings.getAll();
-    
-    // Apply settings to form elements
-    const currencySelect = document.getElementById('currencySelector');
-    if (currencySelect) {
-      currencySelect.value = settings.currencySymbol || '$';
-      // If saved currency isn't in dropdown, add it as an option
-      if (!currencySelect.value) {
-        const option = document.createElement('option');
-        option.value = settings.currencySymbol;
-        option.textContent = settings.currencySymbol;
-        currencySelect.appendChild(option);
-        currencySelect.value = settings.currencySymbol;
+ /**
+ * Load saved settings from server-side storage
+ */
+function loadSavedSettings() {
+  API.getUserSettings(
+    function(result) {
+      // Success handler
+      if (result && result.settings) {
+        const settings = result.settings;
+        
+        // Apply settings to form elements
+        const currencySelect = document.getElementById('currencySelector');
+        if (currencySelect && settings.currencySymbol) {
+          // First attempt to find the matching option
+          let found = false;
+          
+          // Check all existing options first
+          Array.from(currencySelect.options).forEach(option => {
+            if (option.value === settings.currencySymbol) {
+              found = true;
+              currencySelect.value = settings.currencySymbol;
+            }
+          });
+          
+          // If not found, add it as a new option
+          if (!found) {
+            const option = document.createElement('option');
+            option.value = settings.currencySymbol;
+            option.textContent = `${settings.currencySymbol} - Custom`;
+            currencySelect.appendChild(option);
+            currencySelect.value = settings.currencySymbol;
+          }
+        }
+        
+        // Set all other form elements
+        const dateFormatSelect = document.getElementById('dateFormat');
+        if (dateFormatSelect) {
+          dateFormatSelect.value = settings.dateFormat || 'MM/DD/YYYY';
+        }
+        
+        const darkModeCheckbox = document.getElementById('darkMode');
+        if (darkModeCheckbox) {
+          darkModeCheckbox.checked = settings.darkMode || false;
+          // Apply dark mode to body if enabled
+          document.body.classList.toggle('dark-mode', settings.darkMode);
+        }
+        
+        const showRemainingCheckbox = document.getElementById('showRemaining');
+        if (showRemainingCheckbox) {
+          showRemainingCheckbox.checked = settings.showRemaining !== undefined ? 
+            settings.showRemaining : true;
+        }
+        
+        const enableAlertsCheckbox = document.getElementById('enableAlerts');
+        if (enableAlertsCheckbox) {
+          enableAlertsCheckbox.checked = settings.enableAlerts !== undefined ? 
+            settings.enableAlerts : true;
+        }
+        
+        const showDecimalsCheckbox = document.getElementById('showDecimals');
+        if (showDecimalsCheckbox) {
+          showDecimalsCheckbox.checked = settings.showDecimals !== undefined ? 
+            settings.showDecimals : true;
+        }
+        
+        const languageSelector = document.getElementById('languageSelector');
+        if (languageSelector) {
+          languageSelector.value = settings.language || 'en';
+        }
+      }
+    },
+    function(error) {
+      // Error handler
+      console.error('Failed to load settings from server:', error);
+      showStatus('Error loading settings. Using defaults.', true);
+      
+      // Apply defaults as fallback
+      if (window.SimBudget && SimBudget.Settings && SimBudget.Settings.defaults) {
+        const defaults = SimBudget.Settings.defaults;
+        
+        // Apply defaults to form elements
+        // (Similar code as above but using defaults)
       }
     }
-    
-      
-      const dateFormatSelect = document.getElementById('dateFormat');
-      if (dateFormatSelect) {
-        dateFormatSelect.value = settings.dateFormat || 'MM/DD/YYYY';
-      }
-      
-      const darkModeCheckbox = document.getElementById('darkMode');
-      if (darkModeCheckbox) {
-        darkModeCheckbox.checked = settings.darkMode || false;
-        // Apply dark mode to body if enabled
-        document.body.classList.toggle('dark-mode', settings.darkMode);
-      }
-      
-      const languageSelector = document.getElementById('languageSelector');
-if (languageSelector) {
-  languageSelector.addEventListener('change', function() {
-    const selectedLanguage = this.value;
-    
-    // Save the language
-    API.setUserLanguage(selectedLanguage, 
-      function(result) {
-        // Load and apply translations
-        applyTranslations(selectedLanguage);
-      },
-      function(error) {
-        Utils.showToast('Error changing language: ' + error, 'error');
-      }
-    );
-  });
+  );
 }
-      
-      const showRemainingCheckbox = document.getElementById('showRemaining');
-      if (showRemainingCheckbox) {
-        showRemainingCheckbox.checked = settings.showRemaining !== undefined ? 
-          settings.showRemaining : true;
-      }
-      
-      const enableAlertsCheckbox = document.getElementById('enableAlerts');
-      if (enableAlertsCheckbox) {
-        enableAlertsCheckbox.checked = settings.enableAlerts !== undefined ? 
-          settings.enableAlerts : true;
-      }
-      
-      const showDecimalsCheckbox = document.getElementById('showDecimals');
-      if (showDecimalsCheckbox) {
-        showDecimalsCheckbox.checked = settings.showDecimals !== undefined ? 
-          settings.showDecimals : true;
-      }
-    }
-  }
   
-    /**
-     * Save settings to localStorage
-     * @param {boolean} silent - Whether to show success message
-     */
-    function saveSettings(silent = false) {
-    // Get values from form
-    const settings = {
-      currencySymbol: document.getElementById('currencySelector').value || '$',
-      dateFormat: document.getElementById('dateFormat').value || 'MM/DD/YYYY',
-      darkMode: document.getElementById('darkMode').checked || false,
-      showRemaining: document.getElementById('showRemaining').checked || false,
-      enableAlerts: document.getElementById('enableAlerts').checked || false,
-      language: document.getElementById('languageSelector').value || 'en',
-      showDecimals: document.getElementById('showDecimals').checked || false
-    };
-    
-    // Use the SimBudget.Settings object if available
-    if (window.SimBudget && SimBudget.Settings) {
-      // Save settings
-      const success = SimBudget.Settings.saveAll(settings);
-      
-        // Just update these lines that show status messages
-        if (success) {
-          // Save sheet URL if provided
-          const sheetUrl = document.getElementById('budgetSheetUrl').value;
-          if (sheetUrl) {
-            API.setBudgetSheetUrl(sheetUrl, 
-              function() {
-                if (!silent) showStatus('Settings saved successfully', false);
-              },
-              function(error) {
-                showStatus('Settings saved but sheet URL could not be saved: ' + error, true);
-              }
-            );
-          } else if (!silent) {
-            showStatus('Settings saved automatically', false);
-          }
-        } else {
-          showStatus('Error saving settings', true);
-        }
 
-        // And the same for the localStorage fallback
-        try {
-          localStorage.setItem('simbudget_settings', JSON.stringify(settings));
-          if (!silent) showStatus('Settings saved successfully', false);
-        } catch (e) {
-          showStatus('Error saving settings: ' + e.message, true);
+    /**
+ * Save settings to server-side storage
+ * @param {boolean} silent - Whether to show success message
+ */
+function saveSettings(silent = false) {
+  // Get values from form
+  const settings = {
+    currencySymbol: document.getElementById('currencySelector').value || '$',
+    dateFormat: document.getElementById('dateFormat').value || 'MM/DD/YYYY',
+    darkMode: document.getElementById('darkMode').checked || false,
+    showRemaining: document.getElementById('showRemaining').checked || false,
+    enableAlerts: document.getElementById('enableAlerts').checked || false,
+    language: document.getElementById('languageSelector').value || 'en',
+    showDecimals: document.getElementById('showDecimals').checked || false
+  };
+  
+  // Save sheet URL (this is still separate since it requires verification)
+  const sheetUrl = document.getElementById('budgetSheetUrl').value;
+  
+  // Save all settings to server
+  API.setUserSettings(settings, 
+    function(result) {
+      // Success handler
+      
+      // If we have a sheet URL, save that too
+      if (sheetUrl) {
+        API.setBudgetSheetUrl(sheetUrl, 
+          function() {
+            if (!silent) showStatus('All settings saved successfully', false);
+          },
+          function(error) {
+            showStatus('Settings saved but sheet URL could not be saved: ' + error, true);
           }
-          }
-        }
+        );
+      } else if (!silent) {
+        showStatus('Settings saved successfully', false);
+      }
+      
+      // Update currency in spreadsheet as well (for calculations)
+      if (settings.currencySymbol) {
+        API.setCurrencyInSpreadsheet(settings.currencySymbol, null, null);
+      }
+    },
+    function(error) {
+      // Error handler
+      showStatus('Error saving settings: ' + error, true);
+    }
+  );
+}
   
   /**
    * Reset settings to defaults

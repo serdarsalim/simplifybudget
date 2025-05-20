@@ -7,7 +7,7 @@ var MonthlyGrid = (function() {
   let _categories = [];
   let _transactions = [];
   let _isLoading = false;
-  let _currencySymbol = '€'; // Default currency, will be updated from settings
+  let _currencySymbol = '€'; 
   
   // ENHANCED: Smart caching system
   let _expenseCache = new Map(); // In-memory cache for current session
@@ -118,89 +118,118 @@ var MonthlyGrid = (function() {
     }
   }
   
-  /**
-   * Clean up old cache entries to prevent storage bloat
-   */
-  function cleanupCache() {
-    try {
-      const keys = [];
-      
-      // Find all cache keys in localStorage
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(CACHE_PREFIX)) {
-          keys.push(key);
-        }
+/**
+ * Enhanced cleanup of expired cache entries
+ */
+function cleanupCache() {
+  try {
+    const keys = [];
+    
+    // Find all cache keys in localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_PREFIX)) {
+        keys.push(key);
       }
-      
-      // If we have too many cached months, remove the oldest ones
-      if (keys.length > MAX_CACHE_MONTHS) {
-        // Sort by timestamp (oldest first)
-        const sortedKeys = keys.map(key => {
-          try {
-            const data = JSON.parse(localStorage.getItem(key));
-            return { key, timestamp: data.timestamp || 0 };
-          } catch {
-            return { key, timestamp: 0 };
-          }
-        }).sort((a, b) => a.timestamp - b.timestamp);
-        
-        // Remove the oldest entries
-        const toRemove = sortedKeys.slice(0, keys.length - MAX_CACHE_MONTHS);
-        toRemove.forEach(item => {
-          localStorage.removeItem(item.key);
-          console.log(`Cleaned up old cache entry: ${item.key}`);
-        });
-      }
-    } catch (error) {
-      console.warn('Error during cache cleanup:', error);
     }
+    
+    // Get the current date for age calculation
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    // Process all cache entries
+    keys.forEach(key => {
+      try {
+        const data = JSON.parse(localStorage.getItem(key));
+        
+        // Skip if missing required data
+        if (!data || !data.year || data.month === undefined) return;
+        
+        // Calculate how many months old this cache entry is
+        const ageInMonths = (currentYear - data.year) * 12 + (currentMonth - data.month);
+        
+        // Remove entries older than MAX_CACHE_MONTHS
+        if (ageInMonths > MAX_CACHE_MONTHS) {
+          localStorage.removeItem(key);
+        }
+        
+        // Also remove entries with timestamp older than 1 day
+        const ageInMs = Date.now() - (data.timestamp || 0);
+        if (ageInMs > 24 * 60 * 60 * 1000) { // 24 hours
+          localStorage.removeItem(key);
+        }
+      } catch (e) {
+        // If we can't parse the entry, just remove it
+        localStorage.removeItem(key);
+      }
+    });
+  } catch (error) {
+    console.warn('Error during cache cleanup:', error);
   }
+}
   
   /**
-   * Prefetch expenses for a specific month in the background
-   */
-  function prefetchMonth(month, year) {
-    const key = getCacheKey(month, year);
-    
-    // Skip if already cached or currently being fetched
-    if (getCachedExpenses(month, year) || _prefetchQueue.has(key)) {
-      return Promise.resolve();
+ * Enhanced prefetch logic 
+ */
+function prefetchMonth(month, year) {
+  const key = getCacheKey(month, year);
+  
+  // Skip if already cached or currently being fetched
+  if (getCachedExpenses(month, year) || _prefetchQueue.has(key)) {
+    return Promise.resolve();
+  }
+  
+  // Avoid prefetching future months that are too far ahead
+  const now = new Date();
+  const currentRealMonth = now.getMonth();
+  const currentRealYear = now.getFullYear();
+  const monthsAhead = (year - currentRealYear) * 12 + (month - currentRealMonth);
+  
+  // We always prefetch past months, but limit future months to 2 months ahead
+  if (monthsAhead > 2) {
+    return Promise.resolve();
+  }
+  
+  console.log(`Prefetching expenses for ${month}/${year}...`);
+  _prefetchQueue.add(key);
+  
+  return new Promise((resolve) => {
+    if (!window.API || typeof API.getExpenseData !== 'function') {
+      _prefetchQueue.delete(key);
+      resolve();
+      return;
     }
     
-    console.log(`Prefetching expenses for ${month}/${year}...`);
-    _prefetchQueue.add(key);
-    
-    return new Promise((resolve) => {
-      if (!window.API || typeof API.getExpenseData !== 'function') {
+    API.getExpenseData(
+      month,
+      year,
+      function(result) {
         _prefetchQueue.delete(key);
-        resolve();
-        return;
-      }
-      
-      API.getExpenseData(
-        month,
-        year,
-        function(result) {
-          _prefetchQueue.delete(key);
-          
-          if (result && result.success && result.expenses) {
-            console.log(`Successfully prefetched ${result.expenses.length} expenses for ${month}/${year}`);
-            setCachedExpenses(month, year, result.expenses);
-          } else {
-            console.log(`Prefetch failed for ${month}/${year}:`, result ? result.error : 'Unknown error');
-          }
-          
-          resolve();
-        },
-        function(error) {
-          _prefetchQueue.delete(key);
-          console.log(`Prefetch error for ${month}/${year}:`, error);
-          resolve();
+        
+        if (result && result.success && result.expenses) {
+          setCachedExpenses(month, year, result.expenses);
+        } else {
+          // Even if we get an empty result, we should cache it to avoid repeated fetches
+          const emptyResult = result && result.expenses ? result.expenses : [];
+          console.log(`Prefetch for ${month}/${year} returned empty or error, caching empty result`);
+          setCachedExpenses(month, year, emptyResult);
         }
-      );
-    });
-  }
+        
+        resolve();
+      },
+      function(error) {
+        _prefetchQueue.delete(key);
+        console.log(`Prefetch error for ${month}/${year}:`, error);
+        
+        // Cache empty array on error to prevent repeated failing requests
+        setCachedExpenses(month, year, []);
+        
+        resolve();
+      }
+    );
+  });
+}
   
   /**
    * Get previous month/year
@@ -263,102 +292,170 @@ var MonthlyGrid = (function() {
    * Initialize the Monthly Grid
    */
   function init(containerId) {
-    if (_initialized && !containerId) {
+  if (_initialized && !containerId) {
+    return;
+  }
+  
+  console.log('Initializing Monthly Grid View...');
+  
+  // Initialize system month tracking
+  _systemCurrentMonth = new Date().getMonth();
+  _systemCurrentYear = new Date().getFullYear();
+  
+  // Only set current month/year if not already set (prevents overwriting when reinitializing)
+  if (!_initialized) {
+    _currentMonth = _systemCurrentMonth;
+    _currentYear = _systemCurrentYear;
+  }
+  
+  // Handle session start (clear cache on page refresh/new session)
+  handleSessionStart();
+  
+  // Load currency symbol from user settings
+  loadCurrencyFromSettings();
+  
+  // Clean up any existing event handlers first
+  if (_initialized) {
+    unbindEvents();
+  }
+  
+  // Find and store container element
+  if (containerId) {
+    const container = document.getElementById(containerId);
+    if (container) {
+      _elements['monthly-grid-container'] = container;
+      console.log("Found container, storing for rendering:", containerId);
+    } else {
+      console.error("Container not found:", containerId);
       return;
     }
-    
-    console.log('Initializing Monthly Grid View...');
-    
-    // Handle session start (clear cache on page refresh/new session)
-    handleSessionStart();
-    
-    // Load currency symbol from user settings
-    loadCurrencyFromSettings();
-    
-    // Clean up any existing event handlers first
-    if (_initialized) {
-      unbindEvents();
+  } else {
+    // Try to find the default container
+    const defaultContainer = document.getElementById("monthly-grid-container");
+    if (!defaultContainer) {
+      console.error("Default grid container not found");
+      return;
     }
-    
-    // Find and store container element
-    if (containerId) {
-      const container = document.getElementById(containerId);
-      if (container) {
-        _elements['monthly-grid-container'] = container;
-        console.log("Found container, storing for rendering:", containerId);
-      } else {
-        console.error("Container not found:", containerId);
-        return;
-      }
-    } else {
-      // Try to find the default container
-      const defaultContainer = document.getElementById("monthly-grid-container");
-      if (!defaultContainer) {
-        console.error("Default grid container not found");
-        return;
-      }
-      _elements['monthly-grid-container'] = defaultContainer;
-    }
-    
-    // Set up event handlers
-    bindEvents();
-    
-    // Load real data from spreadsheet (with smart caching)
-    loadRealExpenseData();
-    
-    // Prevent body scrolling on mobile
-    if (window.innerWidth <= 768) {
-      document.body.style.overflow = 'hidden';
-      
-      // Allow the grid container to scroll
-      const container = getElement('monthly-grid-container');
-      if (container) {
-        container.style.overflow = 'auto';
-      }
-    }
-    
-    _initialized = true;
-    console.log('Monthly Grid View initialized');
+    _elements['monthly-grid-container'] = defaultContainer;
   }
+  
+  // Set up event handlers
+  bindEvents();
+  
+  // Set up periodic check for current month change (every 10 minutes)
+  if (!window._monthCheckInterval) {
+    window._monthCheckInterval = setInterval(checkCurrentMonth, 10 * 60 * 1000);
+    // Also check on visibility change (when user returns to tab)
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        checkCurrentMonth();
+      }
+    });
+  }
+  
+  // Load real data from spreadsheet (with smart caching)
+  loadRealExpenseData();
+  
+  // Prevent body scrolling on mobile
+  if (window.innerWidth <= 768) {
+    document.body.style.overflow = 'hidden';
+    
+    // Allow the grid container to scroll
+    const container = getElement('monthly-grid-container');
+    if (container) {
+      container.style.overflow = 'auto';
+    }
+  }
+  
+  _initialized = true;
+  console.log('Monthly Grid View initialized');
+}
   
   /**
    * ENHANCED: Load real expense data with smart caching and prefetching
    */
   function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
-    if (_isLoading) {
-      console.log('Already loading expense data, skipping...');
-      return Promise.resolve();
-    }
-    
-    // Check cache first for instant loading
-    const cachedExpenses = getCachedExpenses(month, year);
-    if (cachedExpenses) {
-      console.log(`Loading from cache: ${cachedExpenses.length} expenses for ${month}/${year}`);
-      
-      // Load categories first, then process cached data
-      return loadActiveCategories()
-        .then(categories => {
-          processRealExpenseData(cachedExpenses);
-          renderGrid();
-          
-          // Start prefetching previous month in background
-          const prev = getPreviousMonth(month, year);
-          setTimeout(() => {
-            prefetchMonth(prev.month, prev.year);
-          }, 100);
-          
-          return Promise.resolve();
-        })
-        .catch(error => {
-          console.error('Error loading categories for cached data:', error);
-          // Fall back to fresh fetch
-          return fetchFreshExpenseData(month, year);
-        });
-    }
-    
-    // Not in cache, fetch fresh data
-    return fetchFreshExpenseData(month, year);
+  if (_isLoading) {
+    console.log('Already loading expense data, skipping...');
+    return Promise.resolve();
   }
+  
+  // Check cache first for instant loading
+  const cachedExpenses = getCachedExpenses(month, year);
+  if (cachedExpenses) {
+    console.log(`Loading from cache: ${cachedExpenses.length} expenses for ${month}/${year}`);
+    
+    // Load categories first, then process cached data
+    return loadActiveCategories()
+      .then(categories => {
+        processRealExpenseData(cachedExpenses);
+        renderGrid();
+        
+        // Bidirectional prefetching - both previous and next months
+        const prev = getPreviousMonth(month, year);
+        const next = getNextMonth(month, year);
+        
+        setTimeout(() => {
+          // First check if it makes sense to prefetch (avoid future months too far ahead)
+          const now = new Date();
+          const currentRealMonth = now.getMonth();
+          const currentRealYear = now.getFullYear();
+          
+          // Prefetch previous month (always)
+          prefetchMonth(prev.month, prev.year);
+          
+          // Only prefetch next month if it's not too far in the future
+          // (next month OR current month + max 2 months ahead)
+          const monthsAhead = (next.year - currentRealYear) * 12 + (next.month - currentRealMonth);
+          if (monthsAhead <= 2) {
+            prefetchMonth(next.month, next.year);
+          }
+        }, 100);
+        
+        return Promise.resolve();
+      })
+      .catch(error => {
+        console.error('Error loading categories for cached data:', error);
+        // Fall back to fresh fetch
+        return fetchFreshExpenseData(month, year);
+      });
+  }
+  
+  // Not in cache, fetch fresh data
+  return fetchFreshExpenseData(month, year);
+}
+
+/**
+ * Failsafe mechanism to ensure current month is always accurate
+ */
+function checkCurrentMonth() {
+  const now = new Date();
+  const realCurrentMonth = now.getMonth();
+  const realCurrentYear = now.getFullYear();
+  
+  // Compare with our stored current month/year
+  if (realCurrentMonth !== _currentMonth || realCurrentYear !== _currentYear) {
+    // Only update if we're viewing what we think is the current month
+    const viewingCurrentMonth = (_systemCurrentMonth === _currentMonth && 
+                                 _systemCurrentYear === _currentYear);
+    
+    // Update system tracking
+    _systemCurrentMonth = realCurrentMonth;
+    _systemCurrentYear = realCurrentYear;
+    
+    // If we were viewing the "current" month, update to the new current month
+    if (viewingCurrentMonth) {
+      console.log('Real current month has changed, updating view...');
+      _currentMonth = realCurrentMonth;
+      _currentYear = realCurrentYear;
+      updateMonthYearDisplay();
+      loadRealExpenseData(_currentMonth, _currentYear);
+    }
+    
+    // Clear old cache for months that are now more than 6 months old
+    cleanupCache();
+  }
+}
   
   /**
    * Fetch fresh expense data from the server
@@ -706,81 +803,81 @@ var MonthlyGrid = (function() {
   /**
    * Process real expense data from spreadsheet (expenses only, no categories)
    */
-  function processRealExpenseData(expenses) {
+  /**
+ * Process real expense data from spreadsheet (expenses only, no categories)
+ * Now includes label field for identifying subscription/fixed transactions
+ */
+function processRealExpenseData(expenses) {
+  const processedTransactions = [];
+  
+  // Process each expense
+  expenses.forEach((expense, index) => {
+    // Skip empty rows
+    if (!expense.category || !expense.amount) {
+      console.log('Skipping expense', index, '- missing category or amount:', expense);
+      return;
+    }
     
-    const processedTransactions = [];
+    // Parse date - ENHANCED with robust parsing
+    let expenseDate;
     
-    // Process each expense
-    expenses.forEach((expense, index) => {
-      // Skip empty rows
-      if (!expense.category || !expense.amount) {
-        console.log('Skipping expense', index, '- missing category or amount:', expense);
-        return;
-      }
+    if (expense.date instanceof Date) {
+      expenseDate = expense.date;
+    } else if (expense.date) {
+      // Try our custom parser first
+      expenseDate = parseSpreadsheetDate(expense.date);
       
-      // Parse date - ENHANCED with robust parsing
-      let expenseDate;
-      
-      if (expense.date instanceof Date) {
-        expenseDate = expense.date;
-      } else if (expense.date) {
-        // Try our custom parser first
-        expenseDate = parseSpreadsheetDate(expense.date);
+      if (!expenseDate) {
+        // Fallback to standard Date parsing
+        expenseDate = new Date(expense.date);
         
-        if (!expenseDate) {
-          // Fallback to standard Date parsing
-          expenseDate = new Date(expense.date);
-          
-          if (isNaN(expenseDate.getTime())) {
-            console.warn(`Expense ${index}: Both parsing methods failed for date:`, expense.date);
-            return;
-          }
+        if (isNaN(expenseDate.getTime())) {
+          console.warn(`Expense ${index}: Both parsing methods failed for date:`, expense.date);
+          return;
         }
-        
-      } else {
-        console.warn('No date for expense', index, ':', expense);
-        return;
       }
       
-      // Parse amount
-      const amount = parseFloat(expense.amount);
-      if (isNaN(amount) || amount <= 0) {
-        console.warn('Invalid amount for expense', index, ':', expense);
-        return;
-      }
-      
-      // Parse category to get clean name (remove emoji)
-      const parsed = parseCategoryNameAndEmoji(expense.category.trim());
-      const cleanCategory = parsed.name; // Use only the name part for matching
-      
-      // Create transaction object
-      const transaction = {
-        id: expense.rowIndex || `tx-real-${index}`,
-        date: expenseDate,
-        category: cleanCategory,  // Store clean category name for matching with active categories
-        amount: amount,
-        description: expense.name || expense.description || '',
-        account: expense.account || 'Main Account',
-        notes: expense.notes || ''
-      };
-      
-      processedTransactions.push(transaction);
-    });
+    } else {
+      console.warn('No date for expense', index, ':', expense);
+      return;
+    }
     
-    // Store processed transactions (categories are loaded separately)
-    _transactions = processedTransactions;
- 
-    _transactions.slice(0, 5).forEach(tx => {
-    });
+    // Parse amount
+    const amount = parseFloat(expense.amount);
+    if (isNaN(amount) || amount <= 0) {
+      console.warn('Invalid amount for expense', index, ':', expense);
+      return;
+    }
     
-    // Additional debugging: Check for transactions all on the same day
-    const dayMap = {};
-    _transactions.forEach(tx => {
-      const day = tx.date.getDate();
-      dayMap[day] = (dayMap[day] || 0) + 1;
-    });
-    console.log('Transactions per day:', dayMap);
-  }
+    // Parse category to get clean name (remove emoji)
+    const parsed = parseCategoryNameAndEmoji(expense.category.trim());
+    const cleanCategory = parsed.name; // Use only the name part for matching
+    
+    // Create transaction object, now including the label field
+    const transaction = {
+      id: expense.rowIndex || `tx-real-${index}`,
+      date: expenseDate,
+      category: cleanCategory,  // Store clean category name for matching with active categories
+      amount: amount,
+      description: expense.name || expense.description || '',
+      account: expense.account || 'Main Account',
+      notes: expense.notes || '',
+      label: expense.label || '' // Store the label field to identify subscriptions/fixed payments
+    };
+    
+    processedTransactions.push(transaction);
+  });
+  
+  // Store processed transactions (categories are loaded separately)
+  _transactions = processedTransactions;
+
+  _transactions.slice(0, 5).forEach(tx => {
+    // Log first few transactions to verify label field
+    if (tx.label) {
+      console.log(`Transaction with label: ${tx.label}`, tx);
+    }
+  });
+}
   
   /**
    * Show loading indicator with current month info
@@ -1028,32 +1125,47 @@ var MonthlyGrid = (function() {
     }
   }
   
+
+  /**
+ * Get next month/year
+ */
+function getNextMonth(month, year) {
+  let nextMonth = month + 1;
+  let nextYear = year;
+  
+  if (nextMonth > 11) {
+    nextMonth = 0;
+    nextYear = year + 1;
+  }
+  
+  return { month: nextMonth, year: nextYear };
+}
+
+
   /**
    * ENHANCED: Navigate month with smart caching
    */
   function navigateMonth(change) {
-    // Prevent navigation while loading
-    if (_isLoading) {
-      console.log('Navigation blocked - already loading data');
-      return;
-    }
-    
-    _currentMonth += change;
-    
-    if (_currentMonth > 11) {
-      _currentMonth = 0;
-      _currentYear++;
-    } else if (_currentMonth < 0) {
-      _currentMonth = 11;
-      _currentYear--;
-    }
-    
-    updateMonthYearDisplay();
-    
-    // Load data for new month (will use cache if available)
-    console.log(`Month changed to: ${_currentMonth}/${_currentYear} - loading with smart cache...`);
-    loadRealExpenseData(_currentMonth, _currentYear);
+  // Prevent navigation while loading
+  if (_isLoading) {
+    console.log('Navigation blocked - already loading data');
+    return;
   }
+  
+  _currentMonth += change;
+  
+  if (_currentMonth > 11) {
+    _currentMonth = 0;
+    _currentYear++;
+  } else if (_currentMonth < 0) {
+    _currentMonth = 11;
+    _currentYear--;
+  }
+  
+  updateMonthYearDisplay();
+  
+  loadRealExpenseData(_currentMonth, _currentYear);
+}
   
   function updateMonthYearDisplay() {
     const monthYearDisplay = getElement('monthYearDisplay');
@@ -1543,115 +1655,213 @@ var MonthlyGrid = (function() {
     };
   }
   
-  function createTransactionItem(tx) {
-    const item = document.createElement('div');
-    item.className = 'transaction-item';
-    item.setAttribute('data-id', tx.id);
-    
-    // Use placeholders instead of default values for better UX
-    const amountValue = tx.amount && tx.amount > 0 ? tx.amount : '';
-    const amountPlaceholder = _currencySymbol; // Just the currency symbol
-    const descriptionValue = tx.description || '';
-    const descriptionPlaceholder = 'Name';
-    
-    item.innerHTML = `
-      <div class="transaction-row">
-        <input type="number" class="transaction-amount" 
-               value="${amountValue}" 
-               placeholder="${amountPlaceholder}"
-               min="0" step="0.01">
-        <input type="text" class="transaction-description" 
-               value="${descriptionValue}"
-               placeholder="${descriptionPlaceholder}">
-        <select class="transaction-account">
-          <option value="Main Account" ${tx.account === 'Main Account' ? 'selected' : ''}>Main Account</option>
-          <option value="Credit Card" ${tx.account === 'Credit Card' ? 'selected' : ''}>Credit Card</option>
-          <option value="Savings" ${tx.account === 'Savings' ? 'selected' : ''}>Savings</option>
-        </select>
-        <div class="transaction-actions">
-          <button class="transaction-delete"><i class="material-icons">close</i></button>
-        </div>
-      </div>
-    `;
-    
-    setupTransactionItemEvents(item, tx);
-    
-    return item;
+  /**
+ * Create a transaction item in the modal
+ * Now handles special treatment for subscription/fixed payment items
+ */
+/**
+ * Create a transaction item in the modal
+ * Now handles special treatment for subscription/fixed payment items
+ */
+/**
+ * Create a transaction item in the modal
+ * Simplified handling for subscription/fixed payment items
+ */
+function createTransactionItem(tx) {
+  const item = document.createElement('div');
+  item.className = 'transaction-item';
+  item.setAttribute('data-id', tx.id);
+  
+  // Check if this is a subscription or fixed payment
+  const isSpecialTransaction = tx.label && 
+    (tx.label.toLowerCase().includes('subscription') || 
+     tx.label.toLowerCase().includes('fixed payment'));
+  
+  if (isSpecialTransaction) {
+    item.classList.add('fixed-transaction');
   }
   
-  function setupTransactionItemEvents(item, tx) {
-    const deleteBtn = item.querySelector('.transaction-delete');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        
-        item.remove();
-        
-        const index = _transactions.findIndex(transaction => transaction.id === tx.id);
-        if (index !== -1) {
-          _transactions.splice(index, 1);
-        }
-        
-        updateTransactionTotal();
-        renderGrid();
-      });
-    }
+  // Use placeholders instead of default values for better UX
+  const amountValue = tx.amount && tx.amount > 0 ? tx.amount : '';
+  const amountPlaceholder = _currencySymbol; // Just the currency symbol
+  const descriptionValue = tx.description || '';
+  const descriptionPlaceholder = 'Name';
+  
+  // Create HTML structure - simplified for special transactions
+  const row = document.createElement('div');
+  row.className = 'transaction-row';
+  
+  // 1. Amount field
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.className = 'transaction-amount';
+  amountInput.value = amountValue;
+  amountInput.placeholder = amountPlaceholder;
+  amountInput.min = '0';
+  amountInput.step = '0.01';
+  
+  // 2. Description field with recurring icon for special transactions
+  const descriptionContainer = document.createElement('div');
+  descriptionContainer.style.display = 'flex';
+  descriptionContainer.style.alignItems = 'center';
+  descriptionContainer.style.width = '100%';
+  
+  const descriptionInput = document.createElement('input');
+  descriptionInput.type = 'text';
+  descriptionInput.className = 'transaction-description';
+  descriptionInput.value = descriptionValue;
+  descriptionInput.placeholder = descriptionPlaceholder;
+  descriptionInput.style.width = '100%';
+  
+  descriptionContainer.appendChild(descriptionInput);
+  
+  // Add recurring icon for special transactions
+  if (isSpecialTransaction) {
+    const recurringIcon = document.createElement('span');
+    recurringIcon.className = 'recurring-icon';
+    recurringIcon.innerHTML = '<i class="material-icons">repeat</i>';
+    descriptionContainer.appendChild(recurringIcon);
     
-    const amountInput = item.querySelector('.transaction-amount');
-    if (amountInput) {
-      amountInput.addEventListener('input', function() {
-        tx.amount = parseFloat(this.value) || 0;
-        updateTransactionTotal();
-        renderGrid();
-      });
-      
-      // Add to global transactions array when amount is entered
-      amountInput.addEventListener('change', function() {
-        if (parseFloat(this.value) > 0) {
-          // Check if this transaction is already in the array
-          const existingIndex = _transactions.findIndex(transaction => transaction.id === tx.id);
-          if (existingIndex === -1) {
-            // Not in array yet, add it
-            _transactions.push(tx);
-            console.log('Added new transaction to global array:', tx);
-          }
-        }
-      });
-    }
-    
-    const descriptionInput = item.querySelector('.transaction-description');
-    if (descriptionInput) {
-      descriptionInput.addEventListener('input', function() {
-        tx.description = this.value;
-      });
-      
-      // Move to next field when Enter is pressed
-      descriptionInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          const accountSelect = item.querySelector('.transaction-account');
-          if (accountSelect) {
-            accountSelect.focus();
-          }
-        }
-      });
-    }
-    
-    const accountSelect = item.querySelector('.transaction-account');
-    if (accountSelect) {
-      accountSelect.addEventListener('change', function() {
-        tx.account = this.value;
-      });
-      
-      // Close modal when Enter is pressed on account select
-      accountSelect.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          closeTransactionModal();
-        }
-      });
-    }
+    // Make inputs readonly
+    amountInput.setAttribute('readonly', 'readonly');
+    descriptionInput.setAttribute('readonly', 'readonly');
   }
+  
+  // Add the inputs to the row
+  row.appendChild(amountInput);
+  row.appendChild(descriptionContainer);
+  
+  // Skip account column for special transactions
+  
+  // 3. Actions column (delete button) - only for regular transactions
+  if (!isSpecialTransaction) {
+    // For regular transactions: account dropdown
+    const accountSelect = document.createElement('select');
+    accountSelect.className = 'transaction-account';
+    
+    // Create options
+    const options = [
+      { value: 'Main Account', text: 'Main Account' },
+      { value: 'Credit Card', text: 'Credit Card' },
+      { value: 'Savings', text: 'Savings' }
+    ];
+    
+    options.forEach(option => {
+      const optionEl = document.createElement('option');
+      optionEl.value = option.value;
+      optionEl.textContent = option.text;
+      if (option.value === tx.account) {
+        optionEl.selected = true;
+      }
+      accountSelect.appendChild(optionEl);
+    });
+    
+    row.appendChild(accountSelect);
+    
+    // Delete button
+    const actions = document.createElement('div');
+    actions.className = 'transaction-actions';
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'transaction-delete';
+    deleteBtn.innerHTML = '<i class="material-icons">close</i>';
+    
+    actions.appendChild(deleteBtn);
+    row.appendChild(actions);
+  } else {
+    // For special transactions, just a blank div to maintain grid layout
+    const spacer = document.createElement('div');
+    row.appendChild(spacer);
+  }
+  
+  // Add the row to the item
+  item.appendChild(row);
+  
+  // Only set up event handlers for non-special transactions
+  if (!isSpecialTransaction) {
+    setupTransactionItemEvents(item, tx);
+  }
+  
+  return item;
+}
+  
+/**
+ * Setup event handlers for transaction items
+ * Only called for regular (non-subscription) transactions
+ */
+function setupTransactionItemEvents(item, tx) {
+  const deleteBtn = item.querySelector('.transaction-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      
+      item.remove();
+      
+      const index = _transactions.findIndex(transaction => transaction.id === tx.id);
+      if (index !== -1) {
+        _transactions.splice(index, 1);
+      }
+      
+      updateTransactionTotal();
+      renderGrid();
+    });
+  }
+  
+  const amountInput = item.querySelector('.transaction-amount');
+  if (amountInput) {
+    amountInput.addEventListener('input', function() {
+      tx.amount = parseFloat(this.value) || 0;
+      updateTransactionTotal();
+      renderGrid();
+    });
+    
+    // Add to global transactions array when amount is entered
+    amountInput.addEventListener('change', function() {
+      if (parseFloat(this.value) > 0) {
+        // Check if this transaction is already in the array
+        const existingIndex = _transactions.findIndex(transaction => transaction.id === tx.id);
+        if (existingIndex === -1) {
+          // Not in array yet, add it
+          _transactions.push(tx);
+          console.log('Added new transaction to global array:', tx);
+        }
+      }
+    });
+  }
+  
+  const descriptionInput = item.querySelector('.transaction-description');
+  if (descriptionInput) {
+    descriptionInput.addEventListener('input', function() {
+      tx.description = this.value;
+    });
+    
+    // Move to next field when Enter is pressed
+    descriptionInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const accountSelect = item.querySelector('.transaction-account');
+        if (accountSelect) {
+          accountSelect.focus();
+        }
+      }
+    });
+  }
+  
+  const accountSelect = item.querySelector('.transaction-account');
+  if (accountSelect) {
+    accountSelect.addEventListener('change', function() {
+      tx.account = this.value;
+    });
+    
+    // Close modal when Enter is pressed on account select
+    accountSelect.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        closeTransactionModal();
+      }
+    });
+  }
+}
   
   function updateTransactionTotal() {
     const transactionsList = getElement('transactions-list');
@@ -1922,12 +2132,7 @@ window.MonthlyGrid = MonthlyGrid;
   border-bottom: 4px solid #334a60;
 }
 
-.month-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background-color: transparent;
-}
+
 
 .month-nav-btn {
   background: none;
@@ -2079,17 +2284,27 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(255, 249, 219, 0.5) !important;
 }
 
-.today-row {
-  background-color: rgba(255, 235, 156, 0.3) !important;
-}
 
-.today-row:hover {
-  background-color: rgba(255, 235, 156, 0.5) !important;
-}
 
+
+
+/* Apply highlighting only to the cell */
 .today-cell {
   font-weight: 500;
 }
+
+/* Fix for today's cell highlighting */
+
+
+/* Only apply the blue background to the date cell */
+.today-row td.date-cell {
+  font-weight: 500;
+  background-color: #cdeef5 !important;
+}
+
+
+
+
 
 .monthly-grid td {
   padding: 2px;
@@ -2417,8 +2632,6 @@ window.MonthlyGrid = MonthlyGrid;
 
 .transaction-item {
   background-color: #ffffff;
-  border: 1px solid #ddd;
-  border-radius: 0px;
   padding: 16px;
   transition: transform 0.2s, box-shadow 0.2s;
 }
@@ -2520,7 +2733,6 @@ window.MonthlyGrid = MonthlyGrid;
   justify-content: center;
   margin-top: 8px;
   padding-top: 16px;
-  border-top: 1px solid #ddd;
 }
 
 .add-transaction-btn {
@@ -2779,13 +2991,7 @@ body.dark-mode .weekend-row:hover {
   background-color: rgba(255, 249, 219, 0.1) !important;
 }
 
-body.dark-mode .today-row {
-  background-color: rgba(255, 235, 156, 0.08) !important;
-}
 
-body.dark-mode .today-row:hover {
-  background-color: rgba(255, 235, 156, 0.12) !important;
-}
 
 body.dark-mode .total-cell {
   background-color: rgba(244, 67, 54, 0.1);
@@ -2943,4 +3149,75 @@ body.dark-mode .loading-spinner {
   white-space: nowrap;
   border: 0;
 }
+
+
+/* Simplified styling for fixed/subscription transactions */
+.transaction-item.fixed-transaction {
+  /* Remove background color and left border */
+  background-color: transparent;
+  border-left: none;
+}
+
+/* Remove the ::before pseudo-element with "recurring" text since we're using the icon */
+.transaction-item.fixed-transaction::before {
+  display: none;
+}
+
+/* Keep the grid layout but adjust for no account column */
+.transaction-item.fixed-transaction .transaction-row {
+  opacity: 1;
+  /* Adjust grid template to remove account column */
+  grid-template-columns: 90px 1fr 40px;
+}
+
+/* Style readonly inputs to look clean */
+.transaction-item.fixed-transaction input {
+  background-color: #f9f5fa;
+  cursor: not-allowed;
+  border-color: #eee;
+  color: #555;
+  pointer-events: none;
+}
+
+/* Hide the account column entirely */
+.transaction-item.fixed-transaction .transaction-account-static {
+  display: none;
+}
+
+/* Create styling for the recurring icon */
+.recurring-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e44ad;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.recurring-icon i {
+  font-size: 18px;
+}
+
+/* Dark mode adjustments */
+body.dark-mode .transaction-item.fixed-transaction input {
+  background-color: #2a2a2a;
+  border-color: #333;
+  color: #bbb;
+}
+
+body.dark-mode .recurring-icon {
+  color: #9b59b6;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .transaction-item.fixed-transaction .transaction-row {
+    grid-template-columns: 45px 1fr 40px;
+  }
+  
+  .recurring-icon i {
+    font-size: 16px;
+  }
+}
+
 </style>

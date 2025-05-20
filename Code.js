@@ -579,7 +579,7 @@ function setCurrencyInSheet(currencySymbol) {
     // 1. Store the currency symbol in Dontedit!M76 using getBudgetSheet
     const donteditSheet = getBudgetSheet("Dontedit");
     if (!donteditSheet) throw new Error("Sheet 'Dontedit' not found");
-    donteditSheet.getRange("M76").setValue(currencySymbol);
+    donteditSheet.getRange("M86").setValue(currencySymbol);
     
     // Get user settings for decimal places
     const userProps = PropertiesService.getUserProperties();
@@ -612,23 +612,18 @@ function setCurrencyInSheet(currencySymbol) {
     // 5. Format Net Worth:G37:G sheet and additional ranges
     const netWorthSheet = getBudgetSheet("Net Worth");
     if (netWorthSheet) {
-      // Original range
+
       netWorthSheet.getRange("G37:G").setNumberFormat(numberFormat);
-      
-      // New ranges requested
       netWorthSheet.getRange("D5:P18").setNumberFormat(numberFormat);
       netWorthSheet.getRange("I37:I").setNumberFormat(numberFormat);
       
     }
 
-    
     // 6. Format Budget!J9:K39 sheet 
     const budgetSheet = getBudgetSheet("Budget");
     if (budgetSheet) {
       budgetSheet.getRange("C6:M50").setNumberFormat(numberFormat);
-      
-
-    }
+         }
     
     // 8. Format Dontedit rows 301:340 
     if (donteditSheet) {

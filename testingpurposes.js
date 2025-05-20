@@ -36,8 +36,8 @@ function getExpenseData(month, year) {
     const lastRow = donteditSheet.getLastRow();
     Logger.log("getExpenseData: Sheet has " + lastRow + " rows");
     
-    // Read headers from row 4
-    const headerRange = "FU4:FZ4";
+    // Updated header range to include GA4 column (Label)
+    const headerRange = "FU4:GA4";
     const headers = donteditSheet.getRange(headerRange).getValues()[0];
     Logger.log("Headers found: " + JSON.stringify(headers));
     
@@ -50,14 +50,15 @@ function getExpenseData(month, year) {
       }
     });
     
-    // Define the columns we need with possible variations
+    // Define the columns we need with possible variations - added 'label'
     const requiredColumns = {
       'account': ['account', 'acc'],
       'notes': ['notes', 'note', 'description'],
       'date': ['date', 'transaction date'],
       'name': ['name', 'transaction name', 'description', 'desc'],
       'category': ['category', 'cat'],
-      'amount': ['amount', 'value', 'cost']
+      'amount': ['amount', 'value', 'cost'],
+      'label': ['label', 'type', 'transaction type'] // Added label column variations
     };
     
     // Find the actual column indices
@@ -72,12 +73,18 @@ function getExpenseData(month, year) {
         }
       });
       if (!found) {
-        Logger.log("WARNING: Could not find column for " + key);
+        // Make label optional (don't fail if not found)
+        if (key !== 'label') {
+          Logger.log("WARNING: Could not find column for " + key);
+        } else {
+          Logger.log("INFO: Label column not found - will be null for transactions");
+        }
       }
     });
     
-    // Verify we found all required columns
-    const missing = Object.keys(requiredColumns).filter(key => columns[key] === undefined);
+    // Verify we found all required columns (except label which is optional)
+    const requiredKeys = Object.keys(requiredColumns).filter(key => key !== 'label');
+    const missing = requiredKeys.filter(key => columns[key] === undefined);
     if (missing.length > 0) {
       return { success: false, error: "Missing required columns: " + missing.join(', ') };
     }
@@ -85,7 +92,7 @@ function getExpenseData(month, year) {
     // Start from row 5 (since headers are in row 4)
     const startRow = 5;
     const endRow = Math.min(lastRow, startRow + 1000);
-    const range = "FU" + startRow + ":FZ" + endRow;
+    const range = "FU" + startRow + ":GA" + endRow;
     Logger.log("getExpenseData: Reading range " + range + " (starting from row 5)");
     
     const dataRange = donteditSheet.getRange(range);
@@ -151,6 +158,10 @@ function getExpenseData(month, year) {
           continue;
         }
         
+        // Get the label value if the column exists
+        const labelValue = columns.label !== undefined ? row[columns.label] : null;
+        const label = labelValue ? labelValue.toString() : "";
+        
         expenses.push({
           rowIndex: i + startRow,
           account: (row[columns.account] || "").toString(),
@@ -158,7 +169,8 @@ function getExpenseData(month, year) {
           date: expenseDate.toISOString(),
           name: (row[columns.name] || "").toString(),
           category: categoryValue.toString(),
-          amount: amount
+          amount: amount,
+          label: label // Include the label field
         });
       } else {
         skippedCount++;
@@ -192,6 +204,50 @@ function getExpenseData(month, year) {
     return { 
       success: false, 
       error: error.toString()
+    };
+  }
+}
+
+
+/**
+ * Save user settings to server-side storage
+ * @param {Object} settings - The settings object to save
+ * @return {Object} Result with success/failure status
+ */
+function setUserSettings(settings) {
+  try {
+    const userProperties = PropertiesService.getUserProperties();
+    userProperties.setProperty('simbudget_settings', JSON.stringify(settings));
+    
+    return {
+      success: true,
+      message: "Settings saved successfully"
+    };
+  } catch (e) {
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+/**
+ * Get user settings from server-side storage
+ * @return {Object} Result with success/failure status and settings
+ */
+function getUserSettings() {
+  try {
+    const userProperties = PropertiesService.getUserProperties();
+    const settingsString = userProperties.getProperty('simbudget_settings');
+    
+    return {
+      success: true,
+      settings: settingsString ? JSON.parse(settingsString) : {}
+    };
+  } catch (e) {
+    return {
+      success: false,
+      error: e.toString()
     };
   }
 }
