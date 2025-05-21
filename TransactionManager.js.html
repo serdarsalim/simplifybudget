@@ -1,0 +1,648 @@
+<script>
+
+
+/**
+ * TransactionManager.js - Reliable transaction queueing system
+ * 
+ * Provides Google Sheets-like behavior:
+ * - Changes appear immediately in the UI
+ * - Silent background saving with no visual indicators
+ * - Data persistence across page refreshes
+ * - Efficient batch processing to avoid overwhelming the API
+ * - Resilient to errors and network issues
+ */
+
+var TransactionManager = (function() {
+  // Private variables
+  const STORAGE_KEY = 'simbudget_transaction_queue';
+  const FAILED_STORAGE_KEY = 'simbudget_failed_transactions';
+  const LAST_BATCH_TIME_KEY = 'simbudget_last_batch_time';
+  const RESPONSE_TIMES_KEY = 'simbudget_api_response_times';
+  
+  let _queue = [];
+  let _failedQueue = [];
+  let _processorRunning = false;
+  let _processorInterval = null;
+  let _isProcessingBatch = false;
+  let _lastProcessTime = 0;
+  
+  // Default configuration
+  const _config = {
+    initialBatchSize: 3,
+    maxBatchSize: 5,
+    minBatchSize: 1,
+    processorInterval: 2000, // 2 seconds
+    retryDelays: [2000, 5000, 15000], // Exponential backoff: 2s, 5s, 15s
+    maxRetries: 3,
+    saveThrottleTime: 500, // Min time between saves
+  };
+  
+  // Current state
+  let _state = {
+    currentBatchSize: _config.initialBatchSize,
+    averageResponseTime: 0,
+    responseTimeHistory: [],
+    consecutiveErrors: 0,
+    consecutiveSuccesses: 0,
+  };
+  
+  /**
+   * Initialize the transaction manager
+   */
+  function init() {
+    console.log('TransactionManager: Initializing...');
+    
+    // Load saved transactions from localStorage
+    loadFromStorage();
+    
+    // Start the background processor
+    startProcessor();
+    
+    // Load performance metrics
+    loadPerformanceMetrics();
+    
+    // Add window unload handler to save queue state
+    window.addEventListener('beforeunload', function() {
+      persistToStorage();
+    });
+    
+    console.log(`TransactionManager: Initialized with ${_queue.length} pending transactions`);
+    
+    // Process any pending transactions immediately
+    if (_queue.length > 0) {
+      console.log('TransactionManager: Processing pending transactions from previous session');
+      processBatch();
+    }
+    
+    // Also try to process any previously failed transactions
+    if (_failedQueue.length > 0) {
+      console.log('TransactionManager: Attempting to retry failed transactions');
+      retryFailedTransactions();
+    }
+  }
+  
+  /**
+   * Load response time history and other performance metrics
+   */
+  function loadPerformanceMetrics() {
+    try {
+      // Load API response times history
+      const savedResponseTimes = localStorage.getItem(RESPONSE_TIMES_KEY);
+      if (savedResponseTimes) {
+        _state.responseTimeHistory = JSON.parse(savedResponseTimes);
+        
+        // Calculate average from the last 10 response times
+        if (_state.responseTimeHistory.length > 0) {
+          const recentTimes = _state.responseTimeHistory.slice(-10);
+          _state.averageResponseTime = recentTimes.reduce((sum, time) => sum + time, 0) / recentTimes.length;
+        }
+      }
+      
+      // Update batch size based on history
+      adjustBatchSize();
+      
+    } catch (error) {
+      console.warn('TransactionManager: Error loading performance metrics', error);
+      // Use defaults if loading fails
+      _state.responseTimeHistory = [];
+      _state.averageResponseTime = 0;
+    }
+  }
+  
+  /**
+   * Dynamically adjust batch size based on API performance
+   */
+  function adjustBatchSize() {
+    // If we don't have enough data, use the default
+    if (_state.responseTimeHistory.length < 3) {
+      _state.currentBatchSize = _config.initialBatchSize;
+      return;
+    }
+    
+    // If we're experiencing errors, reduce batch size
+    if (_state.consecutiveErrors > 1) {
+      _state.currentBatchSize = Math.max(_config.minBatchSize, 
+                                        _state.currentBatchSize - 1);
+      return;
+    }
+    
+    // If things are going well, gradually increase batch size
+    if (_state.consecutiveSuccesses > 3 && 
+        _state.currentBatchSize < _config.maxBatchSize) {
+      _state.currentBatchSize = Math.min(_config.maxBatchSize, 
+                                        _state.currentBatchSize + 1);
+      return;
+    }
+    
+    // If response times are getting too long, reduce batch size
+    const recentTimes = _state.responseTimeHistory.slice(-3);
+    const recentAvg = recentTimes.reduce((sum, time) => sum + time, 0) / recentTimes.length;
+    
+    if (recentAvg > 2000 && _state.currentBatchSize > _config.minBatchSize) {
+      // Response times > 2s, reduce batch size
+      _state.currentBatchSize = Math.max(_config.minBatchSize, 
+                                        _state.currentBatchSize - 1);
+    } else if (recentAvg < 1000 && _state.consecutiveSuccesses > 2 && 
+              _state.currentBatchSize < _config.maxBatchSize) {
+      // Response times < 1s and consecutive successes, increase batch size
+      _state.currentBatchSize = Math.min(_config.maxBatchSize, 
+                                        _state.currentBatchSize + 1);
+    }
+  }
+  
+  /**
+   * Load transaction queue from localStorage
+   */
+  function loadFromStorage() {
+    try {
+      const savedQueue = localStorage.getItem(STORAGE_KEY);
+      if (savedQueue) {
+        _queue = JSON.parse(savedQueue);
+        console.log(`TransactionManager: Loaded ${_queue.length} pending transactions from storage`);
+      }
+      
+      const savedFailedQueue = localStorage.getItem(FAILED_STORAGE_KEY);
+      if (savedFailedQueue) {
+        _failedQueue = JSON.parse(savedFailedQueue);
+        console.log(`TransactionManager: Loaded ${_failedQueue.length} failed transactions from storage`);
+      }
+      
+      const lastBatchTime = localStorage.getItem(LAST_BATCH_TIME_KEY);
+      if (lastBatchTime) {
+        _lastProcessTime = parseInt(lastBatchTime, 10);
+      }
+    } catch (error) {
+      console.error('TransactionManager: Error loading from storage', error);
+      _queue = [];
+      _failedQueue = [];
+    }
+  }
+  
+  /**
+   * Save transaction queue to localStorage
+   */
+  function persistToStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(_queue));
+      localStorage.setItem(FAILED_STORAGE_KEY, JSON.stringify(_failedQueue));
+      localStorage.setItem(LAST_BATCH_TIME_KEY, _lastProcessTime.toString());
+      
+      // Save API response time history
+      localStorage.setItem(RESPONSE_TIMES_KEY, JSON.stringify(_state.responseTimeHistory));
+    } catch (error) {
+      console.error('TransactionManager: Error persisting to storage', error);
+    }
+  }
+  
+  /**
+   * Start the background processor
+   */
+  function startProcessor() {
+    if (_processorRunning) return;
+    
+    _processorRunning = true;
+    _processorInterval = setInterval(function() {
+      if (!_isProcessingBatch && _queue.length > 0) {
+        const now = Date.now();
+        const timeSinceLastProcess = now - _lastProcessTime;
+        
+        // Only process if enough time has elapsed since last processing
+        if (timeSinceLastProcess >= _config.saveThrottleTime) {
+          processBatch();
+        }
+      }
+    }, _config.processorInterval);
+    
+    console.log('TransactionManager: Background processor started');
+  }
+  
+  /**
+   * Stop the background processor
+   */
+  function stopProcessor() {
+    if (!_processorRunning) return;
+    
+    clearInterval(_processorInterval);
+    _processorRunning = false;
+    console.log('TransactionManager: Background processor stopped');
+  }
+  
+  /**
+   * Process a batch of transactions
+   */
+  function processBatch() {
+    if (_isProcessingBatch || _queue.length === 0) return;
+    
+    _isProcessingBatch = true;
+    _lastProcessTime = Date.now();
+    
+    // Take up to currentBatchSize transactions from the queue
+    const batchSize = Math.min(_state.currentBatchSize, _queue.length);
+    const batch = _queue.slice(0, batchSize);
+    
+    console.log(`TransactionManager: Processing batch of ${batch.length} transactions`);
+    
+    // Update status of transactions in batch
+    batch.forEach(tx => tx.status = 'saving');
+    
+    // Record start time for performance tracking
+    const startTime = Date.now();
+    
+    // Call the API to save the batch
+    saveTransactionBatch(batch)
+      .then(result => {
+        // Calculate response time
+        const responseTime = Date.now() - startTime;
+        
+        // Update performance metrics
+        _state.responseTimeHistory.push(responseTime);
+        if (_state.responseTimeHistory.length > 20) {
+          _state.responseTimeHistory.shift(); // Keep only last 20 records
+        }
+        _state.averageResponseTime = _state.responseTimeHistory.slice(-10).reduce((sum, time) => sum + time, 0) / 
+                                    Math.min(10, _state.responseTimeHistory.length);
+        
+        console.log(`TransactionManager: Batch saved successfully in ${responseTime}ms`);
+        
+        // Update success streak and reset error streak
+        _state.consecutiveSuccesses++;
+        _state.consecutiveErrors = 0;
+        
+        // Remove saved transactions from queue
+        _queue = _queue.filter(tx => {
+          const txInBatch = batch.some(batchTx => batchTx.id === tx.id);
+          return !txInBatch;
+        });
+        
+        // Update batch size for next run
+        adjustBatchSize();
+        
+        // Persist updated queue to storage
+        persistToStorage();
+        
+        // Dispatch success event for any components that need to know
+        document.dispatchEvent(new CustomEvent('transaction-batch-saved', {
+          detail: { transactions: batch }
+        }));
+      })
+      .catch(error => {
+        console.error('TransactionManager: Error saving batch:', error);
+        
+        // Update error streak and reset success streak
+        _state.consecutiveErrors++;
+        _state.consecutiveSuccesses = 0;
+        
+        // Reduce batch size if we have consecutive errors
+        if (_state.consecutiveErrors > 1) {
+          _state.currentBatchSize = Math.max(_config.minBatchSize, Math.floor(_state.currentBatchSize / 2));
+          console.log(`TransactionManager: Reduced batch size to ${_state.currentBatchSize} due to errors`);
+        }
+        
+        // Handle retry logic for each transaction in the batch
+        batch.forEach(tx => {
+          tx.retryCount = (tx.retryCount || 0) + 1;
+          tx.lastError = error.toString();
+          tx.status = 'error';
+          
+          if (tx.retryCount < _config.maxRetries) {
+            // Keep in queue for retry, but with reduced priority (move to end)
+            _queue = _queue.filter(qTx => qTx.id !== tx.id);
+            _queue.push(tx);
+          } else {
+            // Max retries exceeded, move to failed queue
+            _queue = _queue.filter(qTx => qTx.id !== tx.id);
+            _failedQueue.push(tx);
+          }
+        });
+        
+        // Persist updated queues to storage
+        persistToStorage();
+        
+        // Dispatch error event
+        document.dispatchEvent(new CustomEvent('transaction-batch-error', {
+          detail: { transactions: batch, error: error }
+        }));
+      })
+      .finally(() => {
+        _isProcessingBatch = false;
+      });
+  }
+  
+  /**
+   * Retry failed transactions
+   */
+  function retryFailedTransactions() {
+    if (_failedQueue.length === 0) return;
+    
+    console.log(`TransactionManager: Retrying ${_failedQueue.length} failed transactions`);
+    
+    // Move failed transactions back to the main queue with reset retry counts
+    _failedQueue.forEach(tx => {
+      tx.retryCount = 0;
+      tx.status = 'pending';
+      tx.retryTime = Date.now();
+      _queue.push(tx);
+    });
+    
+    // Clear failed queue
+    _failedQueue = [];
+    
+    // Persist updated queues
+    persistToStorage();
+    
+    // Process a batch immediately
+    setTimeout(processBatch, 100);
+  }
+  
+  /**
+   * Add a new transaction to the queue
+   * @param {Object} transaction - Transaction object
+   * @return {string} Transaction ID
+   */
+  function addTransaction(transaction) {
+    // Generate a unique ID if not provided
+    if (!transaction.id) {
+      transaction.id = generateTransactionId();
+    }
+    
+    // Add metadata
+    transaction.timestamp = Date.now();
+    transaction.status = 'pending';
+    transaction.retryCount = 0;
+    
+    // Add to queue
+    _queue.push(transaction);
+    
+    // Persist to storage
+    persistToStorage();
+    
+    console.log(`TransactionManager: Added transaction to queue, ID: ${transaction.id}`);
+    
+    // Trigger processor if not already running
+    if (!_processorRunning) {
+      startProcessor();
+    }
+    
+    return transaction.id;
+  }
+  
+  /**
+   * Update an existing transaction in the queue
+   * @param {Object} transaction - Updated transaction object
+   * @return {boolean} Whether the update was successful
+   */
+  function updateTransaction(transaction) {
+    // Find transaction in queue
+    const index = _queue.findIndex(tx => tx.id === transaction.id);
+    
+    if (index === -1) {
+      console.warn(`TransactionManager: Cannot update transaction, ID not found: ${transaction.id}`);
+      return false;
+    }
+    
+    // Update timestamp and status
+    transaction.timestamp = Date.now();
+    transaction.status = 'pending';
+    
+    // Replace in queue
+    _queue[index] = transaction;
+    
+    // Persist to storage
+    persistToStorage();
+    
+    console.log(`TransactionManager: Updated transaction in queue, ID: ${transaction.id}`);
+    return true;
+  }
+  
+  /**
+   * Remove a transaction from the queue
+   * @param {string} transactionId - ID of transaction to remove
+   * @return {boolean} Whether the removal was successful
+   */
+  function removeTransaction(transactionId) {
+    const initialLength = _queue.length;
+    
+    // Remove from queue
+    _queue = _queue.filter(tx => tx.id !== transactionId);
+    
+    // Check if anything was removed
+    if (_queue.length === initialLength) {
+      console.warn(`TransactionManager: Cannot remove transaction, ID not found: ${transactionId}`);
+      return false;
+    }
+    
+    // Persist to storage
+    persistToStorage();
+    
+    console.log(`TransactionManager: Removed transaction from queue, ID: ${transactionId}`);
+    return true;
+  }
+  
+  /**
+   * Generate a unique transaction ID
+   * @return {string} Unique ID
+   */
+  function generateTransactionId() {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000);
+    return `tx-${timestamp}-${random}`;
+  }
+  
+  /**
+   * Get the current transaction queue
+   * @return {Array} Copy of the current queue
+   */
+  function getQueue() {
+    return [..._queue]; // Return a copy
+  }
+  
+  /**
+   * Get failed transactions
+   * @return {Array} Copy of the failed queue
+   */
+  function getFailedTransactions() {
+    return [..._failedQueue]; // Return a copy
+  }
+  
+  /**
+   * Get current metrics and state
+   * @return {Object} Current metrics
+   */
+  function getMetrics() {
+    return {
+      queueLength: _queue.length,
+      failedQueueLength: _failedQueue.length,
+      batchSize: _state.currentBatchSize,
+      averageResponseTime: _state.averageResponseTime,
+      consecutiveErrors: _state.consecutiveErrors,
+      consecutiveSuccesses: _state.consecutiveSuccesses,
+      isProcessing: _isProcessingBatch,
+      lastProcessTime: _lastProcessTime
+    };
+  }
+  
+  /**
+   * Force immediate processing of the queue
+   */
+  function forceProcessing() {
+    if (_isProcessingBatch) {
+      console.log('TransactionManager: Already processing a batch, cannot force processing');
+      return;
+    }
+    
+    if (_queue.length === 0) {
+      console.log('TransactionManager: Queue is empty, nothing to process');
+      return;
+    }
+    
+    console.log('TransactionManager: Forcing immediate processing of queue');
+    processBatch();
+  }
+  
+  /**
+   * Clear all queues and reset state (for testing/debugging)
+   */
+  function clearQueues() {
+    _queue = [];
+    _failedQueue = [];
+    persistToStorage();
+    console.log('TransactionManager: All queues cleared');
+  }
+  
+  /**
+   * Save a batch of transactions via API
+   * @param {Array} transactions - Array of transaction objects to save
+   * @return {Promise} Promise that resolves when transactions are saved
+   */
+  function saveTransactionBatch(transactions) {
+    return new Promise((resolve, reject) => {
+
+        console.log("DETAILED DEBUG - Transaction batch:", 
+                JSON.stringify(transactions, (key, value) => {
+                  // Handle Date objects specially in the console
+                  if (value instanceof Date) {
+                    return value.toISOString();
+                  }
+                  return value;
+                }, 2));
+
+      // Ensure API is available
+      if (!window.API || typeof API.saveBatchExpenses !== 'function') {
+        // Fall back to saveExpense if batch function not available
+        if (window.API && typeof API.saveExpense === 'function') {
+          console.log('TransactionManager: Using fallback to individual saves (saveBatchExpenses not available)');
+          
+          // Process transactions one by one
+          const promises = transactions.map(tx => {
+            return new Promise((resolveSingle, rejectSingle) => {
+              API.saveExpense(
+                transformTransactionToExpense(tx),
+                result => resolveSingle(result),
+                error => rejectSingle(error)
+              );
+            });
+          });
+          
+          // Wait for all individual saves to complete
+          Promise.all(promises)
+            .then(results => {
+              console.log('TransactionManager: All individual saves completed successfully');
+              resolve({ success: true, results: results });
+            })
+            .catch(error => {
+              console.error('TransactionManager: Error in individual saves:', error);
+              reject(error);
+            });
+          
+          return;
+        }
+        
+        reject(new Error('API.saveBatchExpenses or API.saveExpense function not available'));
+        return;
+      }
+      
+      // Transform transactions to the format expected by the API
+      const expenses = transactions.map(tx => transformTransactionToExpense(tx));
+      
+      // Call the batch save API
+      API.saveBatchExpenses(
+        expenses,
+        result => {
+          if (result && result.success) {
+            resolve(result);
+          } else {
+            reject(new Error(result && result.error ? result.error : 'Unknown error in batch save'));
+          }
+        },
+        error => {
+          reject(error);
+        }
+      );
+    });
+  }
+  
+/**
+ * Transform internal transaction object to expense format expected by API
+ * @param {Object} transaction - Internal transaction object
+ * @return {Object} Expense object for API
+ */
+function transformTransactionToExpense(transaction) {
+  console.log("transformTransactionToExpense - Input:", transaction);
+  
+  // Format date properly for Google Apps Script
+  let formattedDate;
+  if (transaction.date instanceof Date) {
+    // Format as MM/DD/YYYY for Google Apps Script
+    formattedDate = (transaction.date.getMonth() + 1) + '/' + 
+                      transaction.date.getDate() + '/' + 
+                      transaction.date.getFullYear();
+  } else if (typeof transaction.date === 'string') {
+    // Already a string, pass as is
+    formattedDate = transaction.date;
+  } else {
+    // Fallback - use current date
+    const now = new Date();
+    formattedDate = (now.getMonth() + 1) + '/' + 
+                     now.getDate() + '/' + 
+                     now.getFullYear();
+  }
+  
+  // CRITICAL FIX: Combine category and emoji
+  let categoryWithEmoji = transaction.category;
+  if (transaction.emoji && transaction.emoji.trim() !== '') {
+    categoryWithEmoji = `${transaction.category} ${transaction.emoji}`;
+    console.log(`Combined category with emoji: ${categoryWithEmoji}`);
+  }
+  
+  const result = {
+    transactionId: transaction.id,
+    date: formattedDate,
+    amount: transaction.amount,
+    category: categoryWithEmoji, // Now includes emoji
+    name: transaction.description || transaction.name || '',
+    label: transaction.label || '',
+    notes: transaction.notes || '',
+    account: transaction.account || 'Main Account'
+  };
+  
+  console.log("transformTransactionToExpense - Output:", result);
+  return result;
+}
+  
+  // Return public API
+  return {
+    init: init,
+    addTransaction: addTransaction,
+    updateTransaction: updateTransaction,
+    removeTransaction: removeTransaction,
+    getQueue: getQueue,
+    getFailedTransactions: getFailedTransactions,
+    getMetrics: getMetrics,
+    forceProcessing: forceProcessing,
+    retryFailedTransactions: retryFailedTransactions,
+    clearQueues: clearQueues // For testing only
+  };
+})();
+
+
+</script>

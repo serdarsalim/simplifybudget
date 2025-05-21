@@ -609,12 +609,57 @@ getExpenseData: function(month, year, successCallback, errorCallback) {
       console.error("API.getExpenseData: Full error object:", error);
       errorCallback(errorMsg);
     })
-    .getExpenseData(month, year); // *** FIX: Explicitly pass both parameters ***
+        .getExpenseData(month, year); // MODIFIED: Add useCache parameter
+
   
 },
 
 
 
+/**
+ * API additions for batch expense processing
+ * Add these functions to your API.html file
+ */
+
+/**
+ * Save a batch of expenses at once
+ * @param {Array} expenses - Array of expense objects
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+saveBatchExpenses: function(expenses, successCallback, errorCallback) {
+  try {
+    if (!Array.isArray(expenses) || expenses.length === 0) {
+      _lastError = "Invalid expenses array";
+      errorCallback(_lastError);
+      return;
+    }
+    
+    console.log("API: Sending batch of " + expenses.length + " expenses to server");
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          console.log("API: Batch save successful:", result);
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error in batch save";
+          console.error("API: Batch save error:", _lastError);
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        console.error("API: Server error in batch save:", error);
+        errorCallback(error);
+      })
+      .saveBatchExpenses(expenses);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    console.error("API: Exception in saveBatchExpenses:", _lastError);
+    errorCallback(_lastError);
+  }
+},
 
 
 

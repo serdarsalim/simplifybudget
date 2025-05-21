@@ -1,3 +1,29 @@
+
+<script>
+// MINIMAL CACHE RESET - PRESERVES SETTINGS & CATEGORIES
+(function() {
+  // Clear specific caches only
+  ['expense', 'monthly', 'dashboard', 'budget_data'].forEach(pattern => {
+    for (let i = localStorage.length-1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.includes(pattern) && 
+          !key.includes('setting') && 
+          !key.includes('categories')) {
+        localStorage.removeItem(key);
+      }
+    }
+  });
+  
+  // Reset session tracking
+  sessionStorage.removeItem('monthlyGrid_sessionActive');
+  
+  // Signal fresh data needed
+  window.FORCE_FRESH_DATA = true;
+})();
+
+
+</script>
+
 <!DOCTYPE html>
 <html>
   <head>
@@ -179,17 +205,20 @@
     </div>
     
     <!-- Include JavaScript -->
+        <?!= include('settings.js'); ?>
      <?!= include('API'); ?>
+      <?!= include('TransactionManager.js'); ?>
      <?!= include('Utils'); ?>
      <?!= include('Init'); ?>
      <?!= include('dashboard.js'); ?>
-     <?!= include('settings.js'); ?>
      <?!= include('transactionEntry.js'); ?>
      <?!= include('categories.js'); ?> 
      <?!= include('monthlyGrid.js'); ?>
      <?!= include('income.js'); ?>
      <?!= include('recurring.js'); ?>
      <?!= include('networth.js.html'); ?>
+ 
+
 
 
 
@@ -201,6 +230,28 @@
     SimBudget.initialize();
     // REMOVED: The setTimeout that was forcing expenses view
     // Now the initialize function handles view selection with session persistence
+  });
+
+
+    // Direct binding for refresh button that bypasses all the complexity
+  document.addEventListener('DOMContentLoaded', function() {
+    const refreshBtn = document.getElementById('refreshExpenses');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        console.log('Manual refresh triggered');
+        
+        // Reset session tracking
+        sessionStorage.removeItem('monthlyGrid_sessionActive');
+        
+        // Signal fresh data needed
+        window.FORCE_FRESH_DATA = true;
+        
+        // Force refresh with hard reload
+        if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
+          MonthlyGrid.refresh();
+        }
+      });
+    }
   });
 </script>
 

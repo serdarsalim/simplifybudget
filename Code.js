@@ -595,11 +595,11 @@ function setCurrencyInSheet(currencySymbol) {
       Logger.log("Applied format to Income sheet range E5:E");
     }
     
-    // 3. Format Expenses:E5:E sheet
+    // 3. Format Expenses:F5:F sheet
     const expensesSheet = getBudgetSheet("Expenses");
     if (expensesSheet) {
-      expensesSheet.getRange("E5:E").setNumberFormat(numberFormat);
-      Logger.log("Applied format to Expenses sheet range E5:E");
+      expensesSheet.getRange("F5:F").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Expenses sheet range F5:F");
     }
     
     // 4. Format recurring:H6:H sheet

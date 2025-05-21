@@ -256,34 +256,37 @@ function prefetchMonth(month, year) {
     return _elements[id];
   }
 
-        /**
-         * Get currency symbol from user settings
-         */
-        /**
-       * Get currency symbol from server-side user settings
-       */
-      function loadCurrencyFromSettings() {
-        try {
-          if (window.SimBudget && SimBudget.Settings) {
-            _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
-          } else {
-            // If SimBudget is not available yet, use default
-            _currencySymbol = '$';
-            
-            // Queue up a retry when SimBudget becomes available
-            setTimeout(() => {
-              if (window.SimBudget && SimBudget.Settings) {
-                _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
-                renderGrid(); // Re-render once settings are loaded
-              }
-            }, 100);
-          }
-          console.log('MonthlyGrid: Using currency symbol:', _currencySymbol);
-        } catch (error) {
-          console.warn('MonthlyGrid: Error loading currency from settings, using default:', error);
-          _currencySymbol = '$';
+    // BRUTE FORCE FIX for monthlyGrid.js
+
+// Replace the loadCurrencyFromSettings function with this:
+function loadCurrencyFromSettings() {
+  // First try - immediate
+  if (window.SimBudget && SimBudget.Settings) {
+    _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
+    console.log('MonthlyGrid: Immediate currency load:', _currencySymbol);
+  } else {
+    _currencySymbol = '$'; // Default
+    console.log('MonthlyGrid: Using default currency for now');
+  }
+  
+  // BRUTE FORCE: Keep checking for 10 seconds with increasing intervals
+  const checkTimes = [100, 300, 500, 1000, 2000, 3000, 5000, 8000];
+  
+  checkTimes.forEach(delay => {
+    setTimeout(() => {
+      if (window.SimBudget && SimBudget.Settings) {
+        const newSymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
+        
+        // Only update if it changed
+        if (newSymbol !== _currencySymbol) {
+          console.log(`MonthlyGrid: Currency updated after ${delay}ms from ${_currencySymbol} to ${newSymbol}`);
+          _currencySymbol = newSymbol;
+          renderGrid(); // Re-render with new currency
         }
       }
+    }, delay);
+  });
+}
 
       
   /**
@@ -327,6 +330,12 @@ function prefetchMonth(month, year) {
     unbindEvents();
   }
   
+  // Remove any existing currency change listener first
+  document.removeEventListener('currency-changed', handleCurrencyChange);
+  // Add the currency change listener
+  document.addEventListener('currency-changed', handleCurrencyChange);
+  
+
   // Find and store container element
   if (containerId) {
     const container = document.getElementById(containerId);
@@ -379,6 +388,20 @@ function prefetchMonth(month, year) {
   
   _initialized = true;
   console.log('Monthly Grid View initialized');
+}
+
+/**
+ * ADDED: Handle currency change events
+ * @param {Event} event - The currency-changed event
+ */
+function handleCurrencyChange(event) {
+  console.log('MonthlyGrid: Currency change detected:', event.detail.symbol);
+  
+  // Update the currency symbol
+  _currencySymbol = event.detail.symbol;
+  
+  // Re-render the grid with new currency
+  renderGrid();
 }
   
   /**
@@ -946,10 +969,18 @@ function processRealExpenseData(expenses) {
   /**
    * Refresh the grid by reloading data
    */
-  function refresh() {
-    console.log('Refreshing monthly grid...');
-    _isLoading = false; // Reset loading flag
-    
+  /**
+ * Refresh the grid by reloading data
+ * Modified to always clear cache by default when refresh button is clicked
+ * 
+ * @param {boolean} skipCacheClear - Optional parameter to skip cache clearing (default: false)
+ */
+function refresh(skipCacheClear) {
+  console.log('Refreshing monthly grid...');
+  _isLoading = false; // Reset loading flag
+  
+  // By default, always clear the cache unless explicitly told not to
+  if (!skipCacheClear) {
     // Clear cache for current month to force fresh fetch
     const key = getCacheKey(_currentMonth, _currentYear);
     _expenseCache.delete(key);
@@ -957,18 +988,38 @@ function processRealExpenseData(expenses) {
     const storageKey = CACHE_PREFIX + key;
     localStorage.removeItem(storageKey);
     
-    loadRealExpenseData();
-  }
-
-  /**
-   * Update currency symbol and refresh display
-   */
-  function updateCurrency() {
-    loadCurrencyFromSettings();
-    if (_initialized) {
-      renderGrid(); // Re-render to show new currency
+    console.log(`Cache cleared for ${_currentMonth}/${_currentYear}`);
+    
+    // Also clear session storage to force a complete refresh
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    
+    // Force processing of any pending transactions first
+    if (window.TransactionManager) {
+      console.log('Processing pending transactions before refresh...');
+      TransactionManager.forceProcessing();
+      
+      // Wait for processing to complete before refreshing
+      setTimeout(function() {
+        loadRealExpenseData();
+      }, 500);
+      return; // Exit early since loadRealExpenseData will be called in setTimeout
     }
   }
+  
+  // If we didn't return early from the TransactionManager block
+  loadRealExpenseData();
+}
+
+/**
+ * Update currency symbol and refresh display
+ */
+function updateCurrency() {
+  console.log('MonthlyGrid: Explicitly updating currency');
+  loadCurrencyFromSettings();
+  if (_initialized) {
+    renderGrid(); // Re-render to show new currency
+  }
+}
 
   // Track modal states to prevent accidental popups
   let _isOpeningModal = false;
@@ -1013,22 +1064,38 @@ function processRealExpenseData(expenses) {
       console.error('nextMonth button not found in DOM');
     }
     
-    // ENHANCED: Add refresh button handler
+
     const refreshExpenses = document.getElementById('refreshExpenses');
-    if (refreshExpenses) {
-      refreshExpenses.removeEventListener('click', refreshExpenses._monthlyGridHandler);
-      
-      refreshExpenses._monthlyGridHandler = function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Refresh expenses clicked - clearing cache and reloading');
-        refresh();
-      };
-      
-      refreshExpenses.addEventListener('click', refreshExpenses._monthlyGridHandler);
-    } else {
-      console.warn('Refresh expenses button not found in DOM - make sure to add it to Index.html');
-    }
+if (refreshExpenses) {
+  // Remove any existing listeners first
+  if (refreshExpenses._monthlyGridHandler) {
+    refreshExpenses.removeEventListener('click', refreshExpenses._monthlyGridHandler);
+  }
+  
+  // Create a new handler that does aggressive cache clearing
+  refreshExpenses._monthlyGridHandler = function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('Refresh expenses clicked - AGGRESSIVE cache clearing');
+    
+    // Reset session tracking (from your index.html)
+    sessionStorage.removeItem('monthlyGrid_sessionActive');
+    
+    // Signal fresh data needed (from your index.html)
+    window.FORCE_FRESH_DATA = true;
+    
+    // Clear BOTH in-memory and localStorage cache
+    clearCache();
+    
+    // Force a complete refresh
+    refresh();
+  };
+  
+  // Add the new handler
+  refreshExpenses.addEventListener('click', refreshExpenses._monthlyGridHandler);
+} else {
+  console.warn('Refresh expenses button not found in DOM - make sure to add it to Index.html');
+}
     
     // Cell click handlers (using event delegation)
     const gridContainer = getElement('monthly-grid-container');
@@ -1677,6 +1744,9 @@ function getNextMonth(month, year) {
  * Create a transaction item in the modal
  * Simplified handling for subscription/fixed payment items
  */
+/**
+ * Create a transaction item in the modal - with TransactionManager integration
+ */
 function createTransactionItem(tx) {
   const item = document.createElement('div');
   item.className = 'transaction-item';
@@ -1794,10 +1864,15 @@ function createTransactionItem(tx) {
   
   return item;
 }
+
   
 /**
  * Setup event handlers for transaction items
  * Only called for regular (non-subscription) transactions
+ */
+/**
+ * Setup event handlers for transaction items
+ * Modified to use TransactionManager
  */
 function setupTransactionItemEvents(item, tx) {
   const deleteBtn = item.querySelector('.transaction-delete');
@@ -1805,8 +1880,31 @@ function setupTransactionItemEvents(item, tx) {
     deleteBtn.addEventListener('click', function(e) {
       e.stopPropagation();
       
+      // Remove from UI
       item.remove();
       
+      // If this is a real transaction with an amount, handle deletion
+      if (tx.id && tx.amount > 0) {
+        // Create a delete transaction (using 0 amount to signal deletion)
+        const deleteTransaction = {
+          id: tx.id + '-void-' + Date.now(),
+          date: tx.date,
+          amount: 0,
+          category: tx.category,
+          description: 'DELETED: ' + (tx.description || ''),
+          account: tx.account || 'Main Account',
+          deleted: true,
+          originalId: tx.id
+        };
+        
+        // Add to TransactionManager queue for background processing
+        if (window.TransactionManager) {
+          TransactionManager.addTransaction(deleteTransaction);
+          console.log('Delete transaction queued:', deleteTransaction);
+        }
+      }
+      
+      // Also remove from local transactions array
       const index = _transactions.findIndex(transaction => transaction.id === tx.id);
       if (index !== -1) {
         _transactions.splice(index, 1);
@@ -1818,38 +1916,101 @@ function setupTransactionItemEvents(item, tx) {
   }
   
   const amountInput = item.querySelector('.transaction-amount');
+  const descriptionInput = item.querySelector('.transaction-description');
+  const accountSelect = item.querySelector('.transaction-account');
+  
+  // Function to update TransactionManager queue
+  function updateTransactionQueue() {
+    // Only queue transactions with valid amounts
+    if (parseFloat(amountInput.value) > 0) {
+      // Get the category emoji
+      let categoryEmoji = '';
+      if (window.getCategoryEmoji) {
+        categoryEmoji = getCategoryEmoji(tx.category);
+      } else {
+        // Fallback: Try to find the category in the categories array
+        const category = _categories.find(c => c.id === tx.category);
+        if (category && category.emoji) {
+          categoryEmoji = category.emoji;
+        }
+      }
+      
+      // Create transaction for queue
+      const transaction = {
+        id: tx.id,
+        date: tx.date,
+        amount: parseFloat(amountInput.value) || 0,
+        category: tx.category,
+        description: descriptionInput.value,
+        account: accountSelect ? accountSelect.value : 'Main Account',
+        notes: tx.notes || '',
+        emoji: categoryEmoji
+      };
+      
+      // Update the transaction in our local array
+      tx.amount = transaction.amount;
+      tx.description = transaction.description;
+      if (accountSelect) {
+        tx.account = transaction.account;
+      }
+      
+      // Add/update in TransactionManager's queue
+      if (window.TransactionManager) {
+        // Check if this transaction is already in the queue
+        const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
+        
+        if (existingTx) {
+          TransactionManager.updateTransaction(transaction);
+          console.log('Updated transaction in queue:', transaction);
+        } else {
+          TransactionManager.addTransaction(transaction);
+          console.log('Added new transaction to queue:', transaction);
+        }
+      }
+      
+      // Check if this transaction is already in our local array
+      const existingIndex = _transactions.findIndex(t => t.id === tx.id);
+      if (existingIndex === -1) {
+        // Add to local transactions array for immediate UI update
+        _transactions.push(tx);
+      } else {
+        // Update the existing transaction
+        _transactions[existingIndex] = tx;
+      }
+    }
+  }
+  
   if (amountInput) {
+    // Update when amount changes
     amountInput.addEventListener('input', function() {
       tx.amount = parseFloat(this.value) || 0;
       updateTransactionTotal();
-      renderGrid();
     });
     
-    // Add to global transactions array when amount is entered
+    // Queue for saving when amount is complete
     amountInput.addEventListener('change', function() {
-      if (parseFloat(this.value) > 0) {
-        // Check if this transaction is already in the array
-        const existingIndex = _transactions.findIndex(transaction => transaction.id === tx.id);
-        if (existingIndex === -1) {
-          // Not in array yet, add it
-          _transactions.push(tx);
-          console.log('Added new transaction to global array:', tx);
-        }
-      }
+      updateTransactionQueue();
+      renderGrid(); // Update the grid display
     });
   }
   
-  const descriptionInput = item.querySelector('.transaction-description');
   if (descriptionInput) {
+    // Update transaction when description changes
     descriptionInput.addEventListener('input', function() {
       tx.description = this.value;
+    });
+    
+    // Queue for saving when description is complete
+    descriptionInput.addEventListener('change', function() {
+      if (parseFloat(amountInput.value) > 0) {
+        updateTransactionQueue();
+      }
     });
     
     // Move to next field when Enter is pressed
     descriptionInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const accountSelect = item.querySelector('.transaction-account');
         if (accountSelect) {
           accountSelect.focus();
         }
@@ -1857,10 +2018,15 @@ function setupTransactionItemEvents(item, tx) {
     });
   }
   
-  const accountSelect = item.querySelector('.transaction-account');
   if (accountSelect) {
+    // Update transaction when account changes
     accountSelect.addEventListener('change', function() {
       tx.account = this.value;
+      
+      // Queue for saving
+      if (parseFloat(amountInput.value) > 0) {
+        updateTransactionQueue();
+      }
     });
     
     // Close modal when Enter is pressed on account select
@@ -1909,63 +2075,107 @@ function setupTransactionItemEvents(item, tx) {
     }
   }
   
-  function closeTransactionModal() {
-    console.log('Closing transaction modal');
-    _isClosingModal = true;
+  /**
+ * Close the transaction modal - modified to force queue processing
+ */
+function closeTransactionModal() {
+  console.log('Closing transaction modal');
+  _isClosingModal = true;
+  
+  const modal = getElement('transaction-modal');
+  if (modal) {
+    modal.classList.remove('visible');
     
-    const modal = getElement('transaction-modal');
-    if (modal) {
-      modal.classList.remove('visible');
-      console.log('Modal visibility class removed');
-      
-      document.removeEventListener('keydown', handleEscKey);
-      
-      renderGrid();
-      
-      setTimeout(() => {
-        _isClosingModal = false;
-      }, 300);
+    document.removeEventListener('keydown', handleEscKey);
+    
+    // Force processing of the transaction queue when modal closes
+    if (window.TransactionManager) {
+      setTimeout(function() {
+        TransactionManager.forceProcessing();
+      }, 200);
     }
+    
+    renderGrid();
+    
+    setTimeout(() => {
+      _isClosingModal = false;
+    }, 300);
+  }
+}
+
+  
+ /**
+ * Add a new transaction row - simplified
+ */
+function addTransactionRow() {
+  console.log('Adding additional transaction row');
+  
+  const transactionsList = getElement('transactions-list');
+  const modal = getElement('transaction-modal');
+  
+  if (!transactionsList || !modal) {
+    console.error('Required elements not found');
+    return;
   }
   
-  function addTransactionRow() {
-    console.log('Adding additional transaction row');
-    
-    const transactionsList = getElement('transactions-list');
-    const modal = getElement('transaction-modal');
-    
-    if (!transactionsList || !modal) {
-      console.error('Required elements not found');
-      return;
-    }
-    
-    const day = modal.getAttribute('data-day');
-    const categoryId = modal.getAttribute('data-category');
-    
-    if (!day || !categoryId) {
-      console.error('Missing day or category information');
-      return;
-    }
-    
-    // Create another empty transaction
-    const newTx = createEmptyTransaction(day, categoryId);
-    const item = createTransactionItem(newTx);
-    item.classList.add('new-transaction');
-    
-    // Insert before the Add More button
-    const addMoreButton = transactionsList.parentElement.querySelector('.modal-actions');
-    transactionsList.appendChild(item);
-    
-    // Auto-focus the amount field
-    setTimeout(() => {
-      const amountField = item.querySelector('.transaction-amount');
-      if (amountField) {
-        amountField.focus();
-      }
-    }, 100);
-    
-    updateTransactionTotal();
+  const day = modal.getAttribute('data-day');
+  const categoryId = modal.getAttribute('data-category');
+  
+  if (!day || !categoryId) {
+    console.error('Missing day or category information');
+    return;
   }
+  
+  // Create another empty transaction
+  const newTx = createEmptyTransaction(day, categoryId);
+  const item = createTransactionItem(newTx);
+  item.classList.add('new-transaction');
+  
+  // Add to DOM
+  transactionsList.appendChild(item);
+  
+  // Auto-focus the amount field
+  setTimeout(() => {
+    const amountField = item.querySelector('.transaction-amount');
+    if (amountField) {
+      amountField.focus();
+    }
+  }, 100);
+  
+  updateTransactionTotal();
+}
+
+
+/**
+ * Refresh the grid with optional force reload from server
+ */
+function refresh(forceServerRefresh) {
+  console.log('Refreshing monthly grid...');
+  _isLoading = false; // Reset loading flag
+  
+  if (forceServerRefresh) {
+    // Clear cache for current month to force fresh fetch
+    const key = getCacheKey(_currentMonth, _currentYear);
+    _expenseCache.delete(key);
+    
+    const storageKey = CACHE_PREFIX + key;
+    localStorage.removeItem(storageKey);
+    
+    // Force processing of any pending transactions first
+    if (window.TransactionManager) {
+      TransactionManager.forceProcessing();
+      
+      // Wait for processing to complete before refreshing
+      setTimeout(function() {
+        loadRealExpenseData();
+      }, 500);
+    } else {
+      loadRealExpenseData();
+    }
+  } else {
+    loadRealExpenseData();
+  }
+}
   
   /**
    * Set expense data from external source (enhanced)
@@ -2100,6 +2310,9 @@ window.testRawDateData = testRawDateData;
 window.MonthlyGrid = MonthlyGrid;
 
 </script>
+
+
+
 <style>
 /* ======================================================
    MONTHLY GRID VIEW STYLES - DASHBOARD STYLE MATCHING

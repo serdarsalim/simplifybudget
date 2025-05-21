@@ -51,10 +51,10 @@ const _cache = {
     const cacheEntry = this.data[key];
     if (!cacheEntry || !cacheEntry.content) return null;
 
-  //  const now = new Date().getTime();
-   // if (now - cacheEntry.timestamp > this.config.expiryTime) {
-  //    return null;
-   // }
+  const now = new Date().getTime();
+  if (now - cacheEntry.timestamp > this.config.expiryTime) {
+    return null;
+   }
 
 
     return cacheEntry.content;
@@ -520,12 +520,15 @@ const _preloader = {
 initialize: function() {
   if (_initialized) return;
 
+  
 
   // Set up event listeners
   this.bindEvents();
 
   // Set up month and year selectors
   this.setupMonthYearSelectors();
+
+
 
   // Check for existing sheet URL
   this.checkExistingConnection();
@@ -611,6 +614,7 @@ Views: {
       // Update sidebar active state - ENHANCED for reliability
       this.updateSidebarActiveState(viewName);
 
+      
       // Dispatch event when view is activated
       const event = new CustomEvent("view-activated", {
         detail: { view: viewName },
@@ -2248,9 +2252,11 @@ loadReportsSheet: function() {
   _preloader.start('reports');
 },
 
-    };
 
 
+
+
+ };
   })();
 
   // Make debug functions available globally for testing
@@ -2313,6 +2319,28 @@ loadReportsSheet: function() {
       console.error("SimBudget object not found. Initialization failed.");
     }
   });
+
+// Add this to the SimBudget.initialize function in Init.html
+// Coordinate cache invalidation with MonthlyGrid component
+document.addEventListener('monthlyGrid-cache-cleared', function(event) {
+  console.log('Received cache clear event from MonthlyGrid:', event.detail);
+  
+  // Clear SimBudget's expense cache
+  if (window._cache && typeof _cache.invalidate === 'function') {
+    console.log('Clearing SimBudget application cache for expenses');
+    _cache.invalidate('expense');
+    
+    // If currently in expense view, reload it
+    if (SimBudget.Views.getCurrent() === 'expense') {
+      console.log('Currently in expense view, triggering reload');
+      // Use setTimeout to avoid potential race conditions
+      setTimeout(function() {
+        SimBudget.loadViewData('expense', true);
+      }, 100);
+    }
+  }
+});
+
 
   // Expose global cache for debugging
   window._dataCache = _cache;
