@@ -1836,45 +1836,23 @@ function createTransactionItem(tx) {
  * Modified to use TransactionManager
  */
 function setupTransactionItemEvents(item, tx) {
-  const deleteBtn = item.querySelector('.transaction-delete');
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      
-      // Remove from UI
-      item.remove();
-      
-      // If this is a real transaction with an amount, handle deletion
-      if (tx.id && tx.amount > 0) {
-        // Create a delete transaction (using 0 amount to signal deletion)
-        const deleteTransaction = {
-          id: tx.id + '-void-' + Date.now(),
-          date: tx.date,
-          amount: 0,
-          category: tx.category,
-          description: 'DELETED: ' + (tx.description || ''),
-          account: tx.account || 'Main Account',
-          deleted: true,
-          originalId: tx.id
-        };
-        
-        // Add to TransactionManager queue for background processing
-        if (window.TransactionManager) {
-          TransactionManager.addTransaction(deleteTransaction);
-          console.log('Delete transaction queued:', deleteTransaction);
-        }
-      }
-      
-      // Also remove from local transactions array
-      const index = _transactions.findIndex(transaction => transaction.id === tx.id);
-      if (index !== -1) {
-        _transactions.splice(index, 1);
-      }
-      
-        updateTransactionTotal();
-        renderGrid();
-      });
+const deleteBtn = item.querySelector('.transaction-delete');
+if (deleteBtn) {
+  deleteBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    
+    // Remove from UI immediately for better UX
+    item.remove();
+    
+    // Use our clearing function instead of deletion
+    if (tx.id) {
+      clearTransactionById(tx.id, true);
     }
+    
+    // Update transaction total in modal
+    updateTransactionTotal();
+  });
+}
     
       const amountInput = item.querySelector('.transaction-amount');
       const descriptionInput = item.querySelector('.transaction-description');
@@ -1985,7 +1963,8 @@ function setupTransactionItemEvents(item, tx) {
   }
 }
    item._updateTransactionQueue = updateTransactionQueue;
-  if (amountInput) {
+
+   if (amountInput) {
     // Update when amount changes
     amountInput.addEventListener('input', function() {
       tx.amount = parseFloat(this.value) || 0;
@@ -2061,6 +2040,10 @@ function setupTransactionItemEvents(item, tx) {
     }
   }
   
+
+
+  
+
 
 /**
  * Close the transaction modal - with final transaction saving
@@ -2161,6 +2144,52 @@ function addTransactionRow() {
 }
 
 
+
+/**
+ * Clear a transaction by directly clearing the row in the spreadsheet
+ */
+function clearTransactionById(transactionId, skipRender) {
+  if (!transactionId) return false;
+  
+  console.log('Clearing transaction row:', transactionId);
+  
+  // Find transaction in _transactions array for UI updates
+  const txIndex = _transactions.findIndex(tx => tx.id === transactionId);
+  if (txIndex === -1) {
+    console.warn('Transaction not found for clearing:', transactionId);
+    return false;
+  }
+  
+  // Remove from local transactions array for UI
+  _transactions.splice(txIndex, 1);
+  
+  // Update the cache
+  const key = getCacheKey(_currentMonth, _currentYear);
+  let cachedExpenses = getCachedExpenses(_currentMonth, _currentYear) || [];
+  const cachedIndex = cachedExpenses.findIndex(e => 
+    e.rowIndex === transactionId || e.id === transactionId);
+  
+  if (cachedIndex >= 0) {
+    cachedExpenses.splice(cachedIndex, 1);
+    setCachedExpenses(_currentMonth, _currentYear, cachedExpenses);
+  }
+  
+  // Use our new API function to clear the row on the server
+  API.clearTransactionRow(transactionId, function(result) {
+    console.log('Transaction row cleared successfully:', result);
+    
+    // Re-render the grid unless specified not to
+    if (!skipRender) {
+      renderGrid();
+    }
+  }, function(error) {
+    console.error('Failed to clear transaction row:', error);
+  });
+  
+  return true;
+}
+
+
 /**
  * Refresh the grid with optional force reload from server
  */
@@ -2249,77 +2278,6 @@ function refresh(forceServerRefresh) {
   };
 })();
 
-// Test function to examine raw date data from spreadsheet
-function testRawDateData() {
-  console.log("=== TESTING RAW DATE DATA FROM SPREADSHEET ===");
-  
-  if (!window.API || typeof API.testRawExpenseDates !== 'function') {
-    console.error("API.testRawExpenseDates function not found. Need to add it to API.html");
-    return;
-  }
-  
-  API.testRawExpenseDates(
-    function(result) {
-      console.log("Raw date test results:", result);
-      
-      if (result.success && result.dates) {
-        console.log("=== SPREADSHEET DATE ANALYSIS ===");
-        console.log("Total rows examined:", result.totalRows);
-        console.log("Non-empty dates found:", result.dates.length);
-        
-        // Group by what the raw value looks like
-        const dateFormats = {};
-        const dateTypes = {};
-        
-        result.dates.forEach((item, index) => {
-          const rawValue = item.rawValue;
-          const valueType = typeof rawValue;
-          const valueString = String(rawValue);
-          
-          // Track types
-          dateTypes[valueType] = (dateTypes[valueType] || 0) + 1;
-          
-          // Track formats
-          if (!dateFormats[valueString]) {
-            dateFormats[valueString] = {
-              count: 0,
-              type: valueType,
-              sampleRow: item.row,
-              parsedDate: item.parsedDate
-            };
-          }
-          dateFormats[valueString].count++;
-          
-          // Log first 10 examples
-          if (index < 10) {
-            console.log(`Row ${item.row}: "${rawValue}" (${valueType}) -> ${item.parsedDate}`);
-          }
-        });
-        
-        console.log("\n=== DATE TYPE SUMMARY ===");
-        Object.entries(dateTypes).forEach(([type, count]) => {
-          console.log(`${type}: ${count} occurrences`);
-        });
-        
-        console.log("\n=== DATE FORMAT SUMMARY ===");
-        Object.entries(dateFormats)
-          .sort((a, b) => b[1].count - a[1].count)
-          .slice(0, 10) // Show top 10 formats
-          .forEach(([format, info]) => {
-            console.log(`"${format}" (${info.type}): ${info.count} times`);
-          });
-      } else {
-        console.error("Failed to get date data:", result.error);
-      }
-    },
-    function(error) {
-      console.error("Error testing raw dates:", error);
-    }
-  );
-}
-
-// Add to window for easy testing
-window.testRawDateData = testRawDateData;
 
 // Expose globally
 window.MonthlyGrid = MonthlyGrid;

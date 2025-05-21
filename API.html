@@ -664,7 +664,45 @@ saveBatchExpenses: function(expenses, successCallback, errorCallback) {
 
 
 
-
+/**
+ * Clear a transaction row by ID (sets all fields to blank)
+ * @param {string} transactionId - The unique ID of the transaction to clear
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+clearTransactionRow: function(transactionId, successCallback, errorCallback) {
+  try {
+    if (!transactionId) {
+      _lastError = "Transaction ID is required";
+      errorCallback(_lastError);
+      return;
+    }
+    
+    console.log("API: Clearing transaction row:", transactionId);
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          console.log("API: Clear transaction successful:", result);
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error clearing transaction";
+          console.error("API: Clear transaction error:", _lastError);
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        console.error("API: Server error clearing transaction:", error);
+        errorCallback(error);
+      })
+      .clearTransactionRow(transactionId);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    console.error("API: Exception in clearTransactionRow:", _lastError);
+    errorCallback(_lastError);
+  }
+},
 
 
 
