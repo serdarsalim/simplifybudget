@@ -839,6 +839,132 @@ SimBudget.fixMobileDisplay = function() {
 
 
 
+// Keep both the server-save event and add immediate updates
+document.addEventListener('transaction-batch-saved', handleTransactionUpdate);
+
+// Monkey patch TransactionManager for immediate updates
+if (window.TransactionManager) {
+  const originalAdd = TransactionManager.addTransaction;
+  const originalUpdate = TransactionManager.updateTransaction;
+  
+  TransactionManager.addTransaction = function(tx) {
+    const result = originalAdd.apply(this, arguments);
+    updateBudgetFromSingleTx(tx, true);
+    return result;
+  };
+  
+  TransactionManager.updateTransaction = function(tx) {
+    const result = originalUpdate.apply(this, arguments);
+    updateBudgetFromSingleTx(tx, true);
+    return result;
+  };
+}
+
+// Handle either single transaction or batch from event
+function handleTransactionUpdate(event) {
+  const transactions = event.detail?.transactions;
+  if (!transactions || !Array.isArray(transactions) || transactions.length === 0) return;
+  
+  // Process each transaction
+  transactions.forEach(tx => updateBudgetFromSingleTx(tx));
+}
+
+// Core function to update budget from a transaction
+function updateBudgetFromSingleTx(tx, immediate = false) {
+  if (!tx || tx.amount <= 0 || tx.deleted) return;
+  
+  // Combine category with emoji
+  const categoryWithEmoji = tx.emoji ? `${tx.category} ${tx.emoji}` : tx.category;
+  
+  // Update both in-memory data and cache
+  updateBudgetData(SimBudget._currentBudgetData, categoryWithEmoji, tx.amount);
+  
+  // Update the cache
+  if (window._dataCache?.budget?.budget) {
+    updateBudgetData(window._dataCache.budget.budget, categoryWithEmoji, tx.amount);
+  }
+  
+  // Update UI if needed and we're on budget view
+  if (immediate && SimBudget.Views.getCurrent() === 'budget') {
+    updateBudgetUI(categoryWithEmoji);
+  }
+}
+
+// Update budget data structure
+function updateBudgetData(budgetData, category, amount) {
+  if (!budgetData?.categories) return;
+  
+  let updated = false;
+  
+  // Update category actual values
+  budgetData.categories.forEach(cat => {
+    if (cat.name === category) {
+      cat.actual = (cat.actual || 0) + amount;
+      updated = true;
+    }
+  });
+  
+  // Update summary if needed
+  if (updated && budgetData.summary) {
+    // Calculate new totals
+    const totalSpent = budgetData.categories.reduce((sum, cat) => sum + (cat.actual || 0), 0);
+    
+    budgetData.summary.spent = totalSpent;
+    
+    if (budgetData.summary.income !== undefined) {
+      budgetData.summary.leftToSpend = budgetData.summary.income - totalSpent;
+    }
+  }
+}
+
+// Update the budget UI
+function updateBudgetUI(categoryWithEmoji) {
+  if (!SimBudget._currentBudgetData?.categories) return;
+  
+  // Find the category
+  const category = SimBudget._currentBudgetData.categories.find(c => c.name === categoryWithEmoji);
+  if (!category) return;
+  
+  // Update category row
+  document.querySelectorAll('.budget-table tr').forEach(row => {
+    const categoryCell = row.querySelector('.category-name');
+    if (categoryCell?.textContent === categoryWithEmoji) {
+      // Update actual value
+      const actualCell = row.querySelector('.actual-value');
+      if (actualCell) actualCell.textContent = Utils.formatCurrency(category.actual);
+      
+      // Update progress bar
+      const budgetCell = row.querySelector('.budget-value');
+      if (budgetCell) {
+        const budgetValue = parseFloat(budgetCell.dataset.value || '0');
+        const percentage = budgetValue > 0 ? (category.actual / budgetValue) * 100 : 0;
+        const progressClass = percentage > 100 ? 'over-budget' : (percentage > 80 ? 'near-limit' : '');
+        
+        const progressBar = row.querySelector('.progress-bar');
+        if (progressBar) {
+          progressBar.style.width = Math.min(percentage, 100) + '%';
+          progressBar.classList.remove('over-budget', 'near-limit');
+          if (progressClass) progressBar.classList.add(progressClass);
+        }
+        
+        const percentageText = row.querySelector('.progress-percentage');
+        if (percentageText) percentageText.textContent = Math.round(percentage) + '%';
+      }
+    }
+  });
+  
+  // Update summary values
+  if (SimBudget._currentBudgetData.summary) {
+    const spentEl = document.getElementById('spent-value');
+    if (spentEl) spentEl.textContent = Utils.formatCurrency(SimBudget._currentBudgetData.summary.spent);
+    
+    const leftEl = document.getElementById('left-to-spend-value');
+    if (leftEl) leftEl.textContent = Utils.formatCurrency(SimBudget._currentBudgetData.summary.leftToSpend);
+  }
+}
+
+
 })();
 
 </script>
+

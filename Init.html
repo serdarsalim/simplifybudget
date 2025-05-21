@@ -491,7 +491,14 @@ const _preloader = {
           document.dispatchEvent(event);
 
           // Load data for the view
-          SimBudget.loadViewData(viewName);
+          if (viewName === 'budget' && window._cache && _cache.isValid('budget')) {
+        // Budget view with valid cache - use cached data
+        console.log('Using cached budget data');
+        SimBudget.renderViewFromCache('budget');
+      } else {
+        // Any other view or invalid cache - load fresh data
+        SimBudget.loadViewData(viewName);
+}
         }
       },
 
@@ -623,6 +630,8 @@ Views: {
 
       // Load data for the view
       SimBudget.loadViewData(viewName);
+
+
     } else {
       console.error("Views.switchTo: Target view not found", viewName + "View");
     }

@@ -1919,66 +1919,169 @@ function setupTransactionItemEvents(item, tx) {
   const descriptionInput = item.querySelector('.transaction-description');
   const accountSelect = item.querySelector('.transaction-account');
   
-  // Function to update TransactionManager queue
-  function updateTransactionQueue() {
-    // Only queue transactions with valid amounts
-    if (parseFloat(amountInput.value) > 0) {
-      // Get the category emoji
-      let categoryEmoji = '';
-      if (window.getCategoryEmoji) {
-        categoryEmoji = getCategoryEmoji(tx.category);
-      } else {
-        // Fallback: Try to find the category in the categories array
-        const category = _categories.find(c => c.id === tx.category);
-        if (category && category.emoji) {
-          categoryEmoji = category.emoji;
-        }
-      }
-      
-      // Create transaction for queue
-      const transaction = {
-        id: tx.id,
-        date: tx.date,
-        amount: parseFloat(amountInput.value) || 0,
-        category: tx.category,
-        description: descriptionInput.value,
-        account: accountSelect ? accountSelect.value : 'Main Account',
-        notes: tx.notes || '',
-        emoji: categoryEmoji
-      };
-      
-      // Update the transaction in our local array
-      tx.amount = transaction.amount;
-      tx.description = transaction.description;
-      if (accountSelect) {
-        tx.account = transaction.account;
-      }
-      
-      // Add/update in TransactionManager's queue
-      if (window.TransactionManager) {
-        // Check if this transaction is already in the queue
-        const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
-        
-        if (existingTx) {
-          TransactionManager.updateTransaction(transaction);
-          console.log('Updated transaction in queue:', transaction);
-        } else {
-          TransactionManager.addTransaction(transaction);
-          console.log('Added new transaction to queue:', transaction);
-        }
-      }
-      
-      // Check if this transaction is already in our local array
-      const existingIndex = _transactions.findIndex(t => t.id === tx.id);
-      if (existingIndex === -1) {
-        // Add to local transactions array for immediate UI update
-        _transactions.push(tx);
-      } else {
-        // Update the existing transaction
-        _transactions[existingIndex] = tx;
+ // In MonthlyGrid.js - look for the updateTransactionQueue function inside setupTransactionItemEvents
+// This function is called when a transaction is updated or added
+
+// REPLACE THIS FUNCTION:
+function updateTransactionQueue() {
+  // Only queue transactions with valid amounts
+  if (parseFloat(amountInput.value) > 0) {
+    // Get the category emoji
+    let categoryEmoji = '';
+    if (window.getCategoryEmoji) {
+      categoryEmoji = getCategoryEmoji(tx.category);
+    } else {
+      // Fallback: Try to find the category in the categories array
+      const category = _categories.find(c => c.id === tx.category);
+      if (category && category.emoji) {
+        categoryEmoji = category.emoji;
       }
     }
+    
+    // Create transaction for queue
+    const transaction = {
+      id: tx.id,
+      date: tx.date,
+      amount: parseFloat(amountInput.value) || 0,
+      category: tx.category,
+      description: descriptionInput.value,
+      account: accountSelect ? accountSelect.value : 'Main Account',
+      notes: tx.notes || '',
+      emoji: categoryEmoji
+    };
+    
+    // Update the transaction in our local array
+    tx.amount = transaction.amount;
+    tx.description = transaction.description;
+    if (accountSelect) {
+      tx.account = transaction.account;
+    }
+    
+    // Add/update in TransactionManager's queue
+    if (window.TransactionManager) {
+      // Check if this transaction is already in the queue
+      const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
+      
+      if (existingTx) {
+        TransactionManager.updateTransaction(transaction);
+        console.log('Updated transaction in queue:', transaction);
+      } else {
+        TransactionManager.addTransaction(transaction);
+        console.log('Added new transaction to queue:', transaction);
+      }
+    }
+    
+    // Check if this transaction is already in our local array
+    const existingIndex = _transactions.findIndex(t => t.id === tx.id);
+    if (existingIndex === -1) {
+      // Add to local transactions array for immediate UI update
+      _transactions.push(tx);
+    } else {
+      // Update the existing transaction
+      _transactions[existingIndex] = tx;
+    }
   }
+}
+
+// WITH THIS UPDATED VERSION:
+function updateTransactionQueue() {
+  // Only queue transactions with valid amounts
+  if (parseFloat(amountInput.value) > 0) {
+    // Get the category emoji
+    let categoryEmoji = '';
+    if (window.getCategoryEmoji) {
+      categoryEmoji = getCategoryEmoji(tx.category);
+    } else {
+      // Fallback: Try to find the category in the categories array
+      const category = _categories.find(c => c.id === tx.category);
+      if (category && category.emoji) {
+        categoryEmoji = category.emoji;
+      }
+    }
+    
+    // Create transaction for queue
+    const transaction = {
+      id: tx.id,
+      date: tx.date,
+      amount: parseFloat(amountInput.value) || 0,
+      category: tx.category,
+      description: descriptionInput.value,
+      account: accountSelect ? accountSelect.value : 'Main Account',
+      notes: tx.notes || '',
+      emoji: categoryEmoji
+    };
+    
+    // Update the transaction in our local array
+    tx.amount = transaction.amount;
+    tx.description = transaction.description;
+    if (accountSelect) {
+      tx.account = transaction.account;
+    }
+    
+    // Add/update in TransactionManager's queue
+    if (window.TransactionManager) {
+      // Check if this transaction is already in the queue
+      const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
+      
+      if (existingTx) {
+        TransactionManager.updateTransaction(transaction);
+        console.log('Updated transaction in queue:', transaction);
+      } else {
+        TransactionManager.addTransaction(transaction);
+        console.log('Added new transaction to queue:', transaction);
+      }
+    }
+    
+    // Check if this transaction is already in our local array
+    const existingIndex = _transactions.findIndex(t => t.id === tx.id);
+    if (existingIndex === -1) {
+      // Add to local transactions array for immediate UI update
+      _transactions.push(tx);
+    } else {
+      // Update the existing transaction
+      _transactions[existingIndex] = tx;
+    }
+    
+    // CRITICAL FIX: Update the cache with the updated transactions array
+    // This ensures the transaction persists when switching months/categories
+    const key = getCacheKey(_currentMonth, _currentYear);
+    
+    // Get currently cached expenses for this month
+    let cachedExpenses = getCachedExpenses(_currentMonth, _currentYear) || [];
+    
+    // Check if this transaction already exists in cache
+    const cachedIndex = cachedExpenses.findIndex(e => e.rowIndex === tx.id || e.id === tx.id);
+    
+    if (cachedIndex >= 0) {
+      // Update existing transaction in cache
+      cachedExpenses[cachedIndex] = {
+        ...cachedExpenses[cachedIndex],
+        amount: transaction.amount,
+        name: transaction.description,
+        description: transaction.description,
+        account: transaction.account,
+        notes: transaction.notes
+      };
+    } else {
+      // Add new transaction to cache
+      cachedExpenses.push({
+        rowIndex: tx.id,
+        id: tx.id,
+        date: tx.date,
+        category: tx.category,
+        amount: transaction.amount,
+        name: transaction.description,
+        description: transaction.description,
+        account: transaction.account,
+        notes: transaction.notes
+      });
+    }
+    
+    // Update cache with modified expenses
+    setCachedExpenses(_currentMonth, _currentYear, cachedExpenses);
+    console.log('Updated expense cache with new/modified transaction');
+  }
+}
   
   if (amountInput) {
     // Update when amount changes
