@@ -1830,11 +1830,7 @@ function createTransactionItem(tx) {
   return item;
 }
 
-  
-/**
- * Setup event handlers for transaction items
- * Only called for regular (non-subscription) transactions
- */
+
 /**
  * Setup event handlers for transaction items
  * Modified to use TransactionManager
@@ -1988,18 +1984,12 @@ function setupTransactionItemEvents(item, tx) {
     console.log('Updated expense cache with new/modified transaction');
   }
 }
-  
+   item._updateTransactionQueue = updateTransactionQueue;
   if (amountInput) {
     // Update when amount changes
     amountInput.addEventListener('input', function() {
       tx.amount = parseFloat(this.value) || 0;
       updateTransactionTotal();
-    });
-    
-    // Queue for saving when amount is complete
-    amountInput.addEventListener('change', function() {
-      updateTransactionQueue();
-      renderGrid(); // Update the grid display
     });
   }
   
@@ -2027,25 +2017,12 @@ function setupTransactionItemEvents(item, tx) {
     });
   }
   
-  if (accountSelect) {
-    // Update transaction when account changes
-    accountSelect.addEventListener('change', function() {
-      tx.account = this.value;
-      
-      // Queue for saving
-      if (parseFloat(amountInput.value) > 0) {
-        updateTransactionQueue();
-      }
-    });
-    
-    // Close modal when Enter is pressed on account select
-    accountSelect.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        closeTransactionModal();
-      }
-    });
-  }
+ if (accountSelect) {
+  // Update transaction data in memory only (don't save)
+  accountSelect.addEventListener('change', function() {
+    tx.account = this.value;
+  });
+}
 }
   
   function updateTransactionTotal() {
@@ -2084,8 +2061,9 @@ function setupTransactionItemEvents(item, tx) {
     }
   }
   
-  /**
- * Close the transaction modal - modified to force queue processing
+
+/**
+ * Close the transaction modal - with final transaction saving
  */
 function closeTransactionModal() {
   console.log('Closing transaction modal');
@@ -2093,11 +2071,31 @@ function closeTransactionModal() {
   
   const modal = getElement('transaction-modal');
   if (modal) {
-    modal.classList.remove('visible');
+    // Save all transactions before closing
+    const transactionsList = getElement('transactions-list');
+    if (transactionsList) {
+      const items = transactionsList.querySelectorAll('.transaction-item');
+      
+      // Process each transaction - FIXED VERSION
+      items.forEach(item => {
+        const amountInput = item.querySelector('.transaction-amount');
+        
+        // Only save transactions with valid amounts
+        if (amountInput && parseFloat(amountInput.value) > 0) {
+          // We need to trigger the save in the item's context
+          if (item._updateTransactionQueue) {
+            // Use the function stored on the item during setup
+            item._updateTransactionQueue();
+          }
+        }
+      });
+    }
     
+    // Hide modal
+    modal.classList.remove('visible');
     document.removeEventListener('keydown', handleEscKey);
     
-    // Force processing of the transaction queue when modal closes
+    // Process queue
     if (window.TransactionManager) {
       setTimeout(function() {
         TransactionManager.forceProcessing();
@@ -2113,8 +2111,8 @@ function closeTransactionModal() {
 }
 
   
- /**
- * Add a new transaction row - simplified
+/**
+ * Add a new transaction row and force-save any existing transactions
  */
 function addTransactionRow() {
   console.log('Adding additional transaction row');
@@ -2125,6 +2123,14 @@ function addTransactionRow() {
   if (!transactionsList || !modal) {
     console.error('Required elements not found');
     return;
+  }
+  
+  // Force save any existing transactions before adding new one
+  const existingTransactions = transactionsList.querySelectorAll('.transaction-item');
+  if (existingTransactions.length > 0) {
+    const lastTransaction = existingTransactions[existingTransactions.length - 1];
+    // Dispatch event to force-save the previous transaction
+    lastTransaction.dispatchEvent(new CustomEvent('forceSave'));
   }
   
   const day = modal.getAttribute('data-day');
