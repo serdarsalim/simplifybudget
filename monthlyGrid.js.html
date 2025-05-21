@@ -263,10 +263,8 @@ function loadCurrencyFromSettings() {
   // First try - immediate
   if (window.SimBudget && SimBudget.Settings) {
     _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
-    console.log('MonthlyGrid: Immediate currency load:', _currencySymbol);
   } else {
     _currencySymbol = '$'; // Default
-    console.log('MonthlyGrid: Using default currency for now');
   }
   
   // BRUTE FORCE: Keep checking for 10 seconds with increasing intervals
@@ -279,7 +277,6 @@ function loadCurrencyFromSettings() {
         
         // Only update if it changed
         if (newSymbol !== _currencySymbol) {
-          console.log(`MonthlyGrid: Currency updated after ${delay}ms from ${_currencySymbol} to ${newSymbol}`);
           _currencySymbol = newSymbol;
           renderGrid(); // Re-render with new currency
         }
@@ -833,12 +830,9 @@ function checkCurrentMonth() {
     return null;
   }
 
-  /**
-   * Process real expense data from spreadsheet (expenses only, no categories)
-   */
-  /**
+/**
  * Process real expense data from spreadsheet (expenses only, no categories)
- * Now includes label field for identifying subscription/fixed transactions
+ * Now properly preserves transaction IDs from server
  */
 function processRealExpenseData(expenses) {
   const processedTransactions = [];
@@ -886,29 +880,42 @@ function processRealExpenseData(expenses) {
     const parsed = parseCategoryNameAndEmoji(expense.category.trim());
     const cleanCategory = parsed.name; // Use only the name part for matching
     
-    // Create transaction object, now including the label field
+    // IMPORTANT: Use the transaction ID from server if available, otherwise generate one
+    // This ensures transaction IDs are preserved when updating
+    const transactionId = expense.transactionId || expense.rowIndex || `tx-real-${index}`;
+    
+    // Ensure the ID follows the standard format 'tx-timestamp-random'
+    const formattedId = transactionId.toString().startsWith('tx-') 
+      ? transactionId 
+      : `tx-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    
+    // Create transaction object, now including the label field and preserving transaction ID
     const transaction = {
-      id: expense.rowIndex || `tx-real-${index}`,
+      id: formattedId, // IMPORTANT: Use formatted transaction ID
       date: expenseDate,
       category: cleanCategory,  // Store clean category name for matching with active categories
       amount: amount,
       description: expense.name || expense.description || '',
       account: expense.account || 'Main Account',
       notes: expense.notes || '',
-      label: expense.label || '' // Store the label field to identify subscriptions/fixed payments
+      label: expense.label || '', // Store the label field to identify subscriptions/fixed payments
+      originalTransactionId: transactionId // Store original for debugging
     };
     
     processedTransactions.push(transaction);
+    
+    // Log preserved transaction IDs for debugging
+    if (expense.transactionId) {
+      console.log(`Preserved transaction ID: ${expense.transactionId} -> ${formattedId}`);
+    }
   });
   
   // Store processed transactions (categories are loaded separately)
   _transactions = processedTransactions;
 
   _transactions.slice(0, 5).forEach(tx => {
-    // Log first few transactions to verify label field
-    if (tx.label) {
-      console.log(`Transaction with label: ${tx.label}`, tx);
-    }
+    // Log first few transactions to verify transaction IDs
+    console.log(`Transaction: ${tx.id}`, tx);
   });
 }
   
@@ -966,49 +973,7 @@ function processRealExpenseData(expenses) {
     }
   }
   
-  /**
-   * Refresh the grid by reloading data
-   */
-  /**
- * Refresh the grid by reloading data
- * Modified to always clear cache by default when refresh button is clicked
- * 
- * @param {boolean} skipCacheClear - Optional parameter to skip cache clearing (default: false)
- */
-function refresh(skipCacheClear) {
-  console.log('Refreshing monthly grid...');
-  _isLoading = false; // Reset loading flag
-  
-  // By default, always clear the cache unless explicitly told not to
-  if (!skipCacheClear) {
-    // Clear cache for current month to force fresh fetch
-    const key = getCacheKey(_currentMonth, _currentYear);
-    _expenseCache.delete(key);
-    
-    const storageKey = CACHE_PREFIX + key;
-    localStorage.removeItem(storageKey);
-    
-    console.log(`Cache cleared for ${_currentMonth}/${_currentYear}`);
-    
-    // Also clear session storage to force a complete refresh
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    
-    // Force processing of any pending transactions first
-    if (window.TransactionManager) {
-      console.log('Processing pending transactions before refresh...');
-      TransactionManager.forceProcessing();
-      
-      // Wait for processing to complete before refreshing
-      setTimeout(function() {
-        loadRealExpenseData();
-      }, 500);
-      return; // Exit early since loadRealExpenseData will be called in setTimeout
-    }
-  }
-  
-  // If we didn't return early from the TransactionManager block
-  loadRealExpenseData();
-}
+
 
 /**
  * Update currency symbol and refresh display
@@ -1919,69 +1884,10 @@ function setupTransactionItemEvents(item, tx) {
   const descriptionInput = item.querySelector('.transaction-description');
   const accountSelect = item.querySelector('.transaction-account');
   
- // In MonthlyGrid.js - look for the updateTransactionQueue function inside setupTransactionItemEvents
-// This function is called when a transaction is updated or added
+    // In MonthlyGrid.js - look for the updateTransactionQueue function inside setupTransactionItemEvents
+    // This function is called when a transaction is updated or added
 
-// REPLACE THIS FUNCTION:
-function updateTransactionQueue() {
-  // Only queue transactions with valid amounts
-  if (parseFloat(amountInput.value) > 0) {
-    // Get the category emoji
-    let categoryEmoji = '';
-    if (window.getCategoryEmoji) {
-      categoryEmoji = getCategoryEmoji(tx.category);
-    } else {
-      // Fallback: Try to find the category in the categories array
-      const category = _categories.find(c => c.id === tx.category);
-      if (category && category.emoji) {
-        categoryEmoji = category.emoji;
-      }
-    }
-    
-    // Create transaction for queue
-    const transaction = {
-      id: tx.id,
-      date: tx.date,
-      amount: parseFloat(amountInput.value) || 0,
-      category: tx.category,
-      description: descriptionInput.value,
-      account: accountSelect ? accountSelect.value : 'Main Account',
-      notes: tx.notes || '',
-      emoji: categoryEmoji
-    };
-    
-    // Update the transaction in our local array
-    tx.amount = transaction.amount;
-    tx.description = transaction.description;
-    if (accountSelect) {
-      tx.account = transaction.account;
-    }
-    
-    // Add/update in TransactionManager's queue
-    if (window.TransactionManager) {
-      // Check if this transaction is already in the queue
-      const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
-      
-      if (existingTx) {
-        TransactionManager.updateTransaction(transaction);
-        console.log('Updated transaction in queue:', transaction);
-      } else {
-        TransactionManager.addTransaction(transaction);
-        console.log('Added new transaction to queue:', transaction);
-      }
-    }
-    
-    // Check if this transaction is already in our local array
-    const existingIndex = _transactions.findIndex(t => t.id === tx.id);
-    if (existingIndex === -1) {
-      // Add to local transactions array for immediate UI update
-      _transactions.push(tx);
-    } else {
-      // Update the existing transaction
-      _transactions[existingIndex] = tx;
-    }
-  }
-}
+
 
 // WITH THIS UPDATED VERSION:
 function updateTransactionQueue() {

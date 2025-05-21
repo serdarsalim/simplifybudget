@@ -1,8 +1,6 @@
 /**
  * Save a batch of expenses to the spreadsheet at once
- * Writes ONLY to Expenses sheet range D4:K6000
- * Row 4 contains headers: transactionId Date Amount Category Name Label Notes Account
- * Inserts after the last non-empty transactionId in column D
+ * Now supports updating existing rows by transaction ID
  * 
  * @param {Array} expenses - Array of expense objects
  * @return {Object} Result object with success flag
@@ -15,29 +13,46 @@ function saveBatchExpenses(expenses) {
       return { success: false, error: "Expenses sheet not found" };
     }
     
-    // Get all data in the transactionId column (D) to find last non-empty cell
-    const transactionIdCol = expenseSheet.getRange("D5:D6000").getValues();
+    // Get all data in the transaction ID column (D) to find last non-empty cell
+    const dataRange = expenseSheet.getRange("D5:K6000");
+    const allData = dataRange.getValues();
     
-    // Find the last row with a non-empty transactionId
+    // Create a map of transaction IDs to row numbers for quick lookup
+    const transactionIdMap = {};
     let lastDataRow = 4; // Default to header row
-    for (let i = 0; i < transactionIdCol.length; i++) {
-      if (transactionIdCol[i][0] !== "") {
-        lastDataRow = i + 5; // Add 5 because our range starts at row 5
+    
+    for (let i = 0; i < allData.length; i++) {
+      const rowData = allData[i];
+      const transactionId = rowData[0]; // First column (D) is transactionId
+      
+      if (transactionId !== "") {
+        // Add 5 because our range starts at row 5
+        const actualRow = i + 5;
+        transactionIdMap[transactionId] = actualRow;
+        lastDataRow = actualRow;
       }
     }
     
-    // Start inserting at the row after the last data row
+    // Start inserting new rows after the last data row
     let insertRow = lastDataRow + 1;
     
     // Process each expense
     let successCount = 0;
+    let updateCount = 0;
+    let insertCount = 0;
     let errorCount = 0;
     
     expenses.forEach(expense => {
       try {
-        // Create a new row for the expense
+        // Skip expenses with zero or null amounts (deleted transactions)
+        if (!expense.amount || parseFloat(expense.amount) <= 0) {
+          Logger.log("Skipping transaction with zero/null amount: " + expense.transactionId);
+          return;
+        }
+        
+        // Create a row array for the expense
         // Column D=transactionId, E=Date, F=Amount, G=Category, H=Name, I=Label, J=Notes, K=Account
-        const newRow = [
+        const rowData = [
           expense.transactionId || "",       // Column D: transactionId
           expense.date || new Date(),        // Column E: Date
           parseFloat(expense.amount) || 0,   // Column F: Amount
@@ -48,10 +63,24 @@ function saveBatchExpenses(expenses) {
           expense.account || "Main Account"  // Column K: Account
         ];
         
-        // Insert the row in columns D through K
-        expenseSheet.getRange(insertRow, 4, 1, 8).setValues([newRow]);
-        insertRow++;
-        successCount++;
+        // Check if this transaction ID already exists
+        if (expense.transactionId && transactionIdMap[expense.transactionId]) {
+          // Update existing row
+          const rowToUpdate = transactionIdMap[expense.transactionId];
+          expenseSheet.getRange(rowToUpdate, 4, 1, 8).setValues([rowData]);
+          updateCount++;
+          successCount++;
+          
+          Logger.log("Updated existing transaction at row " + rowToUpdate + ": " + expense.transactionId);
+        } else {
+          // Insert new row
+          expenseSheet.getRange(insertRow, 4, 1, 8).setValues([rowData]);
+          insertRow++;
+          insertCount++;
+          successCount++;
+          
+          Logger.log("Inserted new transaction at row " + (insertRow-1) + ": " + expense.transactionId);
+        }
         
         // Update account balance if specified (using your existing function)
         if (expense.account && expense.amount) {
@@ -66,7 +95,10 @@ function saveBatchExpenses(expenses) {
     return {
       success: true,
       saved: successCount,
+      updated: updateCount,
+      inserted: insertCount,
       errors: errorCount,
+      lastDataRow: lastDataRow,
       insertStartRow: lastDataRow + 1
     };
   } catch (error) {

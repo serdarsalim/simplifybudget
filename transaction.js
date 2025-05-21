@@ -224,7 +224,7 @@ function getExpenseData(month, year) {
     Logger.log("getExpenseData: Sheet has " + lastRow + " rows");
     
     // Updated header range to include GA4 column (Label)
-    const headerRange = "FU4:GA4";
+    const headerRange = "FU4:GB4"; // Adjusted to include the ID column
     const headers = donteditSheet.getRange(headerRange).getValues()[0];
     Logger.log("Headers found: " + JSON.stringify(headers));
     
@@ -245,7 +245,8 @@ function getExpenseData(month, year) {
       'name': ['name', 'transaction name', 'description', 'desc'],
       'category': ['category', 'cat'],
       'amount': ['amount', 'value', 'cost'],
-      'label': ['label', 'type', 'transaction type'] // Added label column variations
+      'label': ['label', 'type', 'transaction type'],
+      'transactionId': ['transactionid', 'transaction id', 'transaction_id', 'transactionId']
     };
     
     // Find the actual column indices
@@ -279,7 +280,7 @@ function getExpenseData(month, year) {
     // Start from row 5 (since headers are in row 4)
     const startRow = 5;
     const endRow = Math.min(lastRow, startRow + 1000);
-    const range = "FU" + startRow + ":GA" + endRow;
+    const range = "FU" + startRow + ":GB" + endRow;
     Logger.log("getExpenseData: Reading range " + range + " (starting from row 5)");
     
     const dataRange = donteditSheet.getRange(range);
@@ -356,6 +357,7 @@ function getExpenseData(month, year) {
           date: expenseDate.toISOString(),
           name: (row[columns.name] || "").toString(),
           category: categoryValue.toString(),
+          transactionId: (row[columns.transactionId] || "").toString(),
           amount: amount,
           label: label // Include the label field
         });
