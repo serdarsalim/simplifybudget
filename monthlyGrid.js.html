@@ -1875,35 +1875,35 @@ function setupTransactionItemEvents(item, tx) {
         _transactions.splice(index, 1);
       }
       
-      updateTransactionTotal();
-      renderGrid();
-    });
-  }
-  
-  const amountInput = item.querySelector('.transaction-amount');
-  const descriptionInput = item.querySelector('.transaction-description');
-  const accountSelect = item.querySelector('.transaction-account');
-  
-    // In MonthlyGrid.js - look for the updateTransactionQueue function inside setupTransactionItemEvents
-    // This function is called when a transaction is updated or added
-
-
-
-// WITH THIS UPDATED VERSION:
-function updateTransactionQueue() {
-  // Only queue transactions with valid amounts
-  if (parseFloat(amountInput.value) > 0) {
-    // Get the category emoji
-    let categoryEmoji = '';
-    if (window.getCategoryEmoji) {
-      categoryEmoji = getCategoryEmoji(tx.category);
-    } else {
-      // Fallback: Try to find the category in the categories array
-      const category = _categories.find(c => c.id === tx.category);
-      if (category && category.emoji) {
-        categoryEmoji = category.emoji;
-      }
+        updateTransactionTotal();
+        renderGrid();
+      });
     }
+    
+      const amountInput = item.querySelector('.transaction-amount');
+      const descriptionInput = item.querySelector('.transaction-description');
+      const accountSelect = item.querySelector('.transaction-account');
+      
+        // In MonthlyGrid.js - look for the updateTransactionQueue function inside setupTransactionItemEvents
+        // This function is called when a transaction is updated or added
+
+
+
+    // WITH THIS UPDATED VERSION:
+    function updateTransactionQueue() {
+      // Only queue transactions with valid amounts
+      if (parseFloat(amountInput.value) > 0) {
+        // Get the category emoji
+        let categoryEmoji = '';
+        if (window.getCategoryEmoji) {
+          categoryEmoji = getCategoryEmoji(tx.category);
+        } else {
+          // Fallback: Try to find the category in the categories array
+          const category = _categories.find(c => c.id === tx.category);
+          if (category && category.emoji) {
+            categoryEmoji = category.emoji;
+          }
+        }
     
     // Create transaction for queue
     const transaction = {
