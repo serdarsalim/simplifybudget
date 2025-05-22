@@ -1,3 +1,4 @@
+
 <script>
 var MonthlyGrid = (function() {
   // Private variables
@@ -20,7 +21,76 @@ var MonthlyGrid = (function() {
   // DOM element cache for performance
   const _elements = {};
   
-  /**
+    
+/**
+ * Show day details popup with all transactions
+ */
+function showDayDetailsPopup(day) {
+  // Get all transactions for this day
+  const dayTransactions = _transactions.filter(tx => {
+    if (!tx.date) return false;
+    const txDay = tx.date.getDate();
+    const txMonth = tx.date.getMonth();
+    const txYear = tx.date.getFullYear();
+    return txDay === day && txMonth === _currentMonth && txYear === _currentYear;
+  });
+  
+  if (dayTransactions.length === 0) {
+    return; // No transactions to show
+  }
+  
+  // Format the date for header
+  const dateObj = new Date(_currentYear, _currentMonth, day);
+  const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+  const monthDay = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  
+  // Create popup
+  const popup = document.createElement('div');
+  popup.className = 'day-details-popup';
+  popup.innerHTML = `
+    <div class="popup-backdrop"></div>
+    <div class="popup-content">
+      <div class="popup-header">
+        <h3>Spending on ${dayName}, ${monthDay}</h3>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        ${dayTransactions.map(tx => {
+          const category = _categories.find(c => c.id === tx.category);
+          const categoryDisplay = category ? `${category.emoji} ${category.name}` : tx.category;
+          
+          return `
+            <div class="transaction-detail">
+              <div class="detail-category">${categoryDisplay}</div>
+              <div class="detail-name">${tx.description || 'Expense'}</div>
+              <div class="detail-amount">${formatCurrency(tx.amount)}</div>
+              <div class="detail-account">${tx.account || 'Main Account'}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  
+  // Add to page
+  document.body.appendChild(popup);
+  
+  // Close handlers
+  const closeBtn = popup.querySelector('.popup-close');
+  const backdrop = popup.querySelector('.popup-backdrop');
+  
+  function closePopup() {
+    popup.remove();
+  }
+  
+  closeBtn.addEventListener('click', closePopup);
+  backdrop.addEventListener('click', closePopup);
+  
+  // Show popup
+  setTimeout(() => popup.classList.add('visible'), 10);
+}
+
+/**
    * Generate cache key for a specific month/year
    */
   function getCacheKey(month, year) {
@@ -1129,16 +1199,8 @@ if (refreshExpenses) {
     const modal = getElement('transaction-modal');
     if (!modal) return;
     
-    const closeBtn = getElement('close-modal-btn');
     const modalCard = modal.querySelector('.modal-card');
     const addBtn = getElement('add-transaction-btn');
-    
-    if (closeBtn && (e.target === closeBtn || closeBtn.contains(e.target))) {
-      e.preventDefault();
-      e.stopPropagation();
-      closeTransactionModal();
-      return;
-    }
     
     if (addBtn && (e.target === addBtn || addBtn.contains(e.target))) {
       e.preventDefault();
@@ -1336,9 +1398,6 @@ function getNextMonth(month, year) {
         <div class="modal-card">
           <div class="modal-header">
             <h3 id="modal-title" class="modal-title">Transactions</h3>
-            <button id="close-modal-btn" class="close-btn" aria-label="Close">
-              <i class="material-icons">close</i>
-            </button>
           </div>
           
           <div class="modal-content">
@@ -1359,7 +1418,6 @@ function getNextMonth(month, year) {
       _elements['transaction-modal'] = modal;
       _elements['modal-title'] = modal.querySelector('#modal-title');
       _elements['transactions-list'] = modal.querySelector('#transactions-list');
-      _elements['close-modal-btn'] = modal.querySelector('#close-modal-btn');
       _elements['add-transaction-btn'] = modal.querySelector('#add-transaction-btn');
     }
   }
@@ -1525,7 +1583,15 @@ function getNextMonth(month, year) {
           const amount = dayTransactions.reduce((sum, tx) => sum + tx.amount, 0);
           dayTotal += amount;
           
-          // Determine color based on amount ranges (improved thresholds)
+          // Check if any transaction is recurring/subscription
+          const hasRecurring = dayTransactions.some(tx => 
+            tx.label && (
+              tx.label.toLowerCase().includes('subscription') || 
+              tx.label.toLowerCase().includes('fixed payment')
+            )
+          );
+          
+          // Determine color based on amount ranges
           let colorClass = 'amount-large';
           if (amount <= 30) {
             colorClass = 'amount-small';
@@ -1533,10 +1599,7 @@ function getNextMonth(month, year) {
             colorClass = 'amount-medium';
           }
           
-          cell.innerHTML = `<div class="cell-content ${colorClass}">
-                              <span class="amount">${formatCurrency(amount)}</span>
-                              <span class="transaction-count">(${dayTransactions.length})</span>
-                            </div>`;
+          cell.innerHTML = `<div class="cell-content ${colorClass} ${hasRecurring ? 'recurring' : ''}"><span class="amount">${formatCurrency(amount)}</span><span class="transaction-count">(${dayTransactions.length})</span></div>`;
         }
         
         row.appendChild(cell);
@@ -1563,10 +1626,17 @@ function getNextMonth(month, year) {
       // Generate transaction summary for this day
       const transactionSummary = generateDayTransactionSummary(day);
       
-      // Create notes content div (no longer editable)
+      // Create notes content div with click handler
       const notesContent = document.createElement('div');
       notesContent.className = 'notes-content';
       notesContent.textContent = transactionSummary;
+      notesContent.setAttribute('data-day', day);
+      
+      // Add click handler for day details popup
+      notesContent.addEventListener('click', function(e) {
+        e.stopPropagation();
+        showDayDetailsPopup(day);
+      });
       
       // Add title attribute for full summary on hover if truncated
       if (transactionSummary.includes(' ...')) {
@@ -1662,12 +1732,12 @@ function getNextMonth(month, year) {
       emptyItem.classList.add('new-transaction', 'ready-for-input');
       transactionsList.appendChild(emptyItem);
       
-      // Auto-focus the amount field for blazing fast entry
+      // Auto-focus the description field for natural workflow
       setTimeout(() => {
-        const amountField = emptyItem.querySelector('.transaction-amount');
-        if (amountField) {
-          amountField.focus();
-          amountField.select(); // Select any placeholder text
+        const descriptionField = emptyItem.querySelector('.transaction-description');
+        if (descriptionField) {
+          descriptionField.focus();
+          descriptionField.select();
         }
       }, 100);
     }
@@ -1700,19 +1770,7 @@ function getNextMonth(month, year) {
   }
   
   /**
- * Create a transaction item in the modal
- * Now handles special treatment for subscription/fixed payment items
- */
-/**
- * Create a transaction item in the modal
- * Now handles special treatment for subscription/fixed payment items
- */
-/**
- * Create a transaction item in the modal
- * Simplified handling for subscription/fixed payment items
- */
-/**
- * Create a transaction item in the modal - with TransactionManager integration
+ * Create a transaction item in the modal - REORDERED FIELDS: description, amount, account
  */
 function createTransactionItem(tx) {
   const item = document.createElement('div');
@@ -1732,22 +1790,13 @@ function createTransactionItem(tx) {
   const amountValue = tx.amount && tx.amount > 0 ? tx.amount : '';
   const amountPlaceholder = _currencySymbol;
   const descriptionValue = tx.description || '';
-  const descriptionPlaceholder = 'Name';
+  const descriptionPlaceholder = 'Expense name';
   
-  // Create HTML structure - simplified for special transactions
+  // Create HTML structure - REORDERED: description first, then amount, then account
   const row = document.createElement('div');
   row.className = 'transaction-row';
   
-  // 1. Amount field
-  const amountInput = document.createElement('input');
-  amountInput.type = 'number';
-  amountInput.className = 'transaction-amount';
-  amountInput.value = amountValue;
-  amountInput.placeholder = amountPlaceholder;
-  amountInput.min = '0';
-  amountInput.step = '0.01';
-  
-  // 2. Description field with recurring icon for special transactions
+  // 1. Description field FIRST (most natural to enter)
   const descriptionContainer = document.createElement('div');
   descriptionContainer.style.display = 'flex';
   descriptionContainer.style.alignItems = 'center';
@@ -1770,19 +1819,29 @@ function createTransactionItem(tx) {
     descriptionContainer.appendChild(recurringIcon);
     
     // Make inputs readonly
-    amountInput.setAttribute('readonly', 'readonly');
     descriptionInput.setAttribute('readonly', 'readonly');
   }
   
-  // Add the inputs to the row
-  row.appendChild(amountInput);
+  // 2. Amount field SECOND
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.className = 'transaction-amount';
+  amountInput.value = amountValue;
+  amountInput.placeholder = amountPlaceholder;
+  amountInput.min = '0';
+  amountInput.step = '0.01';
+  
+  if (isSpecialTransaction) {
+    amountInput.setAttribute('readonly', 'readonly');
+  }
+  
+  // Add the reordered inputs to the row: description, amount
   row.appendChild(descriptionContainer);
+  row.appendChild(amountInput);
   
-  // Skip account column for special transactions
-  
-  // 3. Actions column (delete button) - only for regular transactions
+  // 3. Account dropdown and actions for regular transactions
   if (!isSpecialTransaction) {
-    // For regular transactions: account dropdown
+    // Account dropdown
     const accountSelect = document.createElement('select');
     accountSelect.className = 'transaction-account';
     
@@ -1977,20 +2036,40 @@ if (deleteBtn) {
       tx.description = this.value;
     });
     
-    // Queue for saving when description is complete
-    descriptionInput.addEventListener('change', function() {
-      if (parseFloat(amountInput.value) > 0) {
-        updateTransactionQueue();
+    // Move to amount field when Enter is pressed on description
+    descriptionInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (amountInput) {
+          amountInput.focus();
+          amountInput.select();
+        }
       }
     });
     
-    // Move to next field when Enter is pressed
-    descriptionInput.addEventListener('keydown', function(e) {
+    // Queue for saving when description is complete (on blur)
+    descriptionInput.addEventListener('blur', function() {
+      if (parseFloat(amountInput.value) > 0 && this.value.trim()) {
+        updateTransactionQueue();
+      }
+    });
+  }
+  
+  if (amountInput) {
+    // Move to account field when Enter is pressed on amount
+    amountInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
         if (accountSelect) {
           accountSelect.focus();
         }
+      }
+    });
+    
+    // Queue for saving when amount is complete (on blur)
+    amountInput.addEventListener('blur', function() {
+      if (parseFloat(this.value) > 0 && descriptionInput.value.trim()) {
+        updateTransactionQueue();
       }
     });
   }
@@ -1999,6 +2078,10 @@ if (deleteBtn) {
   // Update transaction data in memory only (don't save)
   accountSelect.addEventListener('change', function() {
     tx.account = this.value;
+    // Auto-save when account is selected and other fields are filled
+    if (parseFloat(amountInput.value) > 0 && descriptionInput.value.trim()) {
+      updateTransactionQueue();
+    }
   });
 }
 }
@@ -2060,9 +2143,12 @@ function closeTransactionModal() {
       // Process each transaction - FIXED VERSION
       items.forEach(item => {
         const amountInput = item.querySelector('.transaction-amount');
+        const descriptionInput = item.querySelector('.transaction-description');
         
-        // Only save transactions with valid amounts
-        if (amountInput && parseFloat(amountInput.value) > 0) {
+        // Only save transactions with valid amounts AND descriptions
+        if (amountInput && descriptionInput && 
+            parseFloat(amountInput.value) > 0 && 
+            descriptionInput.value.trim()) {
           // We need to trigger the save in the item's context
           if (item._updateTransactionQueue) {
             // Use the function stored on the item during setup
@@ -2129,11 +2215,11 @@ function addTransactionRow() {
   // Add to DOM
   transactionsList.appendChild(item);
   
-  // Auto-focus the amount field
+  // Auto-focus the description field (new workflow)
   setTimeout(() => {
-    const amountField = item.querySelector('.transaction-amount');
-    if (amountField) {
-      amountField.focus();
+    const descriptionField = item.querySelector('.transaction-description');
+    if (descriptionField) {
+      descriptionField.focus();
     }
   }, 100);
   
@@ -2274,13 +2360,12 @@ window.MonthlyGrid = MonthlyGrid;
 
 </script>
 
-
-
 <style>
 /* ======================================================
-   MONTHLY GRID VIEW STYLES - DASHBOARD STYLE MATCHING
+   MONTHLY GRID VIEW STYLES - IMPROVED UX VERSION
    ======================================================
-   Matching dashboard's signature border style and color scheme.
+   Enhanced mobile-first design with better touch targets
+   and visual hierarchy
 */
 
 /* ============= MAIN CONTAINER ============= */
@@ -2318,8 +2403,6 @@ window.MonthlyGrid = MonthlyGrid;
   border-bottom: 4px solid #334a60;
 }
 
-
-
 .month-nav-btn {
   background: none;
   border: none;
@@ -2351,7 +2434,7 @@ window.MonthlyGrid = MonthlyGrid;
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  min-width: 750px;
+  min-width: 720px;
 }
 
 /* Headers - Sticky positioning with dashboard style */
@@ -2400,17 +2483,17 @@ window.MonthlyGrid = MonthlyGrid;
 }
 
 .category-header {
-  min-width: 75px;
-  width: 75px;
+  min-width: 69px;
+  width: 69px;
 }
 
 .total-header {
-  width: 80px;
+  width: 77px;
   text-align: center;
 }
 
 .notes-header {
-  width: 120px;
+  width: 117px;
 }
 
 /* Category header content layout */
@@ -2470,27 +2553,16 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(255, 249, 219, 0.5) !important;
 }
 
-
-
-
-
 /* Apply highlighting only to the cell */
 .today-cell {
   font-weight: 500;
 }
 
-/* Fix for today's cell highlighting */
-
-
 /* Only apply the blue background to the date cell */
 .today-row td.date-cell {
   font-weight: 500;
-  background-color: #cdeef5 !important;
+  background-color: #ffb3d9 !important;
 }
-
-
-
-
 
 .monthly-grid td {
   padding: 2px;
@@ -2509,10 +2581,12 @@ window.MonthlyGrid = MonthlyGrid;
 
 .date-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   height: 100%;
+  padding: 2px;
+  gap: 2px;
 }
 
 .day-number {
@@ -2525,7 +2599,7 @@ window.MonthlyGrid = MonthlyGrid;
 }
 
 .day-name {
-  font-size: 9px;
+  font-size: 11px;
   color: #666;
   line-height: 1;
   margin: 0;
@@ -2541,7 +2615,7 @@ window.MonthlyGrid = MonthlyGrid;
   background-color: rgba(44, 62, 80, 0.1);
 }
 
-/* Cell content with color coding */
+/* Cell content with improved color coding */
 .cell-content {
   display: flex;
   flex-direction: column;
@@ -2559,18 +2633,20 @@ window.MonthlyGrid = MonthlyGrid;
 
 /* Color coding */
 .amount-small {
-  background-color: rgb(73 217 231 / 15%);
-    border-left: 3px solid #99e2f6;
+  background-color: rgb(156 242 251 / 15%); /* Light blue */
 }
 
 .amount-medium {
   background-color: rgba(255, 193, 7, 0.15); /* Light amber */
-  border-left: 3px solid #FFC107;
 }
 
 .amount-large {
   background-color: rgba(244, 67, 54, 0.15); /* Light red */
-  border-left: 3px solid #F44336;
+}
+
+/* Left border only for recurring payments */
+.cell-content.recurring {
+  border-left: 3px solid #1F618D;
 }
 
 .amount {
@@ -2624,6 +2700,10 @@ window.MonthlyGrid = MonthlyGrid;
   line-height: 1.2;
   width: 100%;
   box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
 
 .notes-content:hover, .notes-content:focus {
@@ -2716,7 +2796,7 @@ window.MonthlyGrid = MonthlyGrid;
   opacity: 0.7;
 }
 
-/* ============= TRANSACTION MODAL ============= */
+/* ============= TRANSACTION MODAL - IMPROVED UX ============= */
 .transaction-modal {
   position: fixed;
   top: 0;
@@ -2749,7 +2829,7 @@ window.MonthlyGrid = MonthlyGrid;
 .modal-card {
   position: relative;
   width: 90%;
-  max-width: 650px;
+  max-width: 700px; /* Slightly wider for better UX */
   max-height: 85vh;
   background-color: #ffffff;
   border-radius: 0px;
@@ -2785,24 +2865,6 @@ window.MonthlyGrid = MonthlyGrid;
   font-weight: 700;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  color: #666;
-  cursor: pointer;
-  width: 36px;
-  height: 36px;
-  border-radius: 0px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-}
-
-.close-btn:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
 .modal-content {
   flex: 1;
   padding: 20px;
@@ -2827,15 +2889,15 @@ window.MonthlyGrid = MonthlyGrid;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-/* Transaction row layout */
+/* UPDATED: Transaction row layout for new field order: description, amount, account, actions */
 .transaction-row {
   display: grid;
-  grid-template-columns: 90px 1fr 60px 40px;
+  grid-template-columns: 1fr 90px 60px 40px;
   gap: 12px;
   align-items: center;
 }
 
-.transaction-amount, .transaction-description {
+.transaction-description, .transaction-amount {
   padding: 10px 5px;
   border: 1px solid #ddd;
   border-radius: 0px;
@@ -2845,7 +2907,7 @@ window.MonthlyGrid = MonthlyGrid;
   font-weight: 700;
 }
 
-.transaction-amount:focus, .transaction-description:focus {
+.transaction-description:focus, .transaction-amount:focus {
   border-color: #2c3e50;
   box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1);
   outline: none;
@@ -2917,7 +2979,7 @@ window.MonthlyGrid = MonthlyGrid;
 .modal-actions {
   display: flex;
   justify-content: center;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
 }
 
 .add-transaction-btn {
@@ -2976,7 +3038,169 @@ window.MonthlyGrid = MonthlyGrid;
   font-weight: 700;
 }
 
-/* ============= RESPONSIVE DESIGN ============= */
+/* ============= DAY DETAILS POPUP ============= */
+.day-details-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.day-details-popup.visible {
+  opacity: 1;
+}
+
+.popup-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.popup-content {
+  position: relative;
+  width: 90%;
+  max-width: 500px;
+  max-height: 70vh;
+  background-color: #ffffff;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #ddd;
+  background-color: #fafafa;
+}
+
+.popup-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.popup-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0px;
+  transition: background-color 0.2s;
+}
+
+.popup-close:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.popup-body {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.transaction-detail {
+  display: grid;
+  grid-template-columns: 1fr 1fr 80px 100px;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+  align-items: center;
+}
+
+.transaction-detail:last-child {
+  border-bottom: none;
+}
+
+.detail-category {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.detail-name {
+  font-size: 13px;
+  color: #333;
+}
+
+.detail-amount {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+}
+
+.detail-account {
+  font-size: 12px;
+  color: #666;
+  text-align: right;
+}
+
+/* Dark mode for popup */
+body.dark-mode .popup-content {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .popup-header {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .transaction-detail {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .detail-amount {
+  color: #DDA15E;
+}
+
+body.dark-mode .popup-close {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Mobile popup adjustments */
+@media (max-width: 768px) {
+  .popup-content {
+    width: 95%;
+    max-height: 80vh;
+  }
+  
+  .transaction-detail {
+    grid-template-columns: 1fr 60px 80px;
+    gap: 8px;
+  }
+  
+  .detail-account {
+    display: none;
+  }
+}
+
+/* ============= RESPONSIVE DESIGN - MOBILE FIRST ============= */
 @media (max-width: 768px) {
   /* Ensure parent elements don't constrain height */
   .view, #expenseView, #expenseContent {
@@ -2985,7 +3209,7 @@ window.MonthlyGrid = MonthlyGrid;
   }
   
   .monthly-grid-container {
-    padding: 0px 0px 80px 0px !important; /* Add bottom padding for last day visibility */
+    padding: 0px 0px 120px 0px !important;
     max-height: none !important;
     top: 0 !important;
     left: 0 !important;
@@ -2995,18 +3219,41 @@ window.MonthlyGrid = MonthlyGrid;
     height: 100vh !important;
     margin: 0 !important;
     overflow: auto !important;
-    z-index: 1 !important; /* Lower z-index so buttons appear above */
+    z-index: 1 !important;
     box-sizing: border-box !important;
+    /* STICKY SCROLLING - Allow scroll but prevent bounce/momentum */
+    touch-action: pan-x pan-y !important;
+    -webkit-overflow-scrolling: auto !important;
+    overscroll-behavior: none !important;
+  }
+  
+  .monthly-grid {
+    /* PREVENT TABLE DRAGGING - but allow container scrolling */
+    touch-action: pan-x pan-y !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+  }
+  
+  .monthly-grid td, .monthly-grid th {
+    /* PREVENT CELL DRAGGING */
+    user-select: none !important;
+    -webkit-user-select: none !important;
   }
   
   /* Ensure floating buttons stay above the grid */
   .quick-expense-btn {
-    z-index: 9999 !important; /* Higher z-index to appear above grid */
+    z-index: 9999 !important;
   }
   
   /* Ensure sidebar toggle stays above the grid */
   #mobileSidebarToggle, .sidebar-toggle {
-    z-index: 9999 !important; /* Higher z-index to appear above grid */
+    z-index: 9999 !important;
+  }
+  
+  /* MOBILE: Improved touch targets */
+  .month-nav-btn {
+    width: 48px !important;
+    height: 48px !important;
   }
   
   /* MOBILE: Hide category names, show only emojis */
@@ -3015,38 +3262,64 @@ window.MonthlyGrid = MonthlyGrid;
   }
   
   .category-emoji {
-    font-size: 18px;
-    padding: 4px 0;
+    font-size: 16px;
+    padding: 2px 0;
   }
   
   .category-header {
-    min-width: 40px !important;
-    width: 40px !important;
-    padding: 4px 2px !important;
+    min-width: 35px !important;
+    width: 35px !important;
+    padding: 2px 1px !important;
   }
   
   .monthly-grid th.date-header, 
   .monthly-grid td.date-cell {
-    width: 45px !important;
-    min-width: 45px !important;
-    max-width: 45px !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
   }
   
   .day-name {
-    font-size: 8px;
+    font-size: 7px;
   }
   
   .day-number {
-    font-size: 12px;
+    font-size: 11px;
   }
   
   .total-header {
-    width: 55px !important;
+    width: 45px !important;
   }
   
-  /* MOBILE: Transaction row optimization */
+  /* MOBILE: Hide transaction count */
+  .transaction-count {
+    display: none !important;
+  }
+  
+  /* MOBILE: Ultra compact cells */
+  .monthly-grid td {
+    height: 15px !important;
+    padding: 0px !important;
+  }
+  
+  .monthly-grid th {
+    padding: 2px 1px !important;
+  }
+  
+  .cell-content {
+    padding: 1px !important;
+    gap: 0px !important;
+    min-height: 15px;
+  }
+  
+  .amount {
+    font-size: 9px;
+    line-height: 1;
+  }
+  
+  /* MOBILE: Transaction row optimization - UPDATED for new field order */
   .transaction-row {
-    grid-template-columns: 45px 1fr 40px 40px;
+    grid-template-columns: 1fr 45px 40px 40px;
     gap: 8px;
   }
   
@@ -3064,29 +3337,33 @@ window.MonthlyGrid = MonthlyGrid;
 }
 
 @media (max-width: 480px) {
-  .notes-header, .notes-cell {
-    display: none;
-  }
+ 
   
   .monthly-grid td, .monthly-grid th {
-    padding: 1px !important;
+    padding: 2px !important;
   }
   
   .category-header, .total-header {
-    min-width: 35px !important;
-    width: 35px !important;
+    min-width: 44px !important;
+    width: 44px !important;
   }
   
   .amount {
-    font-size: 10px;
-  }
-  
-  .transaction-count {
-    display: none;
+    font-size: 11px;
   }
   
   .integrated-title {
     font-size: 15px;
+  }
+  
+  /* MOBILE: Further optimize transaction modal */
+  .transaction-row {
+    grid-template-columns: 1fr 70px 44px !important; /* Remove account on very small screens */
+    gap: 8px !important;
+  }
+  
+  .transaction-account {
+    display: none !important; /* Hide account selector on very small screens */
   }
 }
 
@@ -3176,8 +3453,6 @@ body.dark-mode .weekend-row:hover {
   background-color: rgba(255, 249, 219, 0.1) !important;
 }
 
-
-
 body.dark-mode .total-cell {
   background-color: rgba(244, 67, 54, 0.1);
 }
@@ -3208,7 +3483,7 @@ body.dark-mode .notes-content:focus {
   background-color: rgba(40, 40, 40, 0.9);
 }
 
-/* Color coding in dark mode */
+/* Enhanced color coding in dark mode */
 body.dark-mode .amount-small {
   background-color: rgba(76, 175, 80, 0.2);
   border-left-color: #4CAF50;
@@ -3297,7 +3572,31 @@ body.dark-mode .loading-spinner {
   border-top-color: #DDA15E;
 }
 
-/* ============= LARGE SCREEN OPTIMIZATION ============= */
+/* ============= MACBOOK 13" OPTIMIZATION ============= */
+@media (min-width: 1280px) and (max-width: 1680px) {
+  /* Horizontal layout for transaction count to save vertical space */
+  .cell-content {
+    flex-direction: row;
+    gap: 4px;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .transaction-count {
+    font-size: 8px;
+    margin-left: 2px;
+  }
+  
+  /* Reduce cell height for more days on MacBook */
+  .monthly-grid td {
+    height: 21px;
+    padding: 1px;
+  }
+  
+  .cell-content {
+    padding: 2px 1px;
+  }
+}
 @media (min-width: 1400px) {
   .monthly-grid-container {
     max-width: 1400px;
@@ -3305,16 +3604,73 @@ body.dark-mode .loading-spinner {
   }
   
   .category-header {
+    min-width: 95px;
+    width: 95px;
+  }
+  
+  .total-header {
+    width: 100px;
+  }
+  
+  .notes-header {
+    width: 160px;
+  }
+  
+  /* Large screen: Show category names alongside emojis */
+  .category-emoji {
+    font-size: 18px;
+  }
+  
+  .category-name {
+    font-size: 12px !important;
+  }
+}
+
+/* ============= MEDIUM-LARGE SCREEN OPTIMIZATION ============= */
+@media (min-width: 1400px) {
+  .category-header {
     min-width: 85px;
+    width: 85px;
+  }
+}
+
+/* ============= LARGE SCREEN OPTIMIZATION ============= */
+@media (min-width: 1681px) {
+  .monthly-grid-container {
+    max-width: 1600px;
+    padding: 0;
+  }
+  
+  .category-header {
+    min-width: 95px;
     width: 85px;
   }
   
   .total-header {
-    width: 90px;
+    width: 100px;
   }
   
   .notes-header {
-    width: 150px;
+    width: 160px;
+  }
+  
+  /* Large screen: Show category names alongside emojis */
+  .category-emoji {
+    font-size: 18px;
+  }
+  
+  .category-name {
+    font-size: 12px !important;
+  }
+  
+  /* Increase cell height for very large screens */
+  .monthly-grid td {
+    height: 32px;
+    padding: 4px;
+  }
+  
+  .cell-content {
+    padding: 4px 3px;
   }
 }
 
@@ -3335,38 +3691,24 @@ body.dark-mode .loading-spinner {
   border: 0;
 }
 
-
-/* Simplified styling for fixed/subscription transactions */
+/* Enhanced styling for fixed/subscription transactions */
 .transaction-item.fixed-transaction {
-  /* Remove background color and left border */
-  background-color: transparent;
-  border-left: none;
+  background-color: rgba(142, 68, 173, 0.05);
+  border-left: 4px solid #8e44ad;
 }
 
-/* Remove the ::before pseudo-element with "recurring" text since we're using the icon */
-.transaction-item.fixed-transaction::before {
-  display: none;
-}
-
-/* Keep the grid layout but adjust for no account column */
 .transaction-item.fixed-transaction .transaction-row {
-  opacity: 1;
-  /* Adjust grid template to remove account column */
-  grid-template-columns: 90px 1fr 40px;
+  opacity: 0.8;
+  grid-template-columns: 1fr 90px 44px;
 }
 
 /* Style readonly inputs to look clean */
 .transaction-item.fixed-transaction input {
   background-color: #f9f5fa;
   cursor: not-allowed;
-  border-color: #eee;
+  border-color: #d6c7dc;
   color: #555;
   pointer-events: none;
-}
-
-/* Hide the account column entirely */
-.transaction-item.fixed-transaction .transaction-account-static {
-  display: none;
 }
 
 /* Create styling for the recurring icon */
@@ -3377,6 +3719,12 @@ body.dark-mode .loading-spinner {
   color: #8e44ad;
   margin-left: 8px;
   vertical-align: middle;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .recurring-icon i {
@@ -3384,9 +3732,14 @@ body.dark-mode .loading-spinner {
 }
 
 /* Dark mode adjustments */
+body.dark-mode .transaction-item.fixed-transaction {
+  background-color: rgba(155, 89, 182, 0.1);
+  border-left-color: #9b59b6;
+}
+
 body.dark-mode .transaction-item.fixed-transaction input {
   background-color: #2a2a2a;
-  border-color: #333;
+  border-color: #444;
   color: #bbb;
 }
 
@@ -3397,12 +3750,11 @@ body.dark-mode .recurring-icon {
 /* Mobile adjustments */
 @media (max-width: 768px) {
   .transaction-item.fixed-transaction .transaction-row {
-    grid-template-columns: 45px 1fr 40px;
+    grid-template-columns: 1fr 45px 40px;
   }
   
   .recurring-icon i {
     font-size: 16px;
   }
 }
-
 </style>
