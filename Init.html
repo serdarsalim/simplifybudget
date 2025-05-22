@@ -844,14 +844,25 @@ Views: {
           });
         }
 
-        const refreshRecurringBtn = document.getElementById("refreshRecurring");
-        if (refreshRecurringBtn) {
-          refreshRecurringBtn.addEventListener("click", () => {
-            // Force refresh by invalidating cache
-            _cache.invalidate("recurring");
-            this.loadViewData("recurring", true);
-          });
-        }
+       // In Init.html bindEvents function, update the refreshRecurringBtn handler:
+
+const refreshRecurringBtn = document.getElementById("refreshRecurring");
+if (refreshRecurringBtn) {
+  refreshRecurringBtn.addEventListener("click", () => {
+    console.log("Manual refresh triggered for recurring");
+    
+    // Clear cache
+    _cache.invalidate("recurring");
+    
+    // Call RecurringManager's refresh method
+    if (window.RecurringManager && typeof RecurringManager.refresh === 'function') {
+      RecurringManager.refresh();
+    } else {
+      // Fallback: reload the view
+      this.loadViewData("recurring", true);
+    }
+  });
+}
 
         //refresh categories
 
@@ -2168,9 +2179,13 @@ loadIncomeData: function() {
   _preloader.start('income');
 },
 
+// In Init.html, update the loadRecurringData function:
+
+// In Init.html, replace the loadRecurringData function:
+
 /**
  * Enhanced loadRecurringData function for Init.html
- * Initializes RecurringManager for real data integration
+ * Properly uses cache system
  */
 loadRecurringData: function() {
   console.log("Loading recurring view...");
@@ -2183,12 +2198,24 @@ loadRecurringData: function() {
   }
 
   try {
-    if (window.RecurringManager && typeof RecurringManager.init === 'function') {
-      console.log("Initializing RecurringManager with real data integration");
-      RecurringManager.init('recurringContent');
-    } else {
+    // Check if RecurringManager exists
+    if (!window.RecurringManager || typeof RecurringManager.init !== 'function') {
       throw new Error("RecurringManager component not found");
     }
+
+    // Check cache first
+    const cachedData = _cache.get('recurring');
+    
+    if (cachedData && Array.isArray(cachedData)) {
+      console.log("Using cached recurring data:", cachedData.length, "items");
+      // Initialize with cached data
+      RecurringManager.init('recurringContent', cachedData);
+    } else {
+      console.log("No cached recurring data, loading fresh");
+      // Initialize without data - will load fresh
+      RecurringManager.init('recurringContent', null);
+    }
+    
   } catch (err) {
     console.error("Error initializing RecurringManager:", err);
     contentArea.innerHTML = `
@@ -2199,10 +2226,6 @@ loadRecurringData: function() {
     `;
   } finally {
     _loadingView = null;
-    // Trigger preloader for other views
-    if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
-      _preloader.start('recurring');
-    }
   }
 },
 

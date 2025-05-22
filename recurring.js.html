@@ -1,23 +1,21 @@
 <script>
 // ============================================================================
-// CLIENT-SIDE RECURRING MODULE (Replace existing recurring module)
+// CLIENT-SIDE RECURRING MODULE - OPTIMIZED VERSION
 // ============================================================================
 
 /**
- * Enhanced RecurringManager - Real data integration with spreadsheet
+ * Enhanced RecurringManager - Using SimBudget's cache system
  */
 var RecurringManager = (function() {
   // Private variables
   let _initialized = false;
+  let _eventsInitialized = false;
   let _recurringData = [];
   let _categories = [];
   let _currencySymbol = '$';
   let _showDecimals = true;
   let _language = 'en';
-  
-  // Session-level cache
-  let _sessionCache = null;
-  const SESSION_KEY = 'recurringManager_sessionData';
+  let _currentFilter = 'all';
   
   // DOM element cache
   const _elements = {};
@@ -40,7 +38,7 @@ var RecurringManager = (function() {
     
     if (window.SimBudget && SimBudget.Settings) {
       _currencySymbol = SimBudget.Settings.getCurrencySymbol() || '$';
-      _showDecimals = SimBudget.Settings.showDecimals() || true;
+      _showDecimals = SimBudget.Settings.showDecimals() !== false;
       _language = SimBudget.Settings.getSetting('language') || 'en';
       
       console.log('RecurringManager: Settings loaded -', {
@@ -55,19 +53,29 @@ var RecurringManager = (function() {
    * Format currency with user settings
    */
   function formatCurrency(amount) {
+    if (window.Utils && typeof Utils.formatCurrency === 'function') {
+      return Utils.formatCurrency(amount);
+    }
+    
     const decimals = _showDecimals ? 2 : 0;
     return `${_currencySymbol}${amount.toFixed(decimals)}`;
   }
 
   /**
    * Initialize the Recurring Manager
+   * @param {string} containerId - Container element ID
+   * @param {Array|null} cachedData - Optional cached data to use instead of loading
    */
-  function init(containerId) {
-    if (_initialized && !containerId) {
+  function init(containerId, cachedData) {
+    console.log('RecurringManager: init called with', cachedData ? cachedData.length + ' cached items' : 'no cache');
+    
+    // Prevent re-initialization if already initialized
+    if (_initialized && !cachedData) {
+      console.log('RecurringManager: Already initialized, skipping');
       return;
     }
     
-    console.log('RecurringManager: Initializing...', containerId);
+    console.log('RecurringManager: Initializing...');
     
     // Load user settings
     loadSettings();
@@ -87,59 +95,35 @@ var RecurringManager = (function() {
     // Load categories
     loadCategories();
     
-    // Check session cache first for immediate display
-    if (checkSessionCache()) {
-      console.log('RecurringManager: Using session cache');
+    // If cached data provided, use it
+    if (cachedData && Array.isArray(cachedData)) {
+      console.log('RecurringManager: Using provided cached data');
+      _recurringData = processRecurringData(cachedData);
       renderRecurringView();
-      bindEvents();
       
-      // Still fetch fresh data in background
+      // Only bind events if not already bound
+      if (!_eventsInitialized) {
+        bindEvents();
+      }
+      
+      // Set active filter as default
       setTimeout(() => {
-        loadRealRecurringData(true); // Background refresh
-      }, 1000);
+        const activeBtn = document.querySelector('.rec-filter-btn[data-status="active"]');
+        if (activeBtn) {
+          activeBtn.click();
+        }
+      }, 100);
+      
+      // Load fresh data in background after a delay
+      setTimeout(() => {
+        loadRealRecurringData(true); // true = background refresh
+      }, 2000);
     } else {
-      // No cache, load fresh data
+      // No cached data, load fresh
       loadRealRecurringData();
     }
     
     _initialized = true;
-  }
-
-  /**
-   * Check session cache for immediate display
-   */
-  function checkSessionCache() {
-    try {
-      const cached = sessionStorage.getItem(SESSION_KEY);
-      if (cached) {
-        const data = JSON.parse(cached);
-        const age = Date.now() - data.timestamp;
-        
-        // Use cache if less than 5 minutes old
-        if (age < 5 * 60 * 1000) {
-          _recurringData = data.recurring || [];
-          return true;
-        }
-      }
-    } catch (error) {
-      console.warn('RecurringManager: Error reading session cache', error);
-    }
-    return false;
-  }
-
-  /**
-   * Save data to session cache
-   */
-  function saveToSessionCache(data) {
-    try {
-      const cacheData = {
-        timestamp: Date.now(),
-        recurring: data
-      };
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(cacheData));
-    } catch (error) {
-      console.warn('RecurringManager: Error saving session cache', error);
-    }
   }
 
   /**
@@ -149,7 +133,6 @@ var RecurringManager = (function() {
     console.log('RecurringManager: Loading categories...');
     
     try {
-      // Try to get from localStorage first
       const cachedCategories = localStorage.getItem('simbudget_categories');
       const activeCategories = localStorage.getItem('simbudget_active_categories');
       
@@ -177,7 +160,6 @@ var RecurringManager = (function() {
       }
     } catch (error) {
       console.warn('RecurringManager: Error loading categories', error);
-      // Default categories fallback
       _categories = [
         {id: 'Subscription', name: 'Subscription', emoji: '📱', fullName: 'Subscription 📱'},
         {id: 'Utilities', name: 'Utilities', emoji: '💡', fullName: 'Utilities 💡'},
@@ -207,10 +189,80 @@ var RecurringManager = (function() {
   }
 
   /**
+   * Calculate next payment date based on frequency and start date
+   */
+  function calculateNextPayment(startDate, frequency, endDate) {
+    if (!startDate || !(startDate instanceof Date)) return null;
+    
+    const now = new Date();
+    
+    // If ended, no next payment
+    if (endDate && endDate < now) return null;
+    
+    let nextDate = new Date(startDate);
+    const freq = frequency.toLowerCase();
+    
+    // Keep advancing the date until it's in the future
+    while (nextDate <= now) {
+      if (freq.includes('monthly')) {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      } else if (freq.includes('yearly') || freq.includes('annual')) {
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+      } else if (freq.includes('quarterly')) {
+        nextDate.setMonth(nextDate.getMonth() + 3);
+      } else if (freq.includes('weekly')) {
+        nextDate.setDate(nextDate.getDate() + 7);
+      } else {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      }
+    }
+    
+    // If the next payment would be after end date, return null
+    if (endDate && nextDate > endDate) return null;
+    
+    return nextDate;
+  }
+
+  /**
+   * Calculate expiration date for current subscription period
+   */
+  function calculateExpirationDate(startDate, frequency, endDate) {
+    if (!startDate || !(startDate instanceof Date)) return null;
+    
+    const now = new Date();
+    
+    // If has end date and it's passed, use end date
+    if (endDate && endDate < now) return endDate;
+    
+    let expDate = new Date(startDate);
+    const freq = frequency.toLowerCase();
+    
+    // Find the current period's end
+    while (expDate < now) {
+      if (freq.includes('monthly')) {
+        expDate.setMonth(expDate.getMonth() + 1);
+      } else if (freq.includes('yearly') || freq.includes('annual')) {
+        expDate.setFullYear(expDate.getFullYear() + 1);
+      } else if (freq.includes('quarterly')) {
+        expDate.setMonth(expDate.getMonth() + 3);
+      } else if (freq.includes('weekly')) {
+        expDate.setDate(expDate.getDate() + 7);
+      } else {
+        expDate.setMonth(expDate.getMonth() + 1);
+      }
+    }
+    
+    // Subtract 1 day since it expires the day before renewal
+    expDate.setDate(expDate.getDate() - 1);
+    
+    return expDate;
+  }
+
+  /**
    * Load real recurring data from API
    */
   function loadRealRecurringData(isBackgroundRefresh = false) {
-    console.log('RecurringManager: Loading real data...');
+    console.log('RecurringManager: Loading data...');
     
     if (!isBackgroundRefresh) {
       showLoadingState();
@@ -226,33 +278,39 @@ var RecurringManager = (function() {
 
     API.getRecurringData(
       function(result) {
-        console.log('RecurringManager: API success', result);
+        console.log('RecurringManager: API response received');
         
-        if (result && result.success && result.recurring) {
+        if (result && result.success && Array.isArray(result.recurring)) {
           _recurringData = processRecurringData(result.recurring);
-          saveToSessionCache(_recurringData);
           
           if (!isBackgroundRefresh) {
             renderRecurringView();
             bindEvents();
+            
+            // Set active filter as default
+            setTimeout(() => {
+              const activeBtn = document.querySelector('.rec-filter-btn[data-status="active"]');
+              if (activeBtn) {
+                activeBtn.click();
+              }
+            }, 100);
           } else {
-            // Silent refresh - just update data and re-render
             updateSummaryCards();
             updateRecurringTable();
           }
           
-          console.log('RecurringManager: Loaded', _recurringData.length, 'recurring items');
+          console.log('RecurringManager: Data loaded successfully');
         } else {
-          console.warn('RecurringManager: Invalid API response', result);
+          console.warn('RecurringManager: Invalid API response');
           if (!isBackgroundRefresh) {
-            showErrorState(result?.error || 'Invalid response');
+            showErrorState(result?.error || 'No recurring data received');
           }
         }
       },
       function(error) {
-        console.error('RecurringManager: API error', error);
+        console.error('RecurringManager: API error:', error);
         if (!isBackgroundRefresh) {
-          showErrorState(error);
+          showErrorState('Failed to load data: ' + error);
         }
       }
     );
@@ -262,13 +320,26 @@ var RecurringManager = (function() {
    * Process raw recurring data from API
    */
   function processRecurringData(rawData) {
-    console.log('RecurringManager: Processing', rawData.length, 'raw items');
+    if (!rawData || !Array.isArray(rawData)) {
+      return [];
+    }
     
     return rawData.map(item => {
-      // Parse dates
       const startDate = item.startDate ? new Date(item.startDate) : null;
       const endDate = item.endDate ? new Date(item.endDate) : null;
-      const nextPayment = item.nextPayment ? new Date(item.nextPayment) : null;
+      
+      // Calculate status based on dates
+      let status = 'Active';
+      const now = new Date();
+      if (endDate && endDate < now) {
+        status = 'Ended';
+      } else if (endDate && endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
+        status = 'Expires';
+      }
+      
+      // Calculate next payment and expiration
+      const nextPayment = calculateNextPayment(startDate, item.frequency || 'Monthly', endDate);
+      const expiration = calculateExpirationDate(startDate, item.frequency || 'Monthly', endDate);
       
       return {
         id: item.id,
@@ -281,15 +352,16 @@ var RecurringManager = (function() {
         frequency: item.frequency || 'Monthly',
         amount: parseFloat(item.amount) || 0,
         account: item.account || '',
-        status: item.status || 'Active',
+        status: status,
         nextPayment: nextPayment,
+        expiration: expiration,
         notes: item.notes || ''
       };
     });
   }
 
   /**
-   * Calculate banner metrics (Option A)
+   * Calculate banner metrics
    */
   function calculateBannerMetrics() {
     const activeSubscriptions = _recurringData.filter(item => 
@@ -298,7 +370,6 @@ var RecurringManager = (function() {
 
     const activeCount = activeSubscriptions.length;
     
-    // Calculate monthly average from all active subscriptions
     let monthlyTotal = 0;
     activeSubscriptions.forEach(item => {
       const freq = item.frequency.toLowerCase();
@@ -311,22 +382,19 @@ var RecurringManager = (function() {
       } else if (freq.includes('quarterly')) {
         monthlyTotal += amount / 3;
       } else if (freq.includes('weekly')) {
-        monthlyTotal += amount * 4.33; // Average weeks per month
+        monthlyTotal += amount * 4.33;
       } else {
-        // Default to monthly if unknown
         monthlyTotal += amount;
       }
     });
 
-    // Annual projection
     const annualProjection = monthlyTotal * 12;
     
-    // Budget Impact - get from current budget data if available
     let budgetImpact = 0;
-    if (window._cache && typeof _cache.get === 'function') {
-      const budgetData = _cache.get('budget');
-      if (budgetData && budgetData.income) {
-        const monthlyBudget = budgetData.income;
+    if (window._dataCache && typeof _dataCache.get === 'function') {
+      const budgetData = _dataCache.get('budget');
+      if (budgetData && budgetData.dashboardData && budgetData.dashboardData.summary) {
+        const monthlyBudget = budgetData.dashboardData.summary.income;
         budgetImpact = monthlyBudget > 0 ? (monthlyTotal / monthlyBudget) * 100 : 0;
       }
     }
@@ -371,6 +439,39 @@ var RecurringManager = (function() {
   }
 
   /**
+   * Show notes popup
+   */
+  function showNotesPopup(notes, elementRect) {
+    // Remove any existing popup
+    const existingPopup = document.querySelector('.rec-notes-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
+    
+    // Create popup
+    const popup = document.createElement('div');
+    popup.className = 'rec-notes-popup';
+    popup.textContent = notes || 'No notes';
+    
+    // Position near the clicked element
+    popup.style.position = 'absolute';
+    popup.style.left = elementRect.left + 'px';
+    popup.style.top = (elementRect.bottom + 5) + 'px';
+    
+    document.body.appendChild(popup);
+    
+    // Close on click outside
+    setTimeout(() => {
+      document.addEventListener('click', function closePopup(e) {
+        if (!popup.contains(e.target)) {
+          popup.remove();
+          document.removeEventListener('click', closePopup);
+        }
+      });
+    }, 100);
+  }
+
+  /**
    * Render the complete recurring view
    */
   function renderRecurringView() {
@@ -382,53 +483,70 @@ var RecurringManager = (function() {
     const metrics = calculateBannerMetrics();
 
     container.innerHTML = `
-      <!-- Banner Cards -->
-      <div class="rec-banner">
-        <div class="rec-banner-card">
-          <div class="rec-card-content">
-            <div class="rec-metric">
-              <div class="rec-metric-label" data-translate="active_subscriptions">Active Subscriptions</div>
-              <div class="rec-metric-value" id="activeSubscriptionsCount">${metrics.activeSubscriptions}</div>
+      <!-- Summary Box -->
+      <div class="rec-summary-row">
+        <div class="rec-summary-box">
+          <div class="rec-box-content">
+            <div class="rec-box-item">
+              <div class="rec-box-label" data-translate="active_subscriptions">Active Subscriptions</div>
+              <div class="rec-box-value" id="activeSubscriptionsCount">${metrics.activeSubscriptions}</div>
             </div>
-            <div class="rec-metric">
-              <div class="rec-metric-label" data-translate="annual_projection">Annual Projection</div>
-              <div class="rec-metric-value" id="annualProjection">${formatCurrency(metrics.annualProjection)}</div>
+            <div class="rec-box-item">
+              <div class="rec-box-label" data-translate="annual_projection">Annual Projection</div>
+              <div class="rec-box-value" id="annualProjection">${formatCurrency(metrics.annualProjection)}</div>
             </div>
-            <div class="rec-metric">
-              <div class="rec-metric-label" data-translate="budget_impact">Budget Impact</div>
-              <div class="rec-metric-value" id="budgetImpact">${metrics.budgetImpact.toFixed(1)}%</div>
+            <div class="rec-box-item">
+              <div class="rec-box-label" data-translate="budget_impact">Budget Impact</div>
+              <div class="rec-box-value" id="budgetImpact">${metrics.budgetImpact.toFixed(1)}%</div>
             </div>
-            <div class="rec-metric">
-              <div class="rec-metric-label" data-translate="monthly_average">Monthly Average</div>
-              <div class="rec-metric-value" id="monthlyAverage">${formatCurrency(metrics.monthlyAverage)}</div>
+            <div class="rec-box-item">
+              <div class="rec-box-label" data-translate="monthly_average">Monthly Average</div>
+              <div class="rec-box-value" id="monthlyAverage">${formatCurrency(metrics.monthlyAverage)}</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Recurring Table -->
-      <div class="rec-table-section">
+      <!-- Table Section -->
+      <div class="rec-table-container">
         <div class="rec-table-header">
-          <h3 data-translate="my_subscriptions">My Subscriptions</h3>
-          <div class="rec-table-actions">
-            <button id="refreshRecurring" class="rec-refresh-btn" title="Refresh data">
-              <i class="material-icons">refresh</i>
-            </button>
+          <div class="rec-filters">
+            <div class="rec-status-filters">
+              <button class="rec-filter-btn" data-status="all" data-translate="all">All</button>
+              <button class="rec-filter-btn active" data-status="active" data-translate="active">Active</button>
+              <button class="rec-filter-btn" data-status="expires" data-translate="expires">Expires</button>
+              <button class="rec-filter-btn" data-status="ended" data-translate="ended">Ended</button>
+              <button class="rec-add-subscription-btn" id="addSubscriptionBtn">
+                <i class="material-icons">add</i>
+                <span>Add</span>
+              </button>
+            </div>
+            <div class="rec-category-filter">
+              <select id="categoryFilter" class="rec-filter-select">
+                <option value="all" data-translate="all_categories">All Categories</option>
+                ${_categories.map(cat => 
+                  `<option value="${cat.name}">${cat.emoji} ${cat.name}</option>`
+                ).join('')}
+              </select>
+            </div>
           </div>
         </div>
         
-        <div class="rec-table-container">
+        <div class="rec-table-wrapper">
           <table class="rec-table" id="recurringTable">
             <thead>
               <tr>
-                <th data-translate="name">Name</th>
-                <th data-translate="category">Category</th>
-                <th data-translate="frequency">Frequency</th>
-                <th data-translate="amount">Amount</th>
-                <th data-translate="status">Status</th>
-                <th data-translate="next_payment">Next Payment</th>
-                <th data-translate="account">Account</th>
-                <th data-translate="actions">Actions</th>
+                <th class="rec-startdate-header" data-translate="start_date">Start Date</th>
+                <th class="rec-name-header" data-translate="name">Name</th>
+                <th class="rec-category-header" data-translate="category">Category</th>
+                <th class="rec-type-header" data-translate="type">Type</th>
+                <th class="rec-frequency-header" data-translate="frequency">Frequency</th>
+                <th class="rec-amount-header" data-translate="amount">Amount</th>
+                <th class="rec-account-header" data-translate="account">Account</th>
+                <th class="rec-enddate-header" data-translate="end_date">End date</th>
+                <th class="rec-dynamic-date-header" id="dynamicDateHeader" data-translate="next_payment">Next Payment</th>
+                <th class="rec-notes-header">📝</th>
+                <th class="rec-actions-header" data-translate="actions">Actions</th>
               </tr>
             </thead>
             <tbody id="recurringTableBody">
@@ -439,79 +557,503 @@ var RecurringManager = (function() {
       </div>
     `;
 
-    // Populate table
     updateRecurringTable();
+    
+    if (window.SimBudget && SimBudget.applyTranslations) {
+      SimBudget.applyTranslations();
+    }
   }
 
   /**
-   * Update recurring table with current data
+   * Update dynamic date column header based on filter
+   */
+  function updateDynamicDateHeader(filter) {
+    const header = getElement('dynamicDateHeader');
+    if (header) {
+      if (filter === 'ended') {
+        header.setAttribute('data-translate', 'end_date');
+        header.textContent = 'End Date';
+      } else {
+        header.setAttribute('data-translate', 'next_payment');
+        header.textContent = 'Next Payment';
+      }
+      
+      if (window.SimBudget && SimBudget.applyTranslations) {
+        SimBudget.applyTranslations();
+      }
+    }
+  }
+
+  /**
+   * Update recurring table with current data and filters
    */
   function updateRecurringTable() {
     const tbody = getElement('recurringTableBody');
     if (!tbody) return;
 
+    const statusFilter = _currentFilter;
+    const categoryFilter = getElement('categoryFilter')?.value || 'all';
+
+    updateDynamicDateHeader(statusFilter);
+
+    let filteredData = _recurringData;
+
+    if (statusFilter !== 'all') {
+      filteredData = filteredData.filter(item => {
+        const status = item.status.toLowerCase();
+        if (statusFilter === 'active') return status === 'active';
+        if (statusFilter === 'expires') return status === 'expires';
+        if (statusFilter === 'ended') return status === 'ended';
+        return true;
+      });
+    }
+
+    if (categoryFilter !== 'all') {
+      filteredData = filteredData.filter(item => 
+        item.category && item.category.includes(categoryFilter)
+      );
+    }
+
     tbody.innerHTML = '';
 
-    _recurringData.forEach(item => {
-      const row = document.createElement('tr');
-      row.setAttribute('data-id', item.id);
-      
-      // Determine status color
-      let statusClass = 'status-active';
-      if (item.status.toLowerCase().includes('expir')) {
-        statusClass = 'status-expiring';
-      } else if (item.status.toLowerCase().includes('end')) {
-        statusClass = 'status-ended';
-      }
-
-      // Find category emoji
-      const categoryInfo = _categories.find(cat => 
-        cat.fullName === item.category || cat.name === item.category
-      );
-      const categoryEmoji = categoryInfo ? categoryInfo.emoji : '📄';
-
-      // Format next payment date
-      const nextPaymentStr = item.nextPayment ? 
-        item.nextPayment.toLocaleDateString() : 'N/A';
-
-      row.innerHTML = `
-        <td class="rec-name-cell">
-          <div class="rec-name-content">
-            <span class="rec-item-name">${item.name}</span>
-            <span class="rec-item-type">${item.type}</span>
-          </div>
-        </td>
-        <td class="rec-category-cell">
-          <span class="rec-category-emoji">${categoryEmoji}</span>
-        </td>
-        <td class="rec-frequency-cell">
-          <span class="rec-frequency-full">${item.frequency}</span>
-          <span class="rec-frequency-short">${item.frequency.charAt(0)}</span>
-        </td>
-        <td class="rec-amount-cell">
-          <span class="rec-amount">${formatCurrency(item.amount)}</span>
-        </td>
-        <td class="rec-status-cell">
-          <span class="rec-status ${statusClass}">${item.status}</span>
-        </td>
-        <td class="rec-next-payment-cell">${nextPaymentStr}</td>
-        <td class="rec-account-cell">${item.account}</td>
-        <td class="rec-actions-cell">
-          <button class="rec-edit-btn" data-id="${item.id}" title="Edit">
-            <i class="material-icons">edit</i>
-          </button>
-          <button class="rec-delete-btn" data-id="${item.id}" title="Delete">
-            <i class="material-icons">delete</i>
-          </button>
-        </td>
-      `;
-
+    filteredData.forEach(item => {
+      const row = createRecurringRow(item);
       tbody.appendChild(row);
     });
+
+    if (filteredData.length === 0) {
+      const emptyRow = document.createElement('tr');
+      emptyRow.innerHTML = `
+        <td colspan="11" class="rec-empty-message" data-translate="no_recurring_found">
+          No recurring transactions found
+        </td>
+      `;
+      tbody.appendChild(emptyRow);
+    }
   }
 
   /**
-   * Update summary cards with current data
+   * Create a table row for recurring item
+   */
+  function createRecurringRow(item) {
+    const row = document.createElement('tr');
+    row.setAttribute('data-id', item.id);
+    row.setAttribute('data-status', item.status);
+
+    const categoryInfo = _categories.find(cat => 
+      cat.fullName === item.category || cat.name === item.category
+    );
+    const categoryEmoji = categoryInfo ? categoryInfo.emoji : '📄';
+
+    const formatDate = (date) => {
+      if (!date || !(date instanceof Date)) return '';
+      const options = { day: 'numeric', month: 'short', year: 'numeric' };
+      return date.toLocaleDateString('en-GB', options);
+    };
+
+    const startDateStr = formatDate(item.startDate);
+    const endDateStr = formatDate(item.endDate);
+
+    let typeDisplay = 'S';
+    if (item.type) {
+      const typeStr = item.type.toString().toUpperCase();
+      if (typeStr === 'FALSE' || typeStr === 'FIXED' || typeStr === 'PAYMENT') {
+        typeDisplay = 'F';
+      }
+    }
+
+    const frequencyFull = item.frequency || 'Monthly';
+    const frequencyLetter = frequencyFull.charAt(0).toUpperCase();
+
+    // Dynamic date column logic
+    let dynamicDateValue = '';
+    let dynamicDateClass = '';
+    
+    if (item.status.toLowerCase() === 'ended') {
+      dynamicDateValue = endDateStr;
+      dynamicDateClass = 'status-ended';
+    } else if (item.nextPayment) {
+      dynamicDateValue = formatDate(item.nextPayment);
+      dynamicDateClass = 'status-active';
+    } else if (item.expiration) {
+      // Show expiration if no next payment
+      dynamicDateValue = `Expires ${formatDate(item.expiration)}`;
+      dynamicDateClass = 'status-expires';
+    } else {
+      dynamicDateValue = 'Ended';
+      dynamicDateClass = 'status-ended';
+    }
+
+    // Truncate name and add title for hover
+    const nameDisplay = item.name.length > 25 ? item.name.substring(0, 25) + '...' : item.name;
+
+    row.innerHTML = `
+      <td class="rec-startdate-cell">${startDateStr}</td>
+      <td class="rec-name-cell">
+        <div class="rec-name-content" title="${item.name}">
+          <span class="rec-item-name">${nameDisplay}</span>
+        </div>
+      </td>
+      <td class="rec-category-cell">
+        <span class="category-emoji-only" title="${item.category}">${categoryEmoji}</span>
+      </td>
+      <td class="rec-type-cell">
+        <span class="rec-type-letter">${typeDisplay}</span>
+      </td>
+      <td class="rec-frequency-cell">
+        <span class="frequency-full">${frequencyFull}</span>
+        <span class="frequency-letter">${frequencyLetter}</span>
+      </td>
+      <td class="rec-amount-cell">${formatCurrency(item.amount)}</td>
+      <td class="rec-account-cell">${item.account}</td>
+      <td class="rec-enddate-cell">${endDateStr}</td>
+      <td class="rec-dynamic-date-cell ${dynamicDateClass}">${dynamicDateValue}</td>
+      <td class="rec-notes-cell" data-notes="${item.notes || ''}" title="Click to view notes">
+        ${item.notes ? '📝' : ''}
+      </td>
+      <td class="rec-actions-cell">
+        <button class="rec-action-btn rec-edit-btn" data-id="${item.id}" title="Edit">
+          <i class="material-icons">edit</i>
+        </button>
+        <button class="rec-action-btn rec-delete-btn" data-id="${item.id}" title="Delete">
+          <i class="material-icons">delete</i>
+        </button>
+      </td>
+    `;
+
+    return row;
+  }
+
+  /**
+   * Add new subscription
+   */
+  function addNewSubscription() {
+    console.log('RecurringManager: Adding new subscription');
+    
+    const newItem = {
+      id: 'new-' + Date.now(),
+      rowIndex: null,
+      startDate: new Date(),
+      endDate: null,
+      name: '',
+      category: _categories[0]?.fullName || '',
+      type: 'TRUE',
+      frequency: 'Monthly',
+      amount: 0,
+      account: '',
+      status: 'Active',
+      nextPayment: null,
+      notes: '',
+      isNew: true
+    };
+
+    _recurringData.unshift(newItem);
+    updateRecurringTable();
+
+    const newRow = document.querySelector(`tr[data-id="${newItem.id}"]`);
+    if (newRow) {
+      startEditingRow(newRow, newItem);
+    }
+  }
+
+  /**
+   * Start editing a row
+   */
+  function startEditingRow(row, item) {
+    console.log('RecurringManager: Start editing', item.id);
+    
+    row.classList.add('rec-editing');
+
+    const cells = row.querySelectorAll('td');
+
+    // Start Date (0)
+    const startDateValue = item.startDate && item.startDate instanceof Date ? 
+      item.startDate.toISOString().split('T')[0] : '';
+    cells[0].innerHTML = `
+      <input type="date" class="rec-edit-input" 
+        value="${startDateValue}" 
+        data-field="startDate">
+    `;
+
+    // Name (1)
+    cells[1].innerHTML = `
+      <input type="text" class="rec-edit-input" 
+        value="${item.name}" 
+        data-field="name" 
+        placeholder="Subscription name" required>
+    `;
+
+    // Category (2)
+    cells[2].innerHTML = `
+      <select class="rec-edit-input" data-field="category">
+        ${_categories.map(cat => 
+          `<option value="${cat.fullName}" ${cat.fullName === item.category ? 'selected' : ''}>
+            ${cat.emoji} ${cat.name}
+          </option>`
+        ).join('')}
+      </select>
+    `;
+
+    // Type (3)
+    const currentType = item.type && (item.type.toString().toUpperCase() === 'FALSE' || 
+                       item.type.toString().toUpperCase().includes('FIXED') || 
+                       item.type.toString().toUpperCase().includes('PAYMENT')) ? 'Payment' : 'Subscription';
+    cells[3].innerHTML = `
+      <select class="rec-edit-input" data-field="type">
+        <option value="Subscription" ${currentType === 'Subscription' ? 'selected' : ''}>Subscription</option>
+        <option value="Payment" ${currentType === 'Payment' ? 'selected' : ''}>Fixed Payment</option>
+      </select>
+    `;
+
+    // Frequency (4)
+    cells[4].innerHTML = `
+      <select class="rec-edit-input" data-field="frequency">
+        <option value="Monthly" ${item.frequency === 'Monthly' ? 'selected' : ''}>Monthly</option>
+        <option value="Yearly" ${item.frequency === 'Yearly' ? 'selected' : ''}>Yearly</option>
+        <option value="Quarterly" ${item.frequency === 'Quarterly' ? 'selected' : ''}>Quarterly</option>
+        <option value="Weekly" ${item.frequency === 'Weekly' ? 'selected' : ''}>Weekly</option>
+      </select>
+    `;
+
+    // Amount (5)
+    cells[5].innerHTML = `
+      <div class="rec-amount-wrapper">
+        <span class="rec-currency">${_currencySymbol}</span>
+        <input type="number" class="rec-edit-input rec-amount" 
+          value="${item.amount}" 
+          data-field="amount" 
+          placeholder="0.00" 
+          step="0.01" 
+          min="0" required>
+      </div>
+    `;
+
+    // Account (6)
+    cells[6].innerHTML = `
+      <input type="text" class="rec-edit-input" 
+        value="${item.account}" 
+        data-field="account" 
+        placeholder="Account/Card">
+    `;
+
+    // End Date (7)
+    const endDateValue = item.endDate && item.endDate instanceof Date ? 
+      item.endDate.toISOString().split('T')[0] : '';
+    cells[7].innerHTML = `
+      <input type="date" class="rec-edit-input" 
+        value="${endDateValue}" 
+        data-field="endDate">
+    `;
+
+    // Dynamic Date (8) - non-editable
+    cells[8].innerHTML = `<span class="rec-noneditable">${cells[8].textContent}</span>`;
+
+    // Notes (9)
+    cells[9].innerHTML = `
+      <input type="text" class="rec-edit-input rec-notes-input" 
+        value="${item.notes || ''}" 
+        data-field="notes" 
+        placeholder="Notes">
+    `;
+
+    // Actions (10)
+    cells[10].innerHTML = `
+      <button class="rec-action-btn rec-save-btn" data-id="${item.id}" title="Save">
+        <i class="material-icons">check</i>
+      </button>
+      <button class="rec-action-btn rec-cancel-btn" data-id="${item.id}" title="Cancel">
+        <i class="material-icons">close</i>
+      </button>
+    `;
+
+    const nameInput = cells[1].querySelector('input');
+    if (nameInput) {
+      nameInput.focus();
+      nameInput.select();
+    }
+  }
+
+  /**
+   * Save edited row
+   */
+  function saveEditedRow(itemId) {
+    console.log('RecurringManager: Saving row', itemId);
+    
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    if (!row) return;
+
+    const item = _recurringData.find(r => r.id === itemId);
+    if (!item) return;
+
+    const editedData = {};
+    let hasErrors = false;
+
+    row.querySelectorAll('.rec-edit-input').forEach(input => {
+      const field = input.getAttribute('data-field');
+      const value = input.value.trim();
+
+      if (field === 'name' && !value) {
+        input.classList.add('rec-input-error');
+        hasErrors = true;
+        return;
+      }
+
+      if (field === 'amount' && (!value || parseFloat(value) <= 0)) {
+        input.classList.add('rec-input-error');
+        hasErrors = true;
+        return;
+      }
+
+      input.classList.remove('rec-input-error');
+      
+      if (field === 'type') {
+        editedData[field] = value === 'Subscription' ? 'TRUE' : 'FALSE';
+      } else {
+        editedData[field] = value;
+      }
+    });
+
+    if (hasErrors) {
+      if (window.Utils && Utils.showToast) {
+        Utils.showToast('Please fill in required fields', 'error');
+      }
+      return;
+    }
+
+    Object.assign(item, editedData);
+    
+    if (editedData.startDate) {
+      item.startDate = new Date(editedData.startDate);
+    }
+    if (editedData.endDate) {
+      item.endDate = new Date(editedData.endDate);
+    }
+    
+    item.amount = parseFloat(editedData.amount) || 0;
+
+    const now = new Date();
+    if (item.endDate && item.endDate < now) {
+      item.status = 'Ended';
+      item.nextPayment = null;
+    } else if (item.endDate && item.endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
+      item.status = 'Expires';
+      item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+    } else {
+      item.status = 'Active';
+      item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+    }
+    
+    item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate);
+
+    saveToServer([item]);
+
+    const newRow = createRecurringRow(item);
+    row.replaceWith(newRow);
+
+    updateSummaryCards();
+  }
+
+  /**
+   * Cancel editing
+   */
+  function cancelEditingRow(itemId) {
+    console.log('RecurringManager: Cancel editing', itemId);
+    
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    if (!row) return;
+
+    const item = _recurringData.find(r => r.id === itemId);
+    if (!item) return;
+
+    if (item.isNew) {
+      _recurringData = _recurringData.filter(r => r.id !== itemId);
+      row.remove();
+    } else {
+      const newRow = createRecurringRow(item);
+      row.replaceWith(newRow);
+    }
+  }
+
+  /**
+   * Edit recurring item
+   */
+  function editRecurringItem(itemId) {
+    console.log('RecurringManager: Edit item', itemId);
+    
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    const item = _recurringData.find(r => r.id === itemId);
+    
+    if (row && item) {
+      startEditingRow(row, item);
+    }
+  }
+
+  /**
+   * Delete recurring item
+   */
+  function deleteRecurringItem(itemId) {
+    console.log('RecurringManager: Delete item', itemId);
+    
+    const item = _recurringData.find(r => r.id === itemId);
+    if (!item) return;
+
+    if (confirm(`Delete "${item.name}"?`)) {
+      const row = document.querySelector(`tr[data-id="${itemId}"]`);
+      if (row) row.remove();
+
+      _recurringData = _recurringData.filter(r => r.id !== itemId);
+      
+      updateSummaryCards();
+
+      if (window.API && typeof API.clearRecurringRow === 'function') {
+        API.clearRecurringRow(itemId, 
+          function(result) {
+            console.log('RecurringManager: Item deleted on server');
+          },
+          function(error) {
+            console.error('RecurringManager: Delete error', error);
+            if (window.Utils && Utils.showToast) {
+              Utils.showToast('Error deleting item: ' + error, 'error');
+            }
+          }
+        );
+      }
+    }
+  }
+
+  /**
+   * Save data to server
+   */
+  function saveToServer(items) {
+    console.log('RecurringManager: Saving to server', items.length, 'items');
+    
+    if (!window.API || typeof API.saveBatchRecurring !== 'function') {
+      console.error('RecurringManager: API.saveBatchRecurring not available');
+      return;
+    }
+
+    if (window.Utils && Utils.showToast) {
+      Utils.showToast('Saving...', 'info');
+    }
+
+    API.saveBatchRecurring(items,
+      function(result) {
+        console.log('RecurringManager: Save success', result);
+        if (window.Utils && Utils.showToast) {
+          Utils.showToast('Saved successfully', 'success');
+        }
+      },
+      function(error) {
+        console.error('RecurringManager: Save error', error);
+        if (window.Utils && Utils.showToast) {
+          Utils.showToast('Error saving: ' + error, 'error');
+        }
+      }
+    );
+  }
+
+  /**
+   * Update summary cards only
    */
   function updateSummaryCards() {
     const metrics = calculateBannerMetrics();
@@ -541,20 +1083,65 @@ var RecurringManager = (function() {
    * Bind event listeners
    */
   function bindEvents() {
+    if (_eventsInitialized) {
+      console.log('RecurringManager: Events already initialized');
+      return;
+    }
+    
     console.log('RecurringManager: Binding events...');
 
-    // Refresh button
-    const refreshBtn = getElement('refreshRecurring');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', function() {
-        refresh();
+    // Use event delegation on document level to survive DOM updates
+    
+    // Status filter buttons
+    document.addEventListener('click', function statusFilterHandler(e) {
+      if (!document.getElementById('recurringContent')) {
+        // Remove listener if recurring content is gone
+        document.removeEventListener('click', statusFilterHandler);
+        _eventsInitialized = false;
+        return;
+      }
+      
+      if (e.target.classList.contains('rec-filter-btn') && e.target.hasAttribute('data-status')) {
+        document.querySelectorAll('.rec-filter-btn').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        
+        e.target.classList.add('active');
+        _currentFilter = e.target.getAttribute('data-status');
+        updateRecurringTable();
+      }
+    });
+
+    // Category filter
+    const categoryFilter = getElement('categoryFilter');
+    if (categoryFilter) {
+      categoryFilter.addEventListener('change', function() {
+        updateRecurringTable();
       });
     }
 
-    // Table action buttons - using event delegation
+    // Add subscription button
+    const addBtn = getElement('addSubscriptionBtn');
+    if (addBtn) {
+      addBtn.addEventListener('click', function() {
+        addNewSubscription();
+      });
+    }
+
+    // Table action buttons and notes click
     const table = getElement('recurringTable');
     if (table) {
       table.addEventListener('click', function(e) {
+        // Handle notes cell click
+        const notesCell = e.target.closest('.rec-notes-cell');
+        if (notesCell && notesCell.dataset.notes) {
+          e.stopPropagation();
+          const rect = notesCell.getBoundingClientRect();
+          showNotesPopup(notesCell.dataset.notes, rect);
+          return;
+        }
+        
+        // Handle action buttons
         const button = e.target.closest('button');
         if (!button) return;
 
@@ -565,6 +1152,21 @@ var RecurringManager = (function() {
           editRecurringItem(itemId);
         } else if (button.classList.contains('rec-delete-btn')) {
           deleteRecurringItem(itemId);
+        } else if (button.classList.contains('rec-save-btn')) {
+          saveEditedRow(itemId);
+        } else if (button.classList.contains('rec-cancel-btn')) {
+          cancelEditingRow(itemId);
+        }
+      });
+
+      // Enter key to save
+      table.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && e.target.classList.contains('rec-edit-input')) {
+          const row = e.target.closest('tr');
+          if (row) {
+            const saveBtn = row.querySelector('.rec-save-btn');
+            if (saveBtn) saveBtn.click();
+          }
         }
       });
     }
@@ -575,67 +1177,41 @@ var RecurringManager = (function() {
       updateSummaryCards();
       updateRecurringTable();
     });
-  }
 
-  /**
-   * Edit recurring item (placeholder for future implementation)
-   */
-  function editRecurringItem(itemId) {
-    console.log('RecurringManager: Edit item', itemId);
-    // TODO: Implement edit functionality
-    if (window.Utils && Utils.showToast) {
-      Utils.showToast('Edit functionality coming soon', 'info');
-    }
-  }
-
-  /**
-   * Delete recurring item
-   */
-  function deleteRecurringItem(itemId) {
-    console.log('RecurringManager: Delete item', itemId);
-    
-    const item = _recurringData.find(r => r.id === itemId);
-    if (!item) return;
-
-    if (confirm(`Delete "${item.name}"?`)) {
-      // Remove from UI immediately
-      const row = document.querySelector(`tr[data-id="${itemId}"]`);
-      if (row) row.remove();
-
-      // Remove from local data
-      _recurringData = _recurringData.filter(r => r.id !== itemId);
-      
-      // Update cache
-      saveToSessionCache(_recurringData);
-      
-      // Update summary
+    // Settings change listener
+    document.addEventListener('settings-changed', function() {
+      loadSettings();
       updateSummaryCards();
+      updateRecurringTable();
+    });
 
-      // Clear on server
-      if (window.API && typeof API.clearRecurringRow === 'function') {
-        API.clearRecurringRow(itemId, 
-          function(result) {
-            console.log('RecurringManager: Item deleted on server');
-          },
-          function(error) {
-            console.error('RecurringManager: Delete error', error);
-          }
-        );
-      }
-    }
+    _eventsInitialized = true;
   }
 
   /**
    * Refresh recurring data
    */
   function refresh() {
-    console.log('RecurringManager: Manual refresh');
+    console.log('RecurringManager: Refresh triggered');
     
-    // Clear session cache
-    sessionStorage.removeItem(SESSION_KEY);
+    // Clear cache in main system
+    if (window._cache && typeof _cache.invalidate === 'function') {
+      window._cache.invalidate('recurring');
+    }
     
-    // Reload data
-    loadRealRecurringData();
+    // Clear local data
+    _recurringData = [];
+    
+    // Reset initialization flags
+    _initialized = false;
+    
+    // Clear element cache but keep events
+    Object.keys(_elements).forEach(key => {
+      delete _elements[key];
+    });
+    
+    // Re-initialize without cached data to force fresh load
+    init('recurringContent', null);
   }
 
   /**
@@ -648,7 +1224,6 @@ var RecurringManager = (function() {
     }
 
     _recurringData = processRecurringData(recurringData);
-    saveToSessionCache(_recurringData);
     
     if (_initialized) {
       updateSummaryCards();
@@ -660,7 +1235,8 @@ var RecurringManager = (function() {
   return {
     init: init,
     refresh: refresh,
-    setRecurringData: setRecurringData
+    setRecurringData: setRecurringData,
+    isInitialized: function() { return _initialized; } // Check initialization status
   };
 })();
 
@@ -668,137 +1244,11 @@ var RecurringManager = (function() {
 window.RecurringManager = RecurringManager;
 </script>
 
-
-
 <style>
-/* iOS-specific fix for date inputs - force full width */
-input[type="date"].rec-edit-input {
-  width: 100% !important;
-  min-width: 100% !important;
-  max-width: 100% !important;
-  -webkit-appearance: none; /* Remove iOS default styling */
-  appearance: none;
-  display: block !important; /* Force block display */
-}
-
-/* Currency symbol regular positioning - more space for placeholder */
-.rec-currency {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #666;
-  z-index: 1;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-/* Move placeholder text far away from currency symbol */
-.rec-amount {
-  padding-left: 36px !important; /* Much larger padding */
-  text-indent: 8px; /* Additional text indent for placeholder */
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-/* Dark mode support for date inputs */
-body.dark-mode input[type="date"].rec-edit-input {
-  background-color: var(--dark-surface, #1e1e1e);
-  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
-}
-
-/* More aggressive fix for amount placeholder position */
-.rec-amount-wrapper {
-  position: relative;
-  width: 100%;
-}
-
-.rec-currency {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #666;
-  z-index: 1; /* Lower z-index so it doesn't overlap */
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-.rec-amount {
-  padding-left: 36px !important; /* Much larger left padding */
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-/* Special styling for amount placeholder */
-input[type="number"].rec-amount::placeholder {
-  position: relative;
-  z-index: 3;
-}
-
 /* ==============================================================
-   RECURRING MANAGEMENT - DASHBOARD STYLE MATCHING
+   RECURRING MANAGEMENT - OPTIMIZED STYLES
    ==============================================================
-   All classes use the 'rec-' prefix to avoid conflicts.
-   Mobile-first approach with desktop adjustments after.
-   Matching dashboard's signature border style and color scheme.
 */
-
-/* ======== NEW: FREQUENCY DISPLAY ON MOBILE ======== */
-/* Hide the letter on desktop and full text on mobile */
-.frequency-letter {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .frequency-full {
-    display: none;
-  }
-  
-  .frequency-letter {
-    display: inline-block;
-    font-weight: bold;
-  }
-  
-  /* Make frequency cell narrower on mobile */
-  .rec-frequency-cell,
-  .rec-table th:nth-child(4) {
-    width: 30px !important;
-    max-width: 30px !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    text-align: center !important;
-  }
-}
-
-/* ======== NEW: EMOJI-ONLY CATEGORY DISPLAY ======== */
-.category-emoji-only {
-  font-size: 16px !important;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  width: 100%;
-}
-
-/* Highlight the emoji when hovered */
-.rec-category-cell:hover .category-emoji-only {
-  transform: scale(1.1);
-  transition: transform 0.2s ease;
-}
-
-/* Header styling for Category column */
-.rec-table th:nth-child(3) {
-  text-align: center !important;
-  width: 40px !important;
-}
-
-/* Cell styling for Category column */
-.rec-category-cell {
-  text-align: center !important;
-  width: 40px !important;
-  cursor: help;
-}
 
 /* ======== LOADING & ERROR STATES ======== */
 .rec-loading, .rec-error {
@@ -824,43 +1274,24 @@ input[type="number"].rec-amount::placeholder {
   border-bottom: 4px solid #334a60;
 }
 
-.rec-error-details {
-  font-family: monospace;
-  background: rgba(0,0,0,0.05);
-  padding: 8px;
-  border-radius: 0px;
-  max-width: 100%;
-  overflow-x: auto;
-  margin-top: 10px;
-  font-size: 12px;
-  color: #d32f2f;
+/* ======== NOTES POPUP ======== */
+.rec-notes-popup {
+  position: absolute;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  max-width: 300px;
+  z-index: 1000;
+  font-size: 14px;
+  word-wrap: break-word;
 }
 
-/* ======== MESSAGES ======== */
-.rec-message {
-  padding: 12px 16px;
-  border-radius: 0px;
-  margin-bottom: 16px;
-  font-weight: 500;
-  border-top: 1px solid rgba(0, 0, 0, 0.5);
-  border-left: 1px solid rgba(0, 0, 0, 0.5);
-  border-right: 4px solid #334a60;
-  border-bottom: 4px solid #334a60;
-}
-
-.rec-success-message {
-  background-color: #e8f5e9;
-  color: #2e7d32;
-}
-
-.rec-error-message {
-  background-color: #ffebee;
-  color: #d32f2f;
-}
-
-.rec-info-message {
-  background-color: #e3f2fd;
-  color: #1976d2;
+body.dark-mode .rec-notes-popup {
+  background: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
 /* ======== SUMMARY BOX ======== */
@@ -871,7 +1302,7 @@ input[type="number"].rec-amount::placeholder {
 }
 
 .rec-summary-box {
-  background-color: #fe9aa1; /* Match dashboard coral */
+  background-color: #fe9aa1;
   border-radius: 0px;
   padding: 20px;
   border-top: 1px solid rgba(0, 0, 0, 0.5);
@@ -889,7 +1320,7 @@ input[type="number"].rec-amount::placeholder {
 }
 
 .rec-box-item {
-  flex: 1 0 calc(50% - 10px); /* Two columns on small screens */
+  flex: 1 0 calc(50% - 10px);
   padding: 8px;
   text-align: center;
   margin-bottom: 5px;
@@ -910,14 +1341,6 @@ input[type="number"].rec-amount::placeholder {
   font-weight: 700;
 }
 
-.rec-box-subtitle {
-  font-size: 14px;
-  color: #2c3e50;
-  font-weight: normal;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
 /* Hide summary on mobile */
 @media (max-width: 768px) {
   .rec-summary-row {
@@ -925,20 +1348,20 @@ input[type="number"].rec-amount::placeholder {
   }
 }
 
-/* Adjust Add Subscription button to match filter buttons but stand out */
+/* Add button styling */
 .rec-add-subscription-btn {
   background-color: #2c3e50;
   color: white;
   border: none;
   border-radius: 0px;
-  padding: 8px 8px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-size: 13px;
   cursor: pointer;
   transition: background-color 0.2s;
-  margin-left: 8px; /* Add spacing from the All button */
+  margin-left: 8px;
 }
 
 .rec-add-subscription-btn:hover {
@@ -1011,7 +1434,7 @@ input[type="number"].rec-amount::placeholder {
 .rec-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px; /* More compact for mobile */
+  font-size: 14px;
 }
 
 .rec-table th,
@@ -1019,18 +1442,54 @@ input[type="number"].rec-amount::placeholder {
   padding: 10px 8px;
   text-align: left;
   border-bottom: 1px solid #eee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rec-table th {
   font-weight: 500;
   color: #607d8b;
-  white-space: nowrap;
   position: sticky;
   top: 0;
   background-color: white;
   z-index: 10;
   font-family: 'Lato', sans-serif;
   font-weight: 700;
+}
+
+/* Name cell - prevent wrapping */
+.rec-name-cell {
+  max-width: 200px;
+}
+
+.rec-name-content {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Notes cell styling */
+.rec-notes-cell {
+  width: 40px;
+  text-align: center;
+  cursor: pointer;
+  color: #666;
+}
+
+.rec-notes-cell:hover {
+  color: #2c3e50;
+  background-color: rgba(0,0,0,0.05);
+}
+
+.rec-notes-header {
+  width: 40px !important;
+  text-align: center !important;
+}
+
+/* Notes input in edit mode */
+.rec-notes-input {
+  max-width: 100px;
 }
 
 .rec-table tbody tr {
@@ -1049,7 +1508,6 @@ input[type="number"].rec-amount::placeholder {
 
 .rec-amount-cell {
   font-weight: 500;
-  white-space: nowrap;
   font-family: 'Lato', sans-serif;
   font-weight: 700;
   color: #2c3e50;
@@ -1082,7 +1540,7 @@ input[type="number"].rec-amount::placeholder {
 }
 
 .rec-cancel-btn {
-  color: #757575; /* Neutral gray color */
+  color: #757575;
 }
 
 .rec-edit-input {
@@ -1103,9 +1561,21 @@ input[type="number"].rec-amount::placeholder {
   font-style: italic;
 }
 
-/* Mobile optimizations for table */
+/* Status classes for dynamic date column */
+.rec-dynamic-date-cell.status-active {
+  color: #2e7d32;
+}
+
+.rec-dynamic-date-cell.status-expires {
+  color: #ff9800;
+}
+
+.rec-dynamic-date-cell.status-ended {
+  color: #d32f2f;
+}
+
+/* Mobile optimizations */
 @media (max-width: 768px) {
-  /* Use smaller text and padding in table */
   .rec-table {
     font-size: 12px;
   }
@@ -1115,19 +1585,9 @@ input[type="number"].rec-amount::placeholder {
     padding: 6px 4px;
   }
   
-  /* Fixed table wrapper CSS - no horizontal scrolling */
-  .rec-table-wrapper {
-    width: 100%;
-    overflow-x: auto;
-  }
-  
-  /* Hide start date, payment method and notes columns on mobile */
+  /* Hide start date column on mobile */
   .rec-startdate-cell,
-  .rec-table th:nth-child(1),
-  .rec-payment-cell,
-  .rec-table th:nth-child(6),
-  .rec-notes-cell,
-  .rec-table th:nth-child(9) {
+  .rec-table th:nth-child(1) {
     display: none;
   }
   
@@ -1135,45 +1595,65 @@ input[type="number"].rec-amount::placeholder {
   .rec-name-cell,
   .rec-table th:nth-child(2) {
     max-width: 80px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+  
+  /* Category emoji column */
+  .rec-category-cell,
+  .rec-table th:nth-child(3) {
+    width: 30px;
+    max-width: 30px;
+    text-align: center;
+  }
+  
+  /* Type column */
+  .rec-type-cell,
+  .rec-table th:nth-child(4) {
+    width: 25px;
+    max-width: 25px;
+    text-align: center;
   }
   
   /* Frequency column */
   .rec-frequency-cell,
-  .rec-table th:nth-child(4) {
-    width: 60px;
-    max-width: 60px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .rec-table th:nth-child(5) {
+    width: 25px;
+    max-width: 25px;
+    text-align: center;
   }
   
   /* Amount column */
   .rec-amount-cell,
-  .rec-table th:nth-child(5) {
+  .rec-table th:nth-child(6) {
     width: 50px;
-    white-space: nowrap;
   }
   
-  /* End date column */
-  .rec-enddate-cell,
+  /* Account column */
+  .rec-account-cell,
   .rec-table th:nth-child(7) {
-    width: 70px;
-    white-space: nowrap;
+    max-width: 60px;
   }
   
-  /* Next payment column */
-  .rec-nextpayment-cell,
+  /* End date column - hide on mobile */
+  .rec-enddate-cell,
   .rec-table th:nth-child(8) {
+    display: none;
+  }
+  
+  /* Dynamic date column */
+  .rec-dynamic-date-cell,
+  .rec-table th:nth-child(9) {
     width: 70px;
-    white-space: nowrap;
+  }
+  
+  /* Notes column */
+  .rec-notes-cell,
+  .rec-table th:nth-child(10) {
+    width: 30px;
   }
   
   /* Actions column */
   .rec-actions-cell,
-  .rec-table th:nth-child(10) {
+  .rec-table th:nth-child(11) {
     width: 36px;
     padding-left: 0;
     padding-right: 0;
@@ -1189,75 +1669,125 @@ input[type="number"].rec-amount::placeholder {
     font-size: 18px;
   }
   
-  /* Make material icons smaller on mobile */
-  .rec-table .material-icons {
-    font-size: 18px;
-  }
-  
-  /* Filter adjustments for mobile */
+  /* Filter adjustments */
   .rec-filter-btn {
     padding: 6px 8px;
     font-size: 11px;
   }
   
-  /* Enhanced category column - bigger emoji on mobile */
-  .category-emoji-only {
-    font-size: 18px !important; /* Slightly larger on mobile */
+  /* Hide frequency full text on mobile */
+  .frequency-full {
+    display: none;
+  }
+  
+  .frequency-letter {
+    display: inline-block;
+    font-weight: bold;
   }
 }
 
-/* Sample table for fallback */
-.rec-sample-table {
-  width: 100%;
-  overflow-x: auto;
-  margin-top: 20px;
+@media (min-width: 769px) {
+  /* Show frequency letter only on desktop too for consistency */
+  .frequency-full {
+    display: none;
+  }
+  
+  .frequency-letter {
+    display: inline-block;
+    font-weight: bold;
+  }
 }
 
-.rec-sample-table table {
-  width: 100%;
-  border-collapse: collapse;
+/* Enhanced type display */
+.rec-type-letter {
+  font-weight: bold;
+  font-size: 14px;
 }
 
-.rec-sample-table th,
-.rec-sample-table td {
-  padding: 8px;
-  text-align: left;
-  border-bottom: 1px solid #eee;
+/* Emoji-only category display */
+.category-emoji-only {
+  font-size: 16px !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+}
+
+.rec-category-cell:hover .category-emoji-only {
+  transform: scale(1.1);
+  transition: transform 0.2s ease;
+}
+
+.rec-table th:nth-child(3) {
+  text-align: center !important;
+  width: 40px !important;
+}
+
+.rec-category-cell {
+  text-align: center !important;
+  width: 40px !important;
+  cursor: help;
+}
+
+/* Currency input wrapper */
+.rec-amount-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.rec-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.rec-amount {
+  padding-left: 36px !important;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+/* iOS-specific fix for date inputs */
+input[type="date"].rec-edit-input {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block !important;
 }
 
 /* ======== DARK MODE SUPPORT ======== */
-/* Summary box becomes dark in dark mode like dashboard */
 body.dark-mode .rec-summary-box {
   background-color: var(--dark-surface, #1e1e1e) !important;
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87)) !important;
 }
 
-/* White data containers stay dark */
-body.dark-mode .rec-table-container,
-body.dark-mode .rec-sample-table table {
+body.dark-mode .rec-table-container {
   background-color: var(--dark-surface, #1e1e1e);
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
 }
 
-/* Labels and secondary text */
 body.dark-mode .rec-box-label,
 body.dark-mode .rec-table th {
   color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6)) !important;
 }
 
-/* Values and important numbers - golden color like dashboard */
 body.dark-mode .rec-box-value,
-body.dark-mode .rec-box-subtitle,
 body.dark-mode .rec-amount-cell {
   color: #DDA15E !important;
 }
 
-/* Currency symbols */
 body.dark-mode .rec-currency {
   color: rgba(255, 255, 255, 0.6) !important;
 }
 
-/* Form elements */
 body.dark-mode .rec-filter-select,
 body.dark-mode .rec-filter-btn,
 body.dark-mode .rec-edit-input {
@@ -1266,9 +1796,7 @@ body.dark-mode .rec-edit-input {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
-/* Table styling */
-body.dark-mode .rec-table td,
-body.dark-mode .rec-sample-table td {
+body.dark-mode .rec-table td {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
@@ -1276,7 +1804,6 @@ body.dark-mode .rec-table th {
   background-color: var(--dark-surface, #1e1e1e);
 }
 
-/* Interactive elements */
 body.dark-mode .rec-action-btn {
   color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
 }
@@ -1286,33 +1813,17 @@ body.dark-mode .rec-action-btn:hover {
   color: #DDA15E;
 }
 
-/* Emoji cell - improved visibility in dark mode */
 body.dark-mode .category-emoji-only {
   color: #ffffff !important;
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 }
 
-/* Status row backgrounds */
-body.dark-mode .rec-table tbody tr[data-status="Active"] {
-  background-color: rgba(76, 175, 80, 0.15) !important; /* Darker green with transparency */
-}
-
-body.dark-mode .rec-table tbody tr[data-status="Expires"] {
-  background-color: rgba(255, 152, 0, 0.15) !important; /* Darker yellow with transparency */
-}
-
-body.dark-mode .rec-table tbody tr[data-status="Ended"] {
-  background-color: rgba(244, 67, 54, 0.15) !important; /* Darker red with transparency */
-}
-
-/* Filter button active state */
 body.dark-mode .rec-filter-btn.active {
   background-color: #DDA15E;
   border-color: #DDA15E;
   color: #1e1e1e;
 }
 
-/* Add New Subscription button - dark mode style */
 body.dark-mode .rec-add-subscription-btn {
   background-color: #DDA15E;
   color: #1e1e1e;
@@ -1322,11 +1833,30 @@ body.dark-mode .rec-add-subscription-btn:hover {
   background-color: #c9955a;
 }
 
+body.dark-mode .rec-dynamic-date-cell.status-active {
+  color: #4caf50;
+}
+
+body.dark-mode .rec-dynamic-date-cell.status-expires {
+  color: #ffb74d;
+}
+
+body.dark-mode .rec-dynamic-date-cell.status-ended {
+  color: #ef5350;
+}
+
+body.dark-mode .rec-notes-cell {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+body.dark-mode .rec-notes-cell:hover {
+  color: #DDA15E;
+}
+
 /* ======== DESKTOP STYLES ======== */
 @media (min-width: 769px) {
-  /* Improved summary layout */
   .rec-box-item {
-    flex: 1; /* Equal width columns on desktop */
+    flex: 1;
   }
   
   .rec-box-label {
@@ -1337,7 +1867,6 @@ body.dark-mode .rec-add-subscription-btn:hover {
     font-size: 22px;
   }
   
-  /* Improve filters layout */
   .rec-filters {
     flex-direction: row;
     justify-content: space-between;
@@ -1353,58 +1882,23 @@ body.dark-mode .rec-add-subscription-btn:hover {
     max-width: 200px;
   }
   
-  /* Show all table columns on desktop */
   .rec-table {
     font-size: 15px;
   }
   
-  .rec-notes-header,
-  .rec-notes-cell,
-  .rec-frequency-cell,
-  .rec-enddate-cell,
-  .rec-payment-cell {
-    display: table-cell;
-  }
-  
-  /* Container width restrictions for larger screens */
   .rec-table-container,
   .rec-summary-box {
     margin-left: auto;
     margin-right: auto;
-    max-width: 85%; /* Adjust width to match summary box */
+    max-width: 85%;
   }
 }
 
-/* ======== PRINT STYLES ======== */
-@media print {
-  .rec-filters,
-  .rec-action-btn {
-    display: none !important;
-  }
-  
-  .rec-summary-box,
-  .rec-table-container {
-    border: 1px solid #ccc !important;
-    break-inside: avoid !important;
-    margin-top: 20px !important;
-  }
-  
-  .rec-table-wrapper {
-    overflow: visible !important;
-  }
-  
-  .rec-table th,
-  .rec-table td {
-    padding: 8px !important;
-  }
-  
-  /* Show all columns when printing */
-  .rec-notes-header,
-  .rec-notes-cell,
-  .rec-frequency-cell,
-  .rec-enddate-cell,
-  .rec-payment-cell {
-    display: table-cell !important;
-  }
+/* Empty message styling */
+.rec-empty-message {
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  padding: 20px !important;
 }
 </style>

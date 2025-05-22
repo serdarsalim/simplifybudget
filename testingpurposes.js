@@ -29,22 +29,23 @@ function getRecurringData() {
     const headers = recurringSheet.getRange(headerRange).getValues()[0];
     console.log("Recurring headers found: " + JSON.stringify(headers));
     
-    // Expected headers: transactionI, dStart, Date, Name, Category, Type, Frequency, Amount, Account, End date, Status, Next Payment
+    // Expected headers: transactionI, dStart, Date, Name, Category, Type, Frequency, Amount, Account, End date, Status, Next Payment, Notes
     const columnMap = {};
     const expectedHeaders = {
-      'transactionI': ['transactioni', 'transaction id', 'id'],
-      'startDate': ['dstart', 'start date', 'start'],
-      'date': ['date', 'current date'],
-      'name': ['name', 'subscription name', 'title'],
-      'category': ['category', 'cat'],
-      'type': ['type', 'subscription type'],
-      'frequency': ['frequency', 'freq'],
-      'amount': ['amount', 'cost', 'price'],
-      'account': ['account', 'payment method', 'acc'],
-      'endDate': ['end date', 'enddate', 'expiry'],
-      'status': ['status', 'state'],
-      'nextPayment': ['next payment', 'nextpayment', 'next due']
-    };
+  'transactionI': ['transactioni', 'transaction id', 'id'],
+  'startDate': ['dstart', 'start date', 'start'],
+  'date': ['date', 'current date'],
+  'name': ['name', 'subscription name', 'title'],
+  'category': ['category', 'cat'],
+  'type': ['type', 'subscription type'],
+  'frequency': ['frequency', 'freq'],
+  'amount': ['amount', 'cost', 'price'],
+  'account': ['account', 'payment method', 'acc'],
+  'endDate': ['end date', 'enddate', 'expiry'],
+  'status': ['status', 'state'],
+  'nextPayment': ['next payment', 'nextpayment', 'next due'],
+  'notes': ['notes', 'note', 'comments', 'memo'] // ADD THIS LINE
+};
 
     // Map headers to column indices
     headers.forEach((header, index) => {
@@ -124,20 +125,20 @@ function getRecurringData() {
       }
 
       recurring.push({
-        id: transactionId || "recurring-" + (i + 6), // Use row number as fallback ID
-        rowIndex: i + 6, // Actual row in spreadsheet
-        startDate: startDate,
-        endDate: endDate,
-        name: name.toString(),
-        category: columnMap.category !== undefined ? row[columnMap.category].toString() : '',
-        type: columnMap.type !== undefined ? row[columnMap.type].toString() : '',
-        frequency: columnMap.frequency !== undefined ? row[columnMap.frequency].toString() : 'Monthly',
-        amount: parsedAmount,
-        account: columnMap.account !== undefined ? row[columnMap.account].toString() : '',
-        status: columnMap.status !== undefined ? row[columnMap.status].toString() : 'Active',
-        nextPayment: nextPayment,
-        notes: '' // Notes would be in column O if available
-      });
+  id: transactionId || "recurring-" + (i + 6),
+  rowIndex: i + 6,
+  startDate: startDate,
+  endDate: endDate,
+  name: name.toString(),
+  category: columnMap.category !== undefined ? row[columnMap.category].toString() : '',
+  type: columnMap.type !== undefined ? row[columnMap.type].toString() : '',
+  frequency: columnMap.frequency !== undefined ? row[columnMap.frequency].toString() : 'Monthly',
+  amount: parsedAmount,
+  account: columnMap.account !== undefined ? row[columnMap.account].toString() : '',
+  status: columnMap.status !== undefined ? row[columnMap.status].toString() : 'Active',
+  nextPayment: nextPayment,
+  notes: columnMap.notes !== undefined ? row[columnMap.notes].toString() : '' // ADD THIS LINE
+});
 
       processedCount++;
     }
