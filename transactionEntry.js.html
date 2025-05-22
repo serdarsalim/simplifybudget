@@ -52,7 +52,6 @@ var QuickExpenseEntry = (function() {
   function init() {
     if (_initialized) return;
     
-    console.log('Initializing Quick Expense Entry...');
     
     // Include HTML in the page
     includeTransactionEntryHTML();
@@ -69,7 +68,6 @@ var QuickExpenseEntry = (function() {
       loadSavedValues();
       
       _initialized = true;
-      console.log('Quick Expense Entry initialized');
     }, 500);
   }
   
@@ -78,11 +76,9 @@ var QuickExpenseEntry = (function() {
    */
   function includeTransactionEntryHTML() {
     try {
-      console.log("Including TransactionEntry HTML");
       
       // Check if the floating action button already exists
       if (!document.getElementById('quickExpenseBtn')) {
-        console.log("Creating floating action button");
         const btn = document.createElement('div');
         btn.id = 'quickExpenseBtn';
         btn.className = 'quick-expense-btn';
@@ -93,7 +89,6 @@ var QuickExpenseEntry = (function() {
       
       // Check if the modal already exists
       if (!document.getElementById('quickExpenseModal')) {
-        console.log("Creating expense modal");
         
         // Create the modal HTML structure with the new 2x2 grid layout
         // Create the modal HTML structure with the new 2x2 grid layout
@@ -187,10 +182,7 @@ const modalHTML = `
         
         // Append the modal to the document body
         document.body.insertAdjacentHTML('beforeend', modalHTML);
-        console.log("Modal HTML injected into DOM");
-      } else {
-        console.log("Modal already exists in DOM");
-      }
+      } 
     } catch (error) {
       console.error('Error including TransactionEntry HTML:', error);
     }
@@ -201,12 +193,10 @@ const modalHTML = `
    */
   function bindEvents() {
     try {
-      console.log("Binding event listeners");
       
       // FAB button click - open modal
       const quickExpenseBtn = getElement('quickExpenseBtn');
       if (quickExpenseBtn) {
-        console.log("Adding click handler to FAB button");
         quickExpenseBtn.addEventListener('click', openModal);
       }
       
@@ -330,7 +320,6 @@ const modalHTML = `
         }
       });
       
-      console.log("Event listeners bound successfully");
     } catch (error) {
       console.error('Error binding event listeners:', error);
     }
@@ -458,16 +447,13 @@ if (isToday) {
  * Open the quick expense modal
  */
 function openModal() {
-  console.log("openModal called");
   
   // Make sure modal is created 
   if (!document.getElementById('quickExpenseModal')) {
-    console.log("Modal not found, creating it");
     includeTransactionEntryHTML();
   }
   
   const modal = document.getElementById('quickExpenseModal');
-  console.log("Modal element found:", !!modal);
   
   if (modal) {
     // IMPORTANT: Add this code to ensure close button works every time modal is opened
@@ -489,12 +475,10 @@ function openModal() {
       
       // Now add the visible class to trigger the transition
       modal.classList.add('visible');
-      console.log("Modal visible class added");
       
       // Direct style application as backup
       setTimeout(function() {
         modal.style.opacity = '1';
-        console.log("Forced opacity to 1");
       }, 50);
       
       _isModalOpen = true;
@@ -717,7 +701,6 @@ function updateCategoriesDropdown() {
             return;
           }
           
-          console.log('Expense saved successfully:', result);
           
           // Update save button state
           if (saveBtn) {
@@ -772,7 +755,6 @@ function updateCategoriesDropdown() {
     } else {
       // Mock save for demonstration purposes
       setTimeout(function() {
-        console.log('Expense saved (mock):', expense);
         
         // Update save button state
         if (saveBtn) {
@@ -812,7 +794,6 @@ function updateCategoriesDropdown() {
   if (cachedCategories) {
     try {
       _categories = JSON.parse(cachedCategories);
-      console.log('Loaded categories from cache:', _categories);
       
       // If we have active categories, mark them in _categories
       if (activeCategories) {
@@ -1008,7 +989,6 @@ function updateCategoriesDropdown() {
         _selectedLabel = values.label || '';
         _selectedAccount = values.account || '';
         
-        console.log('Loaded saved values:', values);
       } else {
         // Set defaults
         _selectedDate = new Date();
@@ -1040,7 +1020,6 @@ function updateCategoriesDropdown() {
       };
       
       localStorage.setItem('simbudget_quick_expense', JSON.stringify(values));
-      console.log('Saved values to local storage:', values);
     } catch (e) {
       console.error('Error saving values to local storage:', e);
     }
@@ -1051,8 +1030,7 @@ function updateCategoriesDropdown() {
 // and just before the "// Public API" comment and return statement
 
 function ensureCategoriesLoaded(categoriesData) {
-  console.log('QuickExpenseEntry ensuring categories are loaded', 
-              categoriesData ? 'with provided data' : 'from localStorage');
+
   
   // Update _categories from provided data or localStorage
   if (categoriesData) {
@@ -1137,7 +1115,6 @@ window.QuickExpenseEntry = QuickExpenseEntry;
 // API integration
 window.API = window.API || {};
 window.API.openQuickExpenseModal = function() {
-  console.log("API.openQuickExpenseModal called");
   if (window.QuickExpenseEntry && typeof QuickExpenseEntry.openModal === 'function') {
     QuickExpenseEntry.openModal();
     return true;
@@ -1772,5 +1749,5 @@ body.dark-mode .success-message {
 /* Hide quick expense button until it's needed */
 #quickExpenseBtn {
   display: none !important;
-}
+} 
 </style>

@@ -494,8 +494,6 @@ updateCategoryStatus: function(categoryName, active, successCallback, errorCallb
 
 getCategories: function(successCallback, errorCallback, forceRefresh) {
   try {
-    // Add logging to debug
-    console.log("API.getCategories called with forceRefresh=", forceRefresh);
     
     google.script.run
       .withSuccessHandler(function(result) {
@@ -503,12 +501,7 @@ getCategories: function(successCallback, errorCallback, forceRefresh) {
           // Store the last result for potential future use
           API._lastCategoriesResponse = result;
           
-          // Log where data came from
-          if (result.fromCache) {
-            console.log("Categories loaded from user properties cache");
-          } else {
-            console.log("Categories loaded directly from spreadsheet");
-          }
+        
           
           // Store active categories separately for easier access
           if (result.activeCategories) {

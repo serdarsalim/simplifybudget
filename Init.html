@@ -265,7 +265,6 @@ const _preloader = {
       
       // Retry if less than 3 attempts
       if (this.retryCount[viewName] < 3) {
-        console.log(`Preloader: Will retry ${viewName} (attempt ${this.retryCount[viewName]})`);
         // Re-add to end of queue for retry
         this.queue.push(viewName);
       }
@@ -297,12 +296,10 @@ const _preloader = {
 
         if (monthSelector && this.handlers.month) {
           monthSelector.removeEventListener("change", this.handlers.month);
-          console.log("Month change event detached");
         }
 
         if (yearSelector && this.handlers.year) {
           yearSelector.removeEventListener("change", this.handlers.year);
-          console.log("Year change event detached");
         }
       },
 
@@ -529,14 +526,11 @@ initialize: function() {
 
   // ENHANCED: Check for saved view and switch to it
   const savedView = this.getSavedView();
-  console.log("Session persistence: Last active view was", savedView);
   
   if (savedView && this.isValidView(savedView)) {
-    console.log("Session persistence: Restoring view to", savedView);
     // Switch to saved view instead of default 'expense'
     this.Views.switchTo(savedView);
   } else {
-    console.log("Session persistence: No valid saved view, using default 'expense'");
     // Load default view data
     this.loadViewData("expense");
   }
@@ -575,12 +569,10 @@ Views: {
   switchTo: function(viewName) {
     if (!viewName) return;
 
-    console.log("Views.switchTo: Switching to", viewName);
 
     // Save the view choice for session persistence
     try {
       localStorage.setItem('simbudget_lastActiveView', viewName);
-      console.log("Session persistence: Saved active view as", viewName);
     } catch (error) {
       console.warn("Session persistence: Could not save active view", error);
     }
@@ -631,7 +623,6 @@ Views: {
     );
     if (activeItem) {
       activeItem.classList.add("active");
-      console.log("Sidebar: Updated active state for", viewName);
     } else {
       console.warn("Sidebar: Could not find nav item for", viewName);
     }
@@ -1317,28 +1308,16 @@ Views: {
         );
       },
 
-      /**
-       * Load data for a specific view with caching
-       * @param {string} viewName - Name of the view to load
-       * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
-       */
-      /**
-       * Load data for a specific view with caching
-       * @param {string} viewName - Name of the view to load
-       * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
-       */
-      /**
+/**
  * Load data for a specific view with caching and preloading
  * REPLACE the existing loadViewData function in SimBudget's return object
  * @param {string} viewName - Name of the view to load
  * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
  */
 loadViewData: function(viewName, forceRefresh = false) {
-  console.log(`LoadViewData: ${viewName}, forceRefresh: ${forceRefresh}`);
 
   // Skip if already loading the same view
   if (_loadingView === viewName && !forceRefresh) {
-    console.log(`LoadViewData: Already loading ${viewName}, skipping`);
     return;
   }
 
@@ -1358,7 +1337,6 @@ loadViewData: function(viewName, forceRefresh = false) {
   }
 
   // Load from server
-  console.log(`LoadViewData: Loading ${viewName} from server`);
   switch (viewName) {
     case "budget":
       this.loadBudgetData();
@@ -1788,7 +1766,6 @@ loadBudgetData: function() {
   // Make a single API call instead of 5 separate calls
   API.getDashboardData(
     function (result) {
-      console.log("LoadBudgetData: Dashboard data loaded successfully");
 
       // Cache the data FIRST
       _cache.set("budget", result.dashboardData);
@@ -1807,7 +1784,6 @@ loadBudgetData: function() {
         _eventManager.attach();
         _isRendering = false;
         _loadingView = null; // Clear loading flag
-        console.log("LoadBudgetData: Rendering complete, events restored");
         
         // TRIGGER PRELOADER: Start background loading if not already running
         if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
@@ -2065,13 +2041,11 @@ renderExpenseView: function(cachedExpenses) {
 
   // Initialize MonthlyGrid
   if (window.MonthlyGrid) {
-    console.log("RenderExpenseView: Initializing MonthlyGrid with cached data");
     MonthlyGrid.init(containerId);
     
     // Set the cached expense data
     if (cachedExpenses && cachedExpenses.length > 0) {
       MonthlyGrid.setExpenseData(cachedExpenses);
-      console.log("RenderExpenseView: Set cached expense data");
     } else {
       console.log("RenderExpenseView: No cached expense data available, using sample data");
     }

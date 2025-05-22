@@ -488,21 +488,18 @@ function checkCurrentMonth() {
     // STEP 1: Load active categories first
     return loadActiveCategories()
       .then(categories => {
-        console.log('Categories loaded, now fetching fresh expenses...');
         
         // STEP 2: Load expenses for the specified month
         if (!window.API || typeof API.getExpenseData !== 'function') {
           throw new Error('API.getExpenseData function not found. Check API.html file.');
         }
-        
-        console.log(`Fetching fresh data for ${month}/${year}...`);
-        
+                
         return new Promise((resolve, reject) => {
           API.getExpenseData(
             month,
             year,
             function(result) {
-              console.log('SUCCESS: API returned:', result);
+             // console.log('SUCCESS: API returned:', result);
               
               if (!result) {
                 reject('Server returned null result');
@@ -528,7 +525,6 @@ function checkCurrentMonth() {
         });
       })
       .then(expenses => {
-        console.log('Processing ' + expenses.length + ' fresh expenses...');
         
         // Cache the fresh data
         setCachedExpenses(month, year, expenses);
@@ -539,7 +535,6 @@ function checkCurrentMonth() {
         // STEP 4: Render the grid with fresh data
         renderGrid();
         
-        console.log(`SUCCESS: Loaded ${_transactions.length} transactions for ${month}/${year}`);
         hideLoadingIndicator();
         _isLoading = false;
         
@@ -632,7 +627,6 @@ function addInactiveCategoriesWithSpending() {
    * Load categories exactly like QuickExpenseEntry does - FIXED to store parsed categories
    */
   function loadActiveCategories() {
-    console.log('Loading categories from localStorage and API...');
     
     return new Promise((resolve, reject) => {
       // First try to load from local storage for immediate display
