@@ -154,9 +154,7 @@ body.dark-mode .sidebar-item.active {
   background-color: rgba(255, 255, 255, 0.12);
 }
 
-body.dark-mode .view-header {
-  border-bottom-color: var(--dark-border);
-}
+
 
 
 
@@ -173,7 +171,7 @@ body.dark-mode .view-header {
 .content-area {
   flex: 1;
   overflow-y: auto;
-  padding: var(--spacing-md);
+  padding: 0;
   transition: margin-left var(--transition-normal) ease-in-out;
   background-color: var(--background);
   position: relative;
@@ -199,8 +197,9 @@ body.dark-mode .view-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: var(--spacing-md);
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px !important;
+  padding-top: 5px !important;
+   padding-left: 20px;
 }
 
 /* Modify the view-header-title for horizontal layout */
@@ -742,8 +741,8 @@ body.dark-mode .view-header {
   
   /* Keep the header spacing clean */
   .view-header {
-    padding-bottom: var(--spacing-xs);
-    margin-bottom: var(--spacing-xs);
+    padding-bottom: 0;
+    margin-bottom: 0;
     padding-right: 10px;
   }
 }

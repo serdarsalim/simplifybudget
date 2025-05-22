@@ -1,36 +1,29 @@
-<!-- recurring.js.html - Simplified Version With Emoji-Only Display -->
 <script>
+// ============================================================================
+// CLIENT-SIDE RECURRING MODULE (Replace existing recurring module)
+// ============================================================================
+
 /**
- * RecurringManager - Recurring transactions management component for SimBudget
+ * Enhanced RecurringManager - Real data integration with spreadsheet
  */
 var RecurringManager = (function() {
   // Private variables
   let _initialized = false;
   let _recurringData = [];
   let _categories = [];
-  let _activeFilter = 'active'; // Default filter: show active items
-  let _editingRow = null;
-  let _isAddingNew = false; // Flag to track if we're adding a new subscription
+  let _currencySymbol = '$';
+  let _showDecimals = true;
+  let _language = 'en';
   
-  // Constants for status types with matching color scheme (more transparent)
-  const STATUS_TYPES = {
-    ACTIVE: {value: 'Active', color: 'rgba(214, 234, 204, 0.3)'}, // Green with 30% opacity
-    EXPIRES: {value: 'Expires', color: 'rgba(255, 232, 179, 0.3)'}, // Yellow with 30% opacity
-    ENDED: {value: 'Ended', color: 'rgba(248, 215, 218, 0.3)'}  // Pink with 30% opacity
-  };
-
-  // Constants for frequency options - only the ones used in the spreadsheet
-  const FREQUENCY_OPTIONS = [
-    'Monthly',
-    'Yearly',
-    'Quarterly'
-  ];
-
+  // Session-level cache
+  let _sessionCache = null;
+  const SESSION_KEY = 'recurringManager_sessionData';
+  
   // DOM element cache
   const _elements = {};
   
   /**
-   * Get an element by ID with caching
+   * Get element with caching
    */
   function getElement(id) {
     if (!_elements[id]) {
@@ -38,7 +31,34 @@ var RecurringManager = (function() {
     }
     return _elements[id];
   }
-  
+
+  /**
+   * Load settings from SimBudget
+   */
+  function loadSettings() {
+    console.log('RecurringManager: Loading settings...');
+    
+    if (window.SimBudget && SimBudget.Settings) {
+      _currencySymbol = SimBudget.Settings.getCurrencySymbol() || '$';
+      _showDecimals = SimBudget.Settings.showDecimals() || true;
+      _language = SimBudget.Settings.getSetting('language') || 'en';
+      
+      console.log('RecurringManager: Settings loaded -', {
+        currency: _currencySymbol,
+        decimals: _showDecimals,
+        language: _language
+      });
+    }
+  }
+
+  /**
+   * Format currency with user settings
+   */
+  function formatCurrency(amount) {
+    const decimals = _showDecimals ? 2 : 0;
+    return `${_currencySymbol}${amount.toFixed(decimals)}`;
+  }
+
   /**
    * Initialize the Recurring Manager
    */
@@ -47,1390 +67,608 @@ var RecurringManager = (function() {
       return;
     }
     
-    console.log('Initializing Recurring Manager...', containerId);
+    console.log('RecurringManager: Initializing...', containerId);
     
-    // Find container element
+    // Load user settings
+    loadSettings();
+    
+    // Find container
     const container = containerId ? 
       document.getElementById(containerId) : 
       getElement('recurringContent');
     
     if (!container) {
-      console.error('Recurring container not found');
+      console.error('RecurringManager: Container not found');
       return;
     }
     
-    // Store container in elements cache
     _elements['recurringContent'] = container;
     
-    try {
-      // Load categories from CategoriesManager if available
-      loadCategories();
-      
-      // Load sample data for immediate display
-      loadSampleData();
-      
-      // Render the recurring view
+    // Load categories
+    loadCategories();
+    
+    // Check session cache first for immediate display
+    if (checkSessionCache()) {
+      console.log('RecurringManager: Using session cache');
       renderRecurringView();
-      
-      // Set up event handlers
       bindEvents();
       
-      _initialized = true;
-      console.log('Recurring Manager initialized successfully!');
-    } catch (err) {
-      console.error('Error initializing RecurringManager:', err);
+      // Still fetch fresh data in background
+      setTimeout(() => {
+        loadRealRecurringData(true); // Background refresh
+      }, 1000);
+    } else {
+      // No cache, load fresh data
+      loadRealRecurringData();
+    }
+    
+    _initialized = true;
+  }
+
+  /**
+   * Check session cache for immediate display
+   */
+  function checkSessionCache() {
+    try {
+      const cached = sessionStorage.getItem(SESSION_KEY);
+      if (cached) {
+        const data = JSON.parse(cached);
+        const age = Date.now() - data.timestamp;
+        
+        // Use cache if less than 5 minutes old
+        if (age < 5 * 60 * 1000) {
+          _recurringData = data.recurring || [];
+          return true;
+        }
+      }
+    } catch (error) {
+      console.warn('RecurringManager: Error reading session cache', error);
+    }
+    return false;
+  }
+
+  /**
+   * Save data to session cache
+   */
+  function saveToSessionCache(data) {
+    try {
+      const cacheData = {
+        timestamp: Date.now(),
+        recurring: data
+      };
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(cacheData));
+    } catch (error) {
+      console.warn('RecurringManager: Error saving session cache', error);
+    }
+  }
+
+  /**
+   * Load categories from active categories
+   */
+  function loadCategories() {
+    console.log('RecurringManager: Loading categories...');
+    
+    try {
+      // Try to get from localStorage first
+      const cachedCategories = localStorage.getItem('simbudget_categories');
+      const activeCategories = localStorage.getItem('simbudget_active_categories');
       
-      // Fallback to simple render if something goes wrong
-      container.innerHTML = `
-        <div class="rec-error">
-          <h3>Advanced Recurring Module</h3>
-          <p>Loaded with sample data. Backend integration coming soon.</p>
-          <div class="rec-sample-table">
-            <table>
-              <tr>
-                <th>Name</th>
-                <th>Amount</th>
-                <th>Frequency</th>
-                <th>Status</th>
-              </tr>
-              <tr style="background-color: #d6eacc">
-                <td>Netflix</td>
-                <td>€15.99</td>
-                <td>Monthly</td>
-                <td>Active</td>
-              </tr>
-              <tr style="background-color: #ffe8b3">
-                <td>Domain Hosting</td>
-                <td>€30.00</td>
-                <td>Yearly</td>
-                <td>Expires</td>
-              </tr>
-            </table>
-          </div>
-        </div>
-      `;
+      if (cachedCategories && activeCategories) {
+        const allCategories = JSON.parse(cachedCategories);
+        const active = JSON.parse(activeCategories);
+        
+        _categories = allCategories
+          .filter(cat => {
+            const categoryName = typeof cat === 'string' ? cat : cat.name;
+            return active.includes(categoryName);
+          })
+          .map(cat => {
+            const categoryString = typeof cat === 'string' ? cat : cat.name || '';
+            const parsed = parseCategoryNameAndEmoji(categoryString);
+            return {
+              id: parsed.name,
+              name: parsed.name,
+              emoji: parsed.emoji,
+              fullName: categoryString
+            };
+          });
+        
+        console.log('RecurringManager: Loaded', _categories.length, 'active categories');
+      }
+    } catch (error) {
+      console.warn('RecurringManager: Error loading categories', error);
+      // Default categories fallback
+      _categories = [
+        {id: 'Subscription', name: 'Subscription', emoji: '📱', fullName: 'Subscription 📱'},
+        {id: 'Utilities', name: 'Utilities', emoji: '💡', fullName: 'Utilities 💡'},
+        {id: 'Insurance', name: 'Insurance', emoji: '🛡️', fullName: 'Insurance 🛡️'}
+      ];
     }
   }
 
   /**
    * Parse category string to extract name and emoji
-   * Format: "Business 💼" -> {name: "Business", emoji: "💼"}
    */
   function parseCategoryNameAndEmoji(categoryString) {
-    // Split by space and check if last part is an emoji
     const parts = categoryString.trim().split(' ');
     
     if (parts.length >= 2) {
-      // Check if the last part contains emoji characters
       const lastPart = parts[parts.length - 1];
       const emojiRegex = /[\u{1F600}-\u{1F6FF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
       
       if (emojiRegex.test(lastPart)) {
-        // Last part contains emoji, split name and emoji
         const name = parts.slice(0, -1).join(' ');
         const emoji = lastPart;
         return { name, emoji };
       }
     }
     
-    // No emoji found, return the whole string as name
     return { name: categoryString, emoji: '' };
   }
 
   /**
-   * Load categories from CategoriesManager or create defaults
+   * Load real recurring data from API
    */
-  function loadCategories() {
-    console.log('Loading categories for recurring manager...');
+  function loadRealRecurringData(isBackgroundRefresh = false) {
+    console.log('RecurringManager: Loading real data...');
     
-    try {
-      if (window.CategoriesManager && typeof CategoriesManager.getCategories === 'function') {
-        const rawCategories = CategoriesManager.getCategories();
-        console.log('Loaded raw categories from CategoriesManager:', rawCategories.length);
+    if (!isBackgroundRefresh) {
+      showLoadingState();
+    }
+    
+    if (!window.API || typeof API.getRecurringData !== 'function') {
+      console.error('RecurringManager: API.getRecurringData not available');
+      if (!isBackgroundRefresh) {
+        showErrorState('API not available');
+      }
+      return;
+    }
+
+    API.getRecurringData(
+      function(result) {
+        console.log('RecurringManager: API success', result);
         
-        // Process categories to extract emojis
-        _categories = rawCategories.map(cat => {
-          // If category is already an object with name and emoji
-          if (typeof cat === 'object' && cat.name) {
-            return cat;
+        if (result && result.success && result.recurring) {
+          _recurringData = processRecurringData(result.recurring);
+          saveToSessionCache(_recurringData);
+          
+          if (!isBackgroundRefresh) {
+            renderRecurringView();
+            bindEvents();
+          } else {
+            // Silent refresh - just update data and re-render
+            updateSummaryCards();
+            updateRecurringTable();
           }
           
-          // Otherwise parse from string format
-          const categoryString = typeof cat === 'string' ? cat : cat.name || '';
-          const parsed = parseCategoryNameAndEmoji(categoryString);
-          return {
-            name: parsed.name,
-            fullName: categoryString, // Store the full name for filtering/matching
-            emoji: parsed.emoji
-          };
-        });
-        
-        console.log('Processed categories with emoji extraction:', _categories.length);
-      } else {
-        throw new Error('CategoriesManager not available');
-      }
-    } catch (err) {
-      console.log('Using default categories:', err.message);
-      // Default categories with emoji icons if CategoriesManager not available
-      _categories = [
-        {name: 'Housing', emoji: '🏡', fullName: 'Housing 🏡'},
-        {name: 'Transport', emoji: '🚗', fullName: 'Transport 🚗'},
-        {name: 'Utilities', emoji: '💡', fullName: 'Utilities 💡'},
-        {name: 'Fun', emoji: '🎬', fullName: 'Fun 🎬'},
-        {name: 'Business', emoji: '💼', fullName: 'Business 💼'},
-        {name: 'Personal care', emoji: '❤️', fullName: 'Personal care ❤️'},
-        {name: 'Donation', emoji: '🎗️', fullName: 'Donation 🎗️'}
-      ];
-    }
-  }
-  
-  /**
-   * Load sample data for initial display
-   */
-  function loadSampleData() {
-    console.log('Loading sample recurring data...');
-    
-    const paymentMethods = ['Revolut', 'QNB', 'Sparkasse', 'Maybank', 'CIMB'];
-    const recurringNames = [
-      'Netflix', 'Spotify', 'Domain Hosting', 'Phone Plan', 
-      'Insurance', 'Gym Membership', 'Cloud Storage', 'Mortgage'
-    ];
-    
-    // Create sample data with varied start dates and status
-    _recurringData = [];
-    
-    // Generate dates for recurring items
-    const today = new Date();
-    const oneYearAgo = new Date(today);
-    oneYearAgo.setFullYear(today.getFullYear() - 1);
-    
-    // For sample data only - generate plausible next payment dates
-    // In production these would come from the spreadsheet
-    function getSampleNextPayment(frequency) {
-      const nextPayment = new Date();
-      
-      // Add a random offset between 1-28 days in the future
-      nextPayment.setDate(nextPayment.getDate() + Math.floor(Math.random() * 28) + 1);
-      
-      return nextPayment;
-    }
-    
-    for (let i = 0; i < 12; i++) {
-      // Create variations in dates
-      const startDate = new Date(
-        oneYearAgo.getTime() + Math.random() * (today.getTime() - oneYearAgo.getTime())
-      );
-      
-      // Some items have end dates
-      let endDate = null;
-      let status = STATUS_TYPES.ACTIVE.value;
-      
-      // Randomly assign some items as expired or ending soon
-      const randomStatus = Math.random();
-      if (randomStatus > 0.8) {
-        // Ended - has an end date in the past
-        endDate = new Date(startDate);
-        endDate.setMonth(endDate.getMonth() + Math.floor(Math.random() * 10));
-        if (endDate < today) {
-          status = STATUS_TYPES.ENDED.value;
+          console.log('RecurringManager: Loaded', _recurringData.length, 'recurring items');
+        } else {
+          console.warn('RecurringManager: Invalid API response', result);
+          if (!isBackgroundRefresh) {
+            showErrorState(result?.error || 'Invalid response');
+          }
         }
-      } else if (randomStatus > 0.6) {
-        // Expires soon
-        endDate = new Date(today);
-        endDate.setMonth(today.getMonth() + Math.floor(Math.random() * 3) + 1);
-        status = STATUS_TYPES.EXPIRES.value;
+      },
+      function(error) {
+        console.error('RecurringManager: API error', error);
+        if (!isBackgroundRefresh) {
+          showErrorState(error);
+        }
       }
+    );
+  }
+
+  /**
+   * Process raw recurring data from API
+   */
+  function processRecurringData(rawData) {
+    console.log('RecurringManager: Processing', rawData.length, 'raw items');
+    
+    return rawData.map(item => {
+      // Parse dates
+      const startDate = item.startDate ? new Date(item.startDate) : null;
+      const endDate = item.endDate ? new Date(item.endDate) : null;
+      const nextPayment = item.nextPayment ? new Date(item.nextPayment) : null;
       
-      // Use weighted frequency distribution to match real-world usage
-      // More monthly than others (60% Monthly, 25% Yearly, 15% Quarterly)
-      const frequencyRandom = Math.random();
-      const frequency = frequencyRandom < 0.6 ? 'Monthly' : 
-                        (frequencyRandom < 0.85 ? 'Yearly' : 'Quarterly');
-      
-      // Generate a sample next payment date (in production this comes from spreadsheet)
-      const nextPayment = status !== STATUS_TYPES.ENDED.value ? 
-                          getSampleNextPayment(frequency) : null;
-      
-      // Get random category
-      const categoryIndex = Math.floor(Math.random() * _categories.length);
-      const category = _categories[categoryIndex].fullName || _categories[categoryIndex].name;
-      
-      // Generate amount between 5 and 100
-      const amount = Math.floor(Math.random() * 95) + 5;
-      
-      _recurringData.push({
-        id: `recurring-${i}-${Date.now()}`,
+      return {
+        id: item.id,
+        rowIndex: item.rowIndex,
         startDate: startDate,
         endDate: endDate,
-        name: recurringNames[i % recurringNames.length],
-        category: category,
-        frequency: frequency,
-        amount: amount,
-        payMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
-        notes: `Sample recurring item ${i+1}`,
-        status: status,
-        nextPayment: nextPayment
-      });
-    }
-    
-    // Sort by status (Active first) then by next payment date
-    _recurringData.sort((a, b) => {
-      // First by status priority (Active > Expires > Ended)
-      const statusOrder = {
-        [STATUS_TYPES.ACTIVE.value]: 0,
-        [STATUS_TYPES.EXPIRES.value]: 1,
-        [STATUS_TYPES.ENDED.value]: 2
+        name: item.name || '',
+        category: item.category || '',
+        type: item.type || '',
+        frequency: item.frequency || 'Monthly',
+        amount: parseFloat(item.amount) || 0,
+        account: item.account || '',
+        status: item.status || 'Active',
+        nextPayment: nextPayment,
+        notes: item.notes || ''
       };
-      
-      if (statusOrder[a.status] !== statusOrder[b.status]) {
-        return statusOrder[a.status] - statusOrder[b.status];
-      }
-      
-      // Then by next payment date (if both have next payment)
-      if (a.nextPayment && b.nextPayment) {
-        return a.nextPayment - b.nextPayment;
-      } else if (a.nextPayment) {
-        return -1;
-      } else if (b.nextPayment) {
-        return 1;
-      }
-      
-      // If no next payment, sort by name
-      return a.name.localeCompare(b.name);
     });
-    
-    console.log('Sample data loaded:', _recurringData.length, 'items');
   }
-  
-  // No calculateNextPayment function needed
-  // All next payment calculations are done by the spreadsheet
-  
+
   /**
-   * Bind event handlers
+   * Calculate banner metrics (Option A)
    */
-  function bindEvents() {
-    console.log('Binding recurring events...');
+  function calculateBannerMetrics() {
+    const activeSubscriptions = _recurringData.filter(item => 
+      item.status === 'Active' || item.status === 'active'
+    );
+
+    const activeCount = activeSubscriptions.length;
     
-    try {
-      // Status filter buttons
-      const filterButtons = document.querySelectorAll('.rec-filter-btn');
-      filterButtons.forEach(button => {
-        button.addEventListener('click', function() {
-          const status = this.getAttribute('data-status');
-          setStatusFilter(status);
-          
-          // Update active state on buttons
-          filterButtons.forEach(btn => btn.classList.remove('active'));
-          this.classList.add('active');
-        });
-      });
+    // Calculate monthly average from all active subscriptions
+    let monthlyTotal = 0;
+    activeSubscriptions.forEach(item => {
+      const freq = item.frequency.toLowerCase();
+      const amount = item.amount;
       
-      // Table row actions - using event delegation
-      const recurringTable = getElement('recurringTable');
-      if (recurringTable) {
-        recurringTable.addEventListener('click', handleTableClicks);
-      }
-      
-      // Category filter change
-      const categoryFilter = getElement('categoryFilter');
-      if (categoryFilter) {
-        categoryFilter.addEventListener('change', function() {
-          filterSubscriptions();
-        });
-      }
-      
-      // Add New Subscription button
-      const addNewBtn = getElement('addNewSubscription');
-      if (addNewBtn) {
-        addNewBtn.addEventListener('click', function() {
-          addNewRecurringEntry();
-        });
-      }
-      
-      console.log('Recurring events bound successfully');
-    } catch (err) {
-      console.error('Error binding recurring events:', err);
-    }
-  }
-  
-  /**
-   * Handle table row clicks with event delegation
-   */
-  function handleTableClicks(e) {
-    const target = e.target;
-    
-    // Find the closest button to handle clicks on icon inside button
-    const button = target.closest('button');
-    if (!button) return;
-    
-    // Get the row
-    const row = button.closest('tr');
-    if (!row) return;
-    
-    const itemId = row.getAttribute('data-id');
-    
-    // Determine which button was clicked
-    if (button.classList.contains('rec-edit-btn')) {
-      console.log('Edit button clicked for item:', itemId);
-      startEditing(itemId);
-    } else if (button.classList.contains('rec-save-btn')) {
-      console.log('Save button clicked for item:', itemId);
-      saveEdits(itemId);
-    } else if (button.classList.contains('rec-cancel-btn')) {
-      console.log('Cancel button clicked');
-      cancelEditing();
-    }
-  }
-  
-  /**
-   * Set the status filter and update the view
-   */
-  function setStatusFilter(status) {
-    _activeFilter = status || 'all';
-    console.log('Filter set to:', _activeFilter);
-    filterSubscriptions();
-  }
-  
-  /**
-   * Find category details by name (full name or clean name)
-   * This helps us get the emoji for a given category string
-   */
-  function findCategoryByName(categoryName) {
-    // Try exact match on fullName first
-    let category = _categories.find(c => c.fullName === categoryName);
-    
-    // If not found, try match on name
-    if (!category) {
-      category = _categories.find(c => c.name === categoryName);
-    }
-    
-    // If still not found, parse the category name to extract emoji
-    if (!category) {
-      const parsed = parseCategoryNameAndEmoji(categoryName);
-      category = {
-        name: parsed.name,
-        emoji: parsed.emoji,
-        fullName: categoryName
-      };
-    }
-    
-    return category;
-  }
-  
-  /**
-   * Filter subscriptions based on current filters
-   */
-  function filterSubscriptions() {
-    // Get current category filter
-    const categoryFilter = getElement('categoryFilter');
-    const selectedCategory = categoryFilter ? categoryFilter.value : 'all';
-    
-    // Get all rows
-    const rows = document.querySelectorAll('#recurringTable tbody tr');
-    
-    // Track how many we're showing
-    let visibleCount = 0;
-    
-    // Log filter states to debug
-    console.log('Filtering with status:', _activeFilter, 'and category:', selectedCategory);
-    
-    rows.forEach(row => {
-      // Skip rows that are being edited or added new
-      if (row.classList.contains('rec-editing') || row.classList.contains('rec-adding-new')) {
-        visibleCount++;
-        return;
-      }
-      
-      // Get row data attributes
-      const status = row.getAttribute('data-status');
-      const category = row.getAttribute('data-category');
-      
-      // Debug log for each row
-      console.log('Row status:', status, 'vs filter:', _activeFilter);
-      
-      // Determine if row should be visible based on filters
-      let visible = true;
-      
-      // Status filter - case insensitive comparison for reliability
-      if (_activeFilter !== 'all' && status.toLowerCase() !== _activeFilter.toLowerCase()) {
-        visible = false;
-      }
-      
-      // Category filter
-      if (selectedCategory !== 'all' && category !== selectedCategory) {
-        visible = false;
-      }
-      
-      // Show/hide the row
-      row.style.display = visible ? '' : 'none';
-      
-      if (visible) visibleCount++;
-    });
-    
-    // Update the visible count
-    const countElement = getElement('visibleSubscriptionsCount');
-    if (countElement) {
-      countElement.textContent = visibleCount;
-    }
-    
-    console.log('Showing', visibleCount, 'subscriptions after filtering');
-  }
-  
-  /**
-   * Start editing a recurring entry
-   */
-  function startEditing(itemId) {
-    // If already editing, save current edit first
-    if (_editingRow) {
-      if (_editingRow !== itemId) {
-        saveEdits(_editingRow);
+      if (freq.includes('monthly')) {
+        monthlyTotal += amount;
+      } else if (freq.includes('yearly') || freq.includes('annual')) {
+        monthlyTotal += amount / 12;
+      } else if (freq.includes('quarterly')) {
+        monthlyTotal += amount / 3;
+      } else if (freq.includes('weekly')) {
+        monthlyTotal += amount * 4.33; // Average weeks per month
       } else {
-        return; // Already editing this row
-      }
-    }
-    
-    // Set current editing row
-    _editingRow = itemId;
-    
-    // Find the row
-    const row = document.querySelector(`tr[data-id="${itemId}"]`);
-    if (!row) return;
-    
-    // Get item data
-    const item = _recurringData.find(i => i.id === itemId);
-    if (!item) return;
-    
-    // Add editing class to row
-    row.classList.add('rec-editing');
-    
-    // Replace row with editable version
-    const cells = row.querySelectorAll('td');
-    
-    // Start Date (not editable to maintain subscription history)
-    const startDateFormatted = formatDate(item.startDate);
-    cells[0].innerHTML = `<span class="rec-noneditable">${startDateFormatted}</span>`;
-    
-    // Name
-    cells[1].innerHTML = `<input type="text" class="rec-edit-input" value="${item.name}" data-field="name">`;
-    
-    // Category (dropdown)
-    let categoryOptions = '<select class="rec-edit-input" data-field="category">';
-    _categories.forEach(cat => {
-      const catFullName = cat.fullName || `${cat.name} ${cat.emoji}`;
-      const selected = catFullName === item.category ? 'selected' : '';
-      categoryOptions += `<option value="${catFullName}" ${selected}>${cat.emoji} ${cat.name}</option>`;
-    });
-    categoryOptions += '</select>';
-    cells[2].innerHTML = categoryOptions;
-    
-    // Frequency (dropdown)
-    let frequencyOptions = '<select class="rec-edit-input" data-field="frequency">';
-    FREQUENCY_OPTIONS.forEach(freq => {
-      const selected = freq === item.frequency ? 'selected' : '';
-      frequencyOptions += `<option value="${freq}" ${selected}>${freq}</option>`;
-    });
-    frequencyOptions += '</select>';
-    cells[3].innerHTML = frequencyOptions;
-    
-    // Amount
-    const currencySymbol = getCurrencySymbol();
-    cells[4].innerHTML = `
-      <div class="rec-amount-wrapper">
-        <span class="rec-currency">${currencySymbol}</span>
-        <input type="number" class="rec-edit-input rec-amount" value="${item.amount}" data-field="amount" step="0.01" min="0">
-      </div>
-    `;
-    
-    // Payment Method
-    cells[5].innerHTML = `<input type="text" class="rec-edit-input" value="${item.payMethod}" data-field="payMethod">`;
-    
-    // End Date
-    const endDateFormatted = item.endDate ? formatDate(item.endDate) : '';
-    cells[6].innerHTML = `<input type="date" class="rec-edit-input" value="${formatDateForInput(item.endDate)}" data-field="endDate">`;
-    
-    // Next Payment (calculated)
-    const nextPaymentFormatted = item.nextPayment ? formatDate(item.nextPayment) : 'N/A';
-    cells[7].innerHTML = `<span class="rec-noneditable">${nextPaymentFormatted}</span>`;
-    
-    // Notes
-    cells[8].innerHTML = `<input type="text" class="rec-edit-input" value="${item.notes || ''}" data-field="notes">`;
-    
-    // Actions
-    cells[9].innerHTML = `
-      <button class="rec-action-btn rec-save-btn" title="Save changes">
-        <i class="material-icons">save</i>
-      </button>
-      <button class="rec-action-btn rec-cancel-btn" title="Cancel">
-        <i class="material-icons">close</i>
-      </button>
-    `;
-  }
-  
-  /**
-   * Add a new empty row for entering a new subscription
-   */
-  function addNewRecurringEntry() {
-    if (_editingRow || _isAddingNew) {
-      // Already editing or adding - finish that first
-      showMessage('Please complete or cancel your current edit first', 'error');
-      return;
-    }
-    
-    console.log('Adding new empty row for subscription entry...');
-    _isAddingNew = true;
-    
-    // Create a new empty row with today's date as start date
-    const today = new Date();
-    const newId = `new-subscription-${Date.now()}`;
-    
-    const tbody = document.querySelector('#recurringTable tbody');
-    if (!tbody) {
-      console.error('Table body not found');
-      _isAddingNew = false;
-      return;
-    }
-    
-    // Create new row
-    const newRow = document.createElement('tr');
-    newRow.setAttribute('data-id', newId);
-    newRow.classList.add('rec-editing', 'rec-adding-new');
-    newRow.setAttribute('data-status', STATUS_TYPES.ACTIVE.value);
-    
-    // Get default category (first one)
-    const defaultCategory = _categories.length > 0 ? 
-      (_categories[0].fullName || `${_categories[0].name} ${_categories[0].emoji}`) : 
-      '';
-    
-    // Set row content with empty fields to fill in
-    const currencySymbol = getCurrencySymbol();
-    
-    // Create editable cells
-    newRow.innerHTML = `
-      <td class="rec-startdate-cell">
-        <input type="date" class="rec-edit-input" value="${formatDateForInput(today)}" data-field="startDate">
-      </td>
-      <td class="rec-name-cell">
-        <input type="text" class="rec-edit-input" value="" data-field="name" placeholder="Subscription name" required>
-      </td>
-      <td class="rec-category-cell">
-        <select class="rec-edit-input" data-field="category">
-          ${_categories.map(cat => {
-            const catFullName = cat.fullName || `${cat.name} ${cat.emoji}`;
-            return `<option value="${catFullName}">${cat.emoji} ${cat.name}</option>`;
-          }).join('')}
-        </select>
-      </td>
-      <td class="rec-frequency-cell">
-        <select class="rec-edit-input" data-field="frequency">
-          ${FREQUENCY_OPTIONS.map(freq => 
-            `<option value="${freq}">${freq}</option>`
-          ).join('')}
-        </select>
-      </td>
-      <td class="rec-amount-cell">
-        <div class="rec-amount-wrapper">
-          <span class="rec-currency">${currencySymbol}</span>
-          <input type="number" class="rec-edit-input rec-amount" value="" data-field="amount" step="0.01" min="0" placeholder="0.00" required>
-        </div>
-      </td>
-      <td class="rec-payment-cell">
-        <input type="text" class="rec-edit-input" value="" data-field="payMethod" placeholder="e.g. Revolut">
-      </td>
-      <td class="rec-enddate-cell">
-        <input type="date" class="rec-edit-input" value="" data-field="endDate">
-      </td>
-      <td class="rec-nextpayment-cell">
-        <span class="rec-noneditable">Auto-calculated</span>
-      </td>
-      <td class="rec-notes-cell">
-        <input type="text" class="rec-edit-input" value="" data-field="notes" placeholder="Optional notes">
-      </td>
-      <td class="rec-actions-cell">
-        <button class="rec-action-btn rec-save-btn" title="Save">
-          <i class="material-icons">save</i>
-        </button>
-        <button class="rec-action-btn rec-cancel-btn" title="Cancel">
-          <i class="material-icons">close</i>
-        </button>
-      </td>
-    `;
-    
-    // Insert at the beginning of the table
-    if (tbody.firstChild) {
-      tbody.insertBefore(newRow, tbody.firstChild);
-    } else {
-      tbody.appendChild(newRow);
-    }
-    
-    // Set focus on the name field
-    setTimeout(() => {
-      const nameInput = newRow.querySelector('input[data-field="name"]');
-      if (nameInput) nameInput.focus();
-    }, 100);
-    
-    // Set editing row to the new ID
-    _editingRow = newId;
-    
-    console.log('New empty row added with ID:', newId);
-  }
-  
-  /**
-   * Save edits to a recurring entry
-   */
-  function saveEdits(itemId) {
-    if (!itemId) return;
-    
-    // Find the row
-    const row = document.querySelector(`tr[data-id="${itemId}"]`);
-    if (!row) return;
-    
-    // Check if this is a new entry
-    const isNewEntry = row.classList.contains('rec-adding-new');
-    
-    // Get inputs
-    const inputs = row.querySelectorAll('.rec-edit-input');
-    
-    // Collect values
-    const updatedValues = {};
-    let hasErrors = false;
-    
-    inputs.forEach(input => {
-      const field = input.getAttribute('data-field');
-      
-      // Required field validation for new entries
-      if (isNewEntry && input.required && (input.value.trim() === '')) {
-        input.classList.add('rec-input-error');
-        hasErrors = true;
-        return;
-      } else {
-        input.classList.remove('rec-input-error');
-      }
-      
-      if (field === 'startDate' || field === 'endDate') {
-        updatedValues[field] = input.value ? new Date(input.value) : null;
-      } else if (field === 'amount') {
-        updatedValues[field] = parseFloat(input.value) || 0;
-        
-        // Validate amount
-        if (isNewEntry && (isNaN(updatedValues[field]) || updatedValues[field] <= 0)) {
-          input.classList.add('rec-input-error');
-          hasErrors = true;
-        }
-      } else if (field) {
-        updatedValues[field] = input.value;
+        // Default to monthly if unknown
+        monthlyTotal += amount;
       }
     });
+
+    // Annual projection
+    const annualProjection = monthlyTotal * 12;
     
-    // Handle validation errors
-    if (hasErrors) {
-      showMessage('Please fill in all required fields correctly', 'error');
-      return;
-    }
-    
-    try {
-      if (isNewEntry) {
-        // Create a new subscription entry
-        const newEntry = {
-          id: itemId,
-          startDate: updatedValues.startDate || new Date(),
-          endDate: updatedValues.endDate,
-          name: updatedValues.name,
-          category: updatedValues.category,
-          frequency: updatedValues.frequency || 'Monthly',
-          amount: updatedValues.amount,
-          payMethod: updatedValues.payMethod,
-          notes: updatedValues.notes || '',
-          status: STATUS_TYPES.ACTIVE.value, // Start as active
-          nextPayment: calculateNextPayment(updatedValues.startDate, updatedValues.frequency)
-        };
-        
-        // Add to data array
-        _recurringData.unshift(newEntry);
-        
-        // Reset adding flag
-        _isAddingNew = false;
-        
-        // Show success message
-        showMessage('New subscription added successfully', 'success');
-      } else {
-        // Update existing item
-        const itemIndex = _recurringData.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return;
-        
-        // Create updated item
-        const updatedItem = {..._recurringData[itemIndex], ...updatedValues};
-        
-        // Update status and next payment based on dates
-        // Note: In production, these would be calculated by the spreadsheet
-        updatedItem.nextPayment = calculateNextPayment(updatedItem.startDate, updatedItem.frequency, updatedItem.endDate);
-        updatedItem.status = calculateStatus(updatedItem.endDate);
-        
-        // Update the data
-        _recurringData[itemIndex] = updatedItem;
-        
-        // Show success message
-        showMessage('Subscription updated successfully', 'success');
-      }
-      
-      // Render the row with updated data
-      renderRecurringTable();
-      
-      // Clear editing state
-      row.classList.remove('rec-editing', 'rec-adding-new');
-      _editingRow = null;
-      
-      // Update summary
-      updateSummary();
-      
-      // Apply filters
-      filterSubscriptions();
-    } catch (err) {
-      console.error('Error saving subscription:', err);
-      showMessage('Error saving: ' + err.message, 'error');
-    }
-  }
-  
-  /**
-   * Calculate next payment date (for sample data only)
-   * In production, this would be calculated by the spreadsheet
-   */
-  function calculateNextPayment(startDate, frequency, endDate) {
-    const today = new Date();
-    
-    // If ended (end date in past), no next payment
-    if (endDate && endDate < today) {
-      return null;
-    }
-    
-    // Simple calculation for sample data
-    const nextPayment = new Date();
-    
-    // Add days based on frequency for sample data only
-    if (frequency === 'Monthly') {
-      nextPayment.setDate(nextPayment.getDate() + 30);
-    } else if (frequency === 'Quarterly') {
-      nextPayment.setDate(nextPayment.getDate() + 90);
-    } else if (frequency === 'Yearly') {
-      nextPayment.setDate(nextPayment.getDate() + 365);
-    }
-    
-    return nextPayment;
-  }
-  
-  /**
-   * Calculate status based on end date (for sample data only)
-   * In production, this would be calculated by the spreadsheet
-   */
-  function calculateStatus(endDate) {
-    if (!endDate) {
-      return STATUS_TYPES.ACTIVE.value;
-    }
-    
-    const today = new Date();
-    
-    if (endDate < today) {
-      return STATUS_TYPES.ENDED.value;
-    }
-    
-    // If end date is within 3 months, it "expires soon"
-    const threeMonthsFromNow = new Date(today);
-    threeMonthsFromNow.setMonth(today.getMonth() + 3);
-    
-    if (endDate < threeMonthsFromNow) {
-      return STATUS_TYPES.EXPIRES.value;
-    }
-    
-    return STATUS_TYPES.ACTIVE.value;
-  }
-  
-  /**
-   * Cancel editing and revert changes
-   */
-  function cancelEditing() {
-    if (!_editingRow) return;
-    
-    // Find the row
-    const row = document.querySelector(`tr[data-id="${_editingRow}"]`);
-    if (!row) return;
-    
-    // Check if this is a new entry being added
-    const isNewEntry = row.classList.contains('rec-adding-new');
-    
-    if (isNewEntry) {
-      // Remove the row completely if it was a new entry
-      row.remove();
-      _isAddingNew = false;
-    } else {
-      // Otherwise revert to non-editing state
-      const item = _recurringData.find(i => i.id === _editingRow);
-      if (item) {
-        renderRow(row, item);
+    // Budget Impact - get from current budget data if available
+    let budgetImpact = 0;
+    if (window._cache && typeof _cache.get === 'function') {
+      const budgetData = _cache.get('budget');
+      if (budgetData && budgetData.income) {
+        const monthlyBudget = budgetData.income;
+        budgetImpact = monthlyBudget > 0 ? (monthlyTotal / monthlyBudget) * 100 : 0;
       }
     }
-    
-    // Clear editing state
-    _editingRow = null;
+
+    return {
+      activeSubscriptions: activeCount,
+      annualProjection: annualProjection,
+      budgetImpact: budgetImpact,
+      monthlyAverage: monthlyTotal
+    };
   }
-  
+
   /**
-   * Show a status message
+   * Show loading state
    */
-  function showMessage(message, type = 'info') {
-    console.log(`${type} message: ${message}`);
-    
-    const messageContainer = getElement('recurringMessage');
-    if (!messageContainer) return;
-    
-    // Set message content and type
-    messageContainer.textContent = message;
-    messageContainer.className = `rec-message rec-${type}-message`;
-    
-    // Show the message
-    messageContainer.style.display = 'block';
-    
-    // Hide after delay
-    setTimeout(() => {
-      messageContainer.style.display = 'none';
-    }, 3000);
-  }
-  
-  /**
-   * Calculate recurring transactions summary statistics
-   * NOTE: This is only for sample data when real data is not available
-   * In production, these values should come directly from the spreadsheet
-   */
-  function calculateRecurringSummary() {
-    try {
-      // In real implementation, this should come from the API
-      // This is just for sample data display
-      return {
-        activeCount: _recurringData.filter(item => 
-          item.status === STATUS_TYPES.ACTIVE.value || 
-          item.status === STATUS_TYPES.EXPIRES.value
-        ).length,
-        monthlyCost: 250.75,  // Sample value
-        annualCost: 3009.00,  // Sample value 
-        paidThisYear: 1254.50, // Sample value
-        leftToPay: 1754.50    // Sample value
-      };
-    } catch (err) {
-      console.error('Error calculating summary (sample data only):', err);
-      return {
-        activeCount: 0,
-        monthlyCost: 0,
-        annualCost: 0,
-        paidThisYear: 0,
-        leftToPay: 0
-      };
-    }
-  }
-  
-  /**
-   * Update the summary display
-   */
-  function updateSummary() {
-    try {
-      const summary = calculateRecurringSummary();
-      
-      // Update count
-      const countElement = getElement('totalSubscriptionsCount');
-      if (countElement) {
-        countElement.textContent = summary.activeCount;
-      }
-      
-      // Update visible count
-      const visibleCountElement = getElement('visibleSubscriptionsCount');
-      if (visibleCountElement) {
-        visibleCountElement.textContent = summary.activeCount; // Initially all active are visible
-      }
-      
-      // Update paid this year
-      const paidElement = getElement('paidThisYear');
-      if (paidElement) {
-        paidElement.textContent = formatCurrency(summary.paidThisYear);
-      }
-      
-      // Update left to pay
-      const leftElement = getElement('leftToPay');
-      if (leftElement) {
-        leftElement.textContent = formatCurrency(summary.leftToPay);
-      }
-      
-      // Update monthly total
-      const monthlyElement = getElement('monthlyCost');
-      if (monthlyElement) {
-        monthlyElement.textContent = formatCurrency(summary.monthlyCost);
-      }
-    } catch (err) {
-      console.error('Error updating summary:', err);
-    }
-  }
-  
-  /**
-   * Helper: Get currency symbol
-   */
-  function getCurrencySymbol() {
-    if (typeof SimBudget !== 'undefined' && 
-        SimBudget.Settings && 
-        typeof SimBudget.Settings.getCurrencySymbol === 'function') {
-      return SimBudget.Settings.getCurrencySymbol();
-    }
-    return '€'; // Default
-  }
-  
-  /**
-   * Helper: Format currency
-   */
-  function formatCurrency(amount) {
-    if (typeof Utils !== 'undefined' && 
-        typeof Utils.formatCurrency === 'function') {
-      return Utils.formatCurrency(amount);
-    }
-    return getCurrencySymbol() + amount.toFixed(2);
-  }
-  
-  /**
-   * Helper: Format date for display
-   */
-  function formatDate(date) {
-    if (!date) return '';
-    
-    if (typeof Utils !== 'undefined' && 
-        typeof Utils.formatDate === 'function') {
-      return Utils.formatDate(date);
-    }
-    
-    // Default date formatting
-    return date.toLocaleDateString();
-  }
-  
-  /**
-   * Helper: Format date for input element (YYYY-MM-DD)
-   */
-  function formatDateForInput(date) {
-    if (!date) return '';
-    
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return '';
-    
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
-  }
-  
-  /**
-   * Render a single row in the table
-   */
-  function renderRow(row, item) {
-    if (!row || !item) return;
-    
-    // Format dates
-    const startDateFormatted = formatDate(item.startDate);
-    const endDateFormatted = item.endDate ? formatDate(item.endDate) : '';
-    const nextPaymentFormatted = item.nextPayment ? formatDate(item.nextPayment) : 'N/A';
-    
-    // Find the category object matching this item's category
-    const categoryInfo = findCategoryByName(item.category);
-    
-    // Get emoji and clean name
-    const emoji = categoryInfo ? categoryInfo.emoji : '';
-    const categoryName = categoryInfo ? categoryInfo.name : item.category;
-    
-    // Get background color based on status
-    let statusColor = STATUS_TYPES.ACTIVE.color;
-    if (item.status === STATUS_TYPES.EXPIRES.value) {
-      statusColor = STATUS_TYPES.EXPIRES.color;
-    } else if (item.status === STATUS_TYPES.ENDED.value) {
-      statusColor = STATUS_TYPES.ENDED.color;
-    }
-    
-    // Set status color
-    row.style.backgroundColor = statusColor;
-    
-    // Set data attributes for filtering
-    row.setAttribute('data-status', item.status);
-    row.setAttribute('data-category', item.category);
-    
-    // Format frequency for both mobile and desktop
-    // Mobile will show just the first letter using CSS
-    const frequencyLetter = item.frequency.charAt(0);
-    
-    // Create row HTML - SHOWING ONLY EMOJI IN TABLE CELL
-    row.innerHTML = `
-      <td class="rec-startdate-cell">${startDateFormatted}</td>
-      <td class="rec-name-cell">${item.name}</td>
-      <td class="rec-category-cell" title="${categoryName}">
-        <span class="category-emoji-only">${emoji}</span>
-      </td>
-      <td class="rec-frequency-cell" data-frequency="${item.frequency}" title="${item.frequency}">
-        <span class="frequency-full">${item.frequency}</span>
-        <span class="frequency-letter">${frequencyLetter}</span>
-      </td>
-      <td class="rec-amount-cell">${formatCurrency(item.amount)}</td>
-      <td class="rec-payment-cell">${item.payMethod}</td>
-      <td class="rec-enddate-cell">${endDateFormatted}</td>
-      <td class="rec-nextpayment-cell">${nextPaymentFormatted}</td>
-      <td class="rec-notes-cell">${item.notes || ''}</td>
-      <td class="rec-actions-cell">
-        <button class="rec-action-btn rec-edit-btn" title="Edit">
-          <i class="material-icons">edit</i>
-        </button>
-      </td>
-    `;
-  }
-  
-  /**
-   * Render the recurring table
-   */
-  function renderRecurringTable() {
-    console.log('Rendering recurring table...');
-    
-    try {
-      const recurringTable = getElement('recurringTable');
-      if (!recurringTable) {
-        console.error('Recurring table element not found');
-        return;
-      }
-      
-      const tbody = recurringTable.querySelector('tbody');
-      if (!tbody) {
-        console.error('Table body not found');
-        return;
-      }
-      
-      // Clear existing rows
-      tbody.innerHTML = '';
-      
-      // Add rows for each entry
-      _recurringData.forEach(item => {
-        const row = document.createElement('tr');
-        row.setAttribute('data-id', item.id);
-        
-        // Render the row
-        renderRow(row, item);
-        
-        tbody.appendChild(row);
-      });
-      
-      console.log('Recurring table rendered with', _recurringData.length, 'rows');
-    } catch (err) {
-      console.error('Error rendering recurring table:', err);
-    }
-  }
-  
-  /**
-   * Render the Category Filter dropdown
-   */
-  function renderCategoryFilter() {
-    try {
-      const categoryFilter = getElement('categoryFilter');
-      if (!categoryFilter) return;
-      
-      // Clear existing options
-      categoryFilter.innerHTML = '<option value="all">All Categories</option>';
-      
-      // Get unique categories from data
-      const uniqueCategories = [...new Set(_recurringData.map(item => item.category))];
-      
-      // Add options for each category - SHOWING EMOJI FIRST, THEN NAME
-      uniqueCategories.forEach(categoryString => {
-        // Find category details to get emoji
-        const categoryInfo = findCategoryByName(categoryString);
-        const emoji = categoryInfo ? categoryInfo.emoji : '';
-        const name = categoryInfo ? categoryInfo.name : categoryString;
-        
-        categoryFilter.innerHTML += `
-          <option value="${categoryString}">${emoji} ${name}</option>
-        `;
-      });
-      
-      console.log('Category filter rendered with', uniqueCategories.length, 'options');
-    } catch (err) {
-      console.error('Error rendering category filter:', err);
-    }
-  }
-  
-  /**
-   * Render the recurring view with all components
-   */
-  function renderRecurringView() {
-    console.log("Starting to render recurring view...");
-    
+  function showLoadingState() {
     const container = getElement('recurringContent');
-    if (!container) {
-      console.error("Recurring container not found in renderRecurringView");
-      return;
-    }
-    
-    try {
-      // Get summary data
-      const summary = calculateRecurringSummary();
-      
-      // Start with fresh HTML
+    if (container) {
       container.innerHTML = `
-        <!-- Status message container -->
-        <div id="recurringMessage" class="rec-message" style="display: none;"></div>
-        
-        <!-- Summary Cards -->
-        <div class="rec-summary-row">
-          <div class="rec-summary-box">
-            <div class="rec-box-content">
-              <div class="rec-box-item">
-                <div class="rec-box-label">Active Subscriptions</div>
-                <div class="rec-box-value">
-                  <span id="visibleSubscriptionsCount">${summary.activeCount}</span>
-                  <span class="rec-box-subtitle">/ <span id="totalSubscriptionsCount">${summary.activeCount}</span> total</span>
-                </div>
-              </div>
-              <div class="rec-box-item">
-                <div class="rec-box-label">Paid This Year</div>
-                <div class="rec-box-value" id="paidThisYear">${formatCurrency(summary.paidThisYear)}</div>
-              </div>
-              <div class="rec-box-item">
-                <div class="rec-box-label">Left To Pay</div>
-                <div class="rec-box-value" id="leftToPay">${formatCurrency(summary.leftToPay)}</div>
-              </div>
-              <div class="rec-box-item">
-                <div class="rec-box-label">Monthly Cost</div>
-                <div class="rec-box-value" id="monthlyCost">${formatCurrency(summary.monthlyCost)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Recurring Table Section -->
-        <div class="rec-table-container">
-          <div class="rec-table-header">
-            <div class="rec-title-bar">
-              <h3 class="rec-section-title">My Subscriptions</h3>
-            </div>
-            <div class="rec-filters">
-              <div class="rec-status-filters">
-                <button class="rec-filter-btn active" data-status="Active">Active</button>
-                <button class="rec-filter-btn" data-status="Expires">Expiring</button>
-                <button class="rec-filter-btn" data-status="Ended">Ended</button>
-                <button class="rec-filter-btn" data-status="all">All</button>
-                <button id="addNewSubscription" class="rec-add-subscription-btn">
-                  <i class="material-icons">add</i> Add Subscription
-                </button>
-              </div>
-              <div class="rec-category-filter">
-                <select id="categoryFilter" class="rec-filter-select">
-                  <option value="all">All Categories</option>
-                  <!-- Categories will be added dynamically -->
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="rec-table-wrapper">
-            <table id="recurringTable" class="rec-table">
-              <thead>
-                <tr>
-                  <th>Start Date</th>
-                  <th>Name</th>
-                  <th title="Category">Cat</th>
-                  <th>Frequency</th>
-                  <th>Amount</th>
-                  <th>Payment</th>
-                  <th>End Date</th>
-                  <th>Next Payment</th>
-                  <th class="rec-notes-header">Notes</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- Recurring entries will be populated here -->
-              </tbody>
-            </table>
-          </div>
+        <div class="rec-loading">
+          <div class="loading-spinner"></div>
+          <p data-translate="loading_recurring">Loading recurring transactions...</p>
         </div>
       `;
-      
-      // Render the recurring table
-      renderRecurringTable();
-      
-      // Render category filter
-      renderCategoryFilter();
-      
-      // Apply initial filters
-      setStatusFilter('active');
-      
-      console.log("Recurring view rendering completed successfully");
-    } catch (err) {
-      console.error("Error rendering recurring view:", err);
-      
-      // Show fallback error message
+    }
+  }
+
+  /**
+   * Show error state
+   */
+  function showErrorState(error) {
+    const container = getElement('recurringContent');
+    if (container) {
       container.innerHTML = `
         <div class="rec-error">
-          <h3>Error Rendering Recurring Module</h3>
-          <p>An error occurred while rendering the recurring subscriptions view. Please try refreshing the page.</p>
-          <p class="rec-error-details">${err.message}</p>
+          <h3 data-translate="error_loading_recurring">Error Loading Recurring Data</h3>
+          <p>${error}</p>
+          <button onclick="RecurringManager.refresh()" data-translate="retry">Retry</button>
         </div>
       `;
     }
   }
-  
+
+  /**
+   * Render the complete recurring view
+   */
+  function renderRecurringView() {
+    console.log('RecurringManager: Rendering view...');
+    
+    const container = getElement('recurringContent');
+    if (!container) return;
+
+    const metrics = calculateBannerMetrics();
+
+    container.innerHTML = `
+      <!-- Banner Cards -->
+      <div class="rec-banner">
+        <div class="rec-banner-card">
+          <div class="rec-card-content">
+            <div class="rec-metric">
+              <div class="rec-metric-label" data-translate="active_subscriptions">Active Subscriptions</div>
+              <div class="rec-metric-value" id="activeSubscriptionsCount">${metrics.activeSubscriptions}</div>
+            </div>
+            <div class="rec-metric">
+              <div class="rec-metric-label" data-translate="annual_projection">Annual Projection</div>
+              <div class="rec-metric-value" id="annualProjection">${formatCurrency(metrics.annualProjection)}</div>
+            </div>
+            <div class="rec-metric">
+              <div class="rec-metric-label" data-translate="budget_impact">Budget Impact</div>
+              <div class="rec-metric-value" id="budgetImpact">${metrics.budgetImpact.toFixed(1)}%</div>
+            </div>
+            <div class="rec-metric">
+              <div class="rec-metric-label" data-translate="monthly_average">Monthly Average</div>
+              <div class="rec-metric-value" id="monthlyAverage">${formatCurrency(metrics.monthlyAverage)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recurring Table -->
+      <div class="rec-table-section">
+        <div class="rec-table-header">
+          <h3 data-translate="my_subscriptions">My Subscriptions</h3>
+          <div class="rec-table-actions">
+            <button id="refreshRecurring" class="rec-refresh-btn" title="Refresh data">
+              <i class="material-icons">refresh</i>
+            </button>
+          </div>
+        </div>
+        
+        <div class="rec-table-container">
+          <table class="rec-table" id="recurringTable">
+            <thead>
+              <tr>
+                <th data-translate="name">Name</th>
+                <th data-translate="category">Category</th>
+                <th data-translate="frequency">Frequency</th>
+                <th data-translate="amount">Amount</th>
+                <th data-translate="status">Status</th>
+                <th data-translate="next_payment">Next Payment</th>
+                <th data-translate="account">Account</th>
+                <th data-translate="actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="recurringTableBody">
+              <!-- Data will be populated here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // Populate table
+    updateRecurringTable();
+  }
+
+  /**
+   * Update recurring table with current data
+   */
+  function updateRecurringTable() {
+    const tbody = getElement('recurringTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+
+    _recurringData.forEach(item => {
+      const row = document.createElement('tr');
+      row.setAttribute('data-id', item.id);
+      
+      // Determine status color
+      let statusClass = 'status-active';
+      if (item.status.toLowerCase().includes('expir')) {
+        statusClass = 'status-expiring';
+      } else if (item.status.toLowerCase().includes('end')) {
+        statusClass = 'status-ended';
+      }
+
+      // Find category emoji
+      const categoryInfo = _categories.find(cat => 
+        cat.fullName === item.category || cat.name === item.category
+      );
+      const categoryEmoji = categoryInfo ? categoryInfo.emoji : '📄';
+
+      // Format next payment date
+      const nextPaymentStr = item.nextPayment ? 
+        item.nextPayment.toLocaleDateString() : 'N/A';
+
+      row.innerHTML = `
+        <td class="rec-name-cell">
+          <div class="rec-name-content">
+            <span class="rec-item-name">${item.name}</span>
+            <span class="rec-item-type">${item.type}</span>
+          </div>
+        </td>
+        <td class="rec-category-cell">
+          <span class="rec-category-emoji">${categoryEmoji}</span>
+        </td>
+        <td class="rec-frequency-cell">
+          <span class="rec-frequency-full">${item.frequency}</span>
+          <span class="rec-frequency-short">${item.frequency.charAt(0)}</span>
+        </td>
+        <td class="rec-amount-cell">
+          <span class="rec-amount">${formatCurrency(item.amount)}</span>
+        </td>
+        <td class="rec-status-cell">
+          <span class="rec-status ${statusClass}">${item.status}</span>
+        </td>
+        <td class="rec-next-payment-cell">${nextPaymentStr}</td>
+        <td class="rec-account-cell">${item.account}</td>
+        <td class="rec-actions-cell">
+          <button class="rec-edit-btn" data-id="${item.id}" title="Edit">
+            <i class="material-icons">edit</i>
+          </button>
+          <button class="rec-delete-btn" data-id="${item.id}" title="Delete">
+            <i class="material-icons">delete</i>
+          </button>
+        </td>
+      `;
+
+      tbody.appendChild(row);
+    });
+  }
+
+  /**
+   * Update summary cards with current data
+   */
+  function updateSummaryCards() {
+    const metrics = calculateBannerMetrics();
+    
+    const elements = {
+      activeSubscriptionsCount: getElement('activeSubscriptionsCount'),
+      annualProjection: getElement('annualProjection'),
+      budgetImpact: getElement('budgetImpact'),
+      monthlyAverage: getElement('monthlyAverage')
+    };
+
+    if (elements.activeSubscriptionsCount) {
+      elements.activeSubscriptionsCount.textContent = metrics.activeSubscriptions;
+    }
+    if (elements.annualProjection) {
+      elements.annualProjection.textContent = formatCurrency(metrics.annualProjection);
+    }
+    if (elements.budgetImpact) {
+      elements.budgetImpact.textContent = metrics.budgetImpact.toFixed(1) + '%';
+    }
+    if (elements.monthlyAverage) {
+      elements.monthlyAverage.textContent = formatCurrency(metrics.monthlyAverage);
+    }
+  }
+
+  /**
+   * Bind event listeners
+   */
+  function bindEvents() {
+    console.log('RecurringManager: Binding events...');
+
+    // Refresh button
+    const refreshBtn = getElement('refreshRecurring');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        refresh();
+      });
+    }
+
+    // Table action buttons - using event delegation
+    const table = getElement('recurringTable');
+    if (table) {
+      table.addEventListener('click', function(e) {
+        const button = e.target.closest('button');
+        if (!button) return;
+
+        const itemId = button.getAttribute('data-id');
+        if (!itemId) return;
+
+        if (button.classList.contains('rec-edit-btn')) {
+          editRecurringItem(itemId);
+        } else if (button.classList.contains('rec-delete-btn')) {
+          deleteRecurringItem(itemId);
+        }
+      });
+    }
+
+    // Currency change listener
+    document.addEventListener('currency-changed', function(event) {
+      _currencySymbol = event.detail.symbol;
+      updateSummaryCards();
+      updateRecurringTable();
+    });
+  }
+
+  /**
+   * Edit recurring item (placeholder for future implementation)
+   */
+  function editRecurringItem(itemId) {
+    console.log('RecurringManager: Edit item', itemId);
+    // TODO: Implement edit functionality
+    if (window.Utils && Utils.showToast) {
+      Utils.showToast('Edit functionality coming soon', 'info');
+    }
+  }
+
+  /**
+   * Delete recurring item
+   */
+  function deleteRecurringItem(itemId) {
+    console.log('RecurringManager: Delete item', itemId);
+    
+    const item = _recurringData.find(r => r.id === itemId);
+    if (!item) return;
+
+    if (confirm(`Delete "${item.name}"?`)) {
+      // Remove from UI immediately
+      const row = document.querySelector(`tr[data-id="${itemId}"]`);
+      if (row) row.remove();
+
+      // Remove from local data
+      _recurringData = _recurringData.filter(r => r.id !== itemId);
+      
+      // Update cache
+      saveToSessionCache(_recurringData);
+      
+      // Update summary
+      updateSummaryCards();
+
+      // Clear on server
+      if (window.API && typeof API.clearRecurringRow === 'function') {
+        API.clearRecurringRow(itemId, 
+          function(result) {
+            console.log('RecurringManager: Item deleted on server');
+          },
+          function(error) {
+            console.error('RecurringManager: Delete error', error);
+          }
+        );
+      }
+    }
+  }
+
+  /**
+   * Refresh recurring data
+   */
+  function refresh() {
+    console.log('RecurringManager: Manual refresh');
+    
+    // Clear session cache
+    sessionStorage.removeItem(SESSION_KEY);
+    
+    // Reload data
+    loadRealRecurringData();
+  }
+
   /**
    * Set recurring data from external source
    */
   function setRecurringData(recurringData) {
-    console.log('Setting recurring data from API...');
-    
     if (!recurringData || !Array.isArray(recurringData)) {
-      console.warn('Invalid recurring data received:', recurringData);
+      console.warn('RecurringManager: Invalid recurring data');
       return;
     }
+
+    _recurringData = processRecurringData(recurringData);
+    saveToSessionCache(_recurringData);
     
-    try {
-      console.log('API returned recurring data:', recurringData.length, 'entries');
-      
-      // Convert API recurring data to our format
-      _recurringData = recurringData.map(item => {
-        // Ensure dates are Date objects
-        const startDate = item.startDate instanceof Date ? item.startDate : new Date(item.startDate);
-        const endDate = item.endDate ? (item.endDate instanceof Date ? item.endDate : new Date(item.endDate)) : null;
-        
-        return {
-          id: item.id || `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          startDate: startDate,
-          endDate: endDate,
-          name: item.name || '',
-          category: item.category || 'Other',
-          frequency: item.frequency || 'Monthly',
-          amount: parseFloat(item.amount),
-          payMethod: item.payMethod || 'Other',
-          notes: item.notes || '',
-          status: item.status || STATUS_TYPES.ACTIVE.value,
-          nextPayment: item.nextPayment ? new Date(item.nextPayment) : null
-        };
-      });
-      
-      // Sort by status (Active first) then by next payment date
-      _recurringData.sort((a, b) => {
-        // First by status priority (Active > Expires > Ended)
-        const statusOrder = {
-          [STATUS_TYPES.ACTIVE.value]: 0,
-          [STATUS_TYPES.EXPIRES.value]: 1,
-          [STATUS_TYPES.ENDED.value]: 2
-        };
-        
-        if (statusOrder[a.status] !== statusOrder[b.status]) {
-          return statusOrder[a.status] - statusOrder[b.status];
-        }
-        
-        // Then by next payment date (if both have next payment)
-        if (a.nextPayment && b.nextPayment) {
-          return a.nextPayment - b.nextPayment;
-        } else if (a.nextPayment) {
-          return -1;
-        } else if (b.nextPayment) {
-          return 1;
-        }
-        
-        // If no next payment, sort by name
-        return a.name.localeCompare(b.name);
-      });
-      
-      // Render with the new data
-      renderRecurringView();
-      
-      console.log('Recurring data successfully updated from API');
-    } catch (err) {
-      console.error('Error processing API recurring data:', err);
+    if (_initialized) {
+      updateSummaryCards();
+      updateRecurringTable();
     }
   }
-  
+
   // Public API
   return {
     init: init,
-    renderRecurringView: renderRecurringView,
+    refresh: refresh,
     setRecurringData: setRecurringData
   };
 })();
 
-// Expose globally without auto-initialization
+// Expose globally
 window.RecurringManager = RecurringManager;
-
-/**
- * Load recurring data with simplified reliable rendering
- */
-SimBudget.loadRecurringData = function() {
-  console.log("Loading recurring view...");
-  
-  const contentArea = document.getElementById("recurringContent");
-  if (!contentArea) {
-    console.error("Recurring content area not found");
-    _loadingView = null;
-    return;
-  }
-
-  // Show simple loading state
-  contentArea.innerHTML = `
-    <div class="rec-loading">
-      <div class="loading-spinner"></div>
-      <p class="rec-loading-text">Loading subscription data...</p>
-    </div>
-  `;
-  
-  // Initialize RecurringManager directly with a slight delay
-  setTimeout(() => {
-    try {
-      if (window.RecurringManager && typeof RecurringManager.init === 'function') {
-        console.log("Initializing RecurringManager");
-        // Explicitly pass the container ID to ensure proper rendering
-        RecurringManager.init('recurringContent');
-        
-        // Only try API calls if API exists
-        if (window.API && typeof API.getRecurringData === 'function') {
-          console.log("Fetching real recurring data in background...");
-          
-          try {
-            API.getRecurringData(
-              function(result) {
-                console.log("Real recurring data loaded successfully");
-                
-                // Update UI with real data if available
-                if (result && result.success && result.recurring) {
-                  RecurringManager.setRecurringData(result.recurring);
-                }
-                
-                // Cache the result
-                if (window._cache && typeof _cache.set === 'function') {
-                  _cache.set("recurring", result.recurring || []);
-                }
-              },
-              function(error) {
-                console.log("Using sample data - couldn't load real data:", error);
-                // Just log the error - user already sees sample data
-              }
-            );
-          } catch (apiErr) {
-            console.warn("API call failed, continuing with sample data:", apiErr);
-          }
-        } else {
-          console.log("API.getRecurringData not available, using sample data only");
-        }
-      } else {
-        contentArea.innerHTML = '<div class="error-message">Error: Recurring Manager component not available</div>';
-        console.error("RecurringManager component not found");
-      }
-    } catch (err) {
-      console.error("Error in loadRecurringData:", err);
-      contentArea.innerHTML = `
-        <div class="error-message">
-          <h3>Error Loading Recurring View</h3>
-          <p>${err.message}</p>
-        </div>
-      `;
-    } finally {
-      // Always clear loading flag
-      _loadingView = null;
-    }
-  }, 300); // Slightly longer timeout to ensure DOM is ready
-};
 </script>
+
+
 
 <style>
 /* iOS-specific fix for date inputs - force full width */
@@ -1693,7 +931,7 @@ input[type="number"].rec-amount::placeholder {
   color: white;
   border: none;
   border-radius: 0px;
-  padding: 8px 12px;
+  padding: 8px 8px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1704,7 +942,7 @@ input[type="number"].rec-amount::placeholder {
 }
 
 .rec-add-subscription-btn:hover {
-  background-color: #1e2b37;
+  background-color: #1984c5;
 }
 
 .rec-add-subscription-btn i {

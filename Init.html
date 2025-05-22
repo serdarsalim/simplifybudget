@@ -2169,18 +2169,41 @@ loadIncomeData: function() {
 },
 
 /**
- * Load recurring data (stub with one-time preloader trigger)
+ * Enhanced loadRecurringData function for Init.html
+ * Initializes RecurringManager for real data integration
  */
 loadRecurringData: function() {
+  console.log("Loading recurring view...");
   
   const contentArea = document.getElementById("recurringContent");
-  if (contentArea) {
-    contentArea.innerHTML = '<div style="padding:40px;text-align:center;color:#666;"><h3>Recurring Transactions Coming Soon</h3></div>';
+  if (!contentArea) {
+    console.error("Recurring content area not found");
+    _loadingView = null;
+    return;
   }
-  
-  _loadingView = null;
-  // SIMPLIFIED: Just try to start preloader - it handles session logic internally
-  _preloader.start('recurring');
+
+  try {
+    if (window.RecurringManager && typeof RecurringManager.init === 'function') {
+      console.log("Initializing RecurringManager with real data integration");
+      RecurringManager.init('recurringContent');
+    } else {
+      throw new Error("RecurringManager component not found");
+    }
+  } catch (err) {
+    console.error("Error initializing RecurringManager:", err);
+    contentArea.innerHTML = `
+      <div class="error-message">
+        <h3>Error Loading Recurring Module</h3>
+        <p>${err.message}</p>
+      </div>
+    `;
+  } finally {
+    _loadingView = null;
+    // Trigger preloader for other views
+    if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
+      _preloader.start('recurring');
+    }
+  }
 },
 
 /**

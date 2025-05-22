@@ -694,6 +694,95 @@ clearTransactionRow: function(transactionId, successCallback, errorCallback) {
   }
 },
 
+    /**
+     * Get recurring data from server
+     * @param {Function} successCallback - Called with { success, recurring, meta }
+     * @param {Function} errorCallback - Called on error
+     */
+    getRecurringData: function(successCallback, errorCallback) {
+      try {
+        console.log('API: getRecurringData called');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              const err = result && result.error || 'Unknown error';
+              console.error('API.getRecurringData error:', err);
+              errorCallback(err);
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('API.getRecurringData failure:', error);
+            errorCallback(error);
+          })
+          .getRecurringData();
+      } catch (e) {
+        console.error('API.getRecurringData exception:', e);
+        errorCallback(e.toString());
+      }
+    },
+
+    /**
+     * Save batch recurring transactions
+     * @param {Array} recurring - Array of recurring transaction objects
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    saveBatchRecurring: function(recurring, successCallback, errorCallback) {
+      try {
+        console.log('API: saveBatchRecurring called');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              const err = result && result.error || 'Unknown error';
+              console.error('API.saveBatchRecurring error:', err);
+              errorCallback(err);
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('API.saveBatchRecurring failure:', error);
+            errorCallback(error);
+          })
+          .saveRecurringTransaction(recurring);
+      } catch (e) {
+        console.error('API.saveBatchRecurring exception:', e);
+        errorCallback(e.toString());
+      }
+    },
+
+    /**
+     * Clear recurring transaction row
+     * @param {string} transactionId - Transaction ID to clear
+     * @param {Function} successCallback - Called on success
+     * @param {Function} errorCallback - Called on error
+     */
+    clearRecurringRow: function(transactionId, successCallback, errorCallback) {
+      try {
+        console.log('API: clearRecurringRow called:', transactionId);
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && result.success) {
+              successCallback(result);
+            } else {
+              const err = result && result.error || 'Unknown error';
+              console.error('API.clearRecurringRow error:', err);
+              errorCallback(err);
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error('API.clearRecurringRow failure:', error);
+            errorCallback(error);
+          })
+          .clearRecurringTransaction(transactionId);
+      } catch (e) {
+        console.error('API.clearRecurringRow exception:', e);
+        errorCallback(e.toString());
+      }
+    },
+
 
 
     /**

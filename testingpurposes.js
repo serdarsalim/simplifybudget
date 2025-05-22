@@ -1,119 +1,290 @@
+// ============================================================================
+// SERVER-SIDE FUNCTIONS (Code.gs) - Add these to your Code.gs file
+// ============================================================================
+
 /**
- * Enhanced saveBatchExpenses that reuses cleared rows
+ * Get recurring data from spreadsheet (C5:N500 range)
+ * @return {Object} Result with recurring transactions data
  */
-function saveBatchExpenses(expenses) {
-  const sh = getBudgetSheet("Expenses");
-  if (!sh)  return { success: false, error: "Expenses sheet missing" };
-
-  // 1) pull only col D, build map + empty‐row list
-  const startRow = 5;
-  const lastRow  = Math.max(sh.getLastRow(), startRow);
-  const ids      = sh.getRange(startRow, 4, lastRow - startRow + 1).getValues().flat();
-  const map = {};
-  const holes = [];
-  ids.forEach((id, i) => {
-    const r = startRow + i;
-    if (id)       map[id] = r;
-    else if (holes.length < expenses.length) holes.push(r);
-  });
-
-  // 2) separate out updates vs inserts
-  const toUpdate = [];
-  const toInsert = [];
-  for (const e of expenses) {
-    if (!e.amount || +e.amount <= 0) continue;
-    const row = map[e.transactionId];
-    const values = [
-      e.transactionId,
-      new Date(e.date),
-      +e.amount,
-      e.category,
-      e.name || e.description || "",
-      e.label  || "",
-      e.notes  || "",
-      e.account|| ""
-    ];
-    if (row)       toUpdate.push({ row, values });
-    else {
-      const target = holes.length ? holes.shift() : ++lastRow;
-      toInsert.push({ row: target, values });
-      map[e.transactionId] = target;
+function getRecurringData() {
+  console.log("=== SERVER RECURRING DATA FETCH ===");
+  
+  try {
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
     }
+
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const recurringSheet = ss.getSheetByName("Recurring");
+    
+    if (!recurringSheet) {
+      return { success: false, error: "Recurring sheet not found" };
+    }
+
+    // Headers are at C5:N5
+    const headerRange = "C5:N5";
+    const headers = recurringSheet.getRange(headerRange).getValues()[0];
+    console.log("Recurring headers found: " + JSON.stringify(headers));
+    
+    // Expected headers: transactionI, dStart, Date, Name, Category, Type, Frequency, Amount, Account, End date, Status, Next Payment
+    const columnMap = {};
+    const expectedHeaders = {
+      'transactionI': ['transactioni', 'transaction id', 'id'],
+      'startDate': ['dstart', 'start date', 'start'],
+      'date': ['date', 'current date'],
+      'name': ['name', 'subscription name', 'title'],
+      'category': ['category', 'cat'],
+      'type': ['type', 'subscription type'],
+      'frequency': ['frequency', 'freq'],
+      'amount': ['amount', 'cost', 'price'],
+      'account': ['account', 'payment method', 'acc'],
+      'endDate': ['end date', 'enddate', 'expiry'],
+      'status': ['status', 'state'],
+      'nextPayment': ['next payment', 'nextpayment', 'next due']
+    };
+
+    // Map headers to column indices
+    headers.forEach((header, index) => {
+      if (header && typeof header === 'string') {
+        const cleanHeader = header.toString().trim().toLowerCase();
+        
+        Object.keys(expectedHeaders).forEach(key => {
+          expectedHeaders[key].forEach(variation => {
+            if (cleanHeader.includes(variation)) {
+              if (!columnMap[key]) { // Use first match
+                columnMap[key] = index;
+                console.log("Mapped " + key + " to column " + index + " (" + header + ")");
+              }
+            }
+          });
+        });
+      }
+    });
+
+    // Read data from C6:N500 (start from row after headers)
+    const dataRange = "C6:N500";
+    const lastRow = recurringSheet.getLastRow();
+    const actualRange = "C6:N" + Math.min(500, lastRow);
+    
+    console.log("Reading recurring data from range: " + actualRange);
+    const recurringData = recurringSheet.getRange(actualRange).getValues();
+    console.log("Successfully read " + recurringData.length + " rows");
+
+    const recurring = [];
+    let processedCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < recurringData.length; i++) {
+      const row = recurringData[i];
+      
+      // Skip empty rows
+      if (!row || row.every(cell => !cell || cell.toString().trim() === '')) {
+        skippedCount++;
+        continue;
+      }
+
+      // Extract data using column mapping
+      const transactionId = columnMap.transactionI !== undefined ? row[columnMap.transactionI] : '';
+      const name = columnMap.name !== undefined ? row[columnMap.name] : '';
+      const amount = columnMap.amount !== undefined ? row[columnMap.amount] : 0;
+      
+      // Skip rows without essential data
+      if (!name || !amount) {
+        skippedCount++;
+        continue;
+      }
+
+      // Parse dates safely
+      const startDateValue = columnMap.startDate !== undefined ? row[columnMap.startDate] : null;
+      const endDateValue = columnMap.endDate !== undefined ? row[columnMap.endDate] : null;
+      const nextPaymentValue = columnMap.nextPayment !== undefined ? row[columnMap.nextPayment] : null;
+
+      let startDate = null;
+      let endDate = null;
+      let nextPayment = null;
+
+      if (startDateValue) {
+        startDate = startDateValue instanceof Date ? startDateValue.toISOString() : new Date(startDateValue).toISOString();
+      }
+      if (endDateValue) {
+        endDate = endDateValue instanceof Date ? endDateValue.toISOString() : new Date(endDateValue).toISOString();
+      }
+      if (nextPaymentValue) {
+        nextPayment = nextPaymentValue instanceof Date ? nextPaymentValue.toISOString() : new Date(nextPaymentValue).toISOString();
+      }
+
+      // Parse amount
+      const parsedAmount = parseFloat(amount);
+      if (isNaN(parsedAmount)) {
+        skippedCount++;
+        continue;
+      }
+
+      recurring.push({
+        id: transactionId || "recurring-" + (i + 6), // Use row number as fallback ID
+        rowIndex: i + 6, // Actual row in spreadsheet
+        startDate: startDate,
+        endDate: endDate,
+        name: name.toString(),
+        category: columnMap.category !== undefined ? row[columnMap.category].toString() : '',
+        type: columnMap.type !== undefined ? row[columnMap.type].toString() : '',
+        frequency: columnMap.frequency !== undefined ? row[columnMap.frequency].toString() : 'Monthly',
+        amount: parsedAmount,
+        account: columnMap.account !== undefined ? row[columnMap.account].toString() : '',
+        status: columnMap.status !== undefined ? row[columnMap.status].toString() : 'Active',
+        nextPayment: nextPayment,
+        notes: '' // Notes would be in column O if available
+      });
+
+      processedCount++;
+    }
+
+    console.log("Recurring data processing complete:");
+    console.log("  - Total rows: " + recurringData.length);
+    console.log("  - Processed: " + processedCount);
+    console.log("  - Skipped: " + skippedCount);
+
+    return {
+      success: true,
+      recurring: recurring,
+      meta: {
+        totalRows: recurringData.length,
+        processedRows: processedCount,
+        skippedRows: skippedCount,
+        range: actualRange,
+        columnMap: columnMap
+      }
+    };
+
+  } catch (error) {
+    console.log("ERROR in getRecurringData: " + error.toString());
+    return { 
+      success: false, 
+      error: error.toString() 
+    };
   }
-
-  // 3) batch‐write updates
-  toUpdate.forEach(u => {
-    sh.getRange(u.row, 4, 1, 8).setValues([u.values]);
-  });
-  // 4) batch‐write inserts (they may not be contiguous—group if you can)
-  toInsert.forEach(i => {
-    sh.getRange(i.row, 4, 1, 8).setValues([i.values]);
-  });
-
-  return {
-    success: true,
-    updated: toUpdate.length,
-    inserted: toInsert.length,
-    reused: expenses.length - toUpdate.length - toInsert.length
-  };
 }
 
 /**
- * Clear a transaction row by ID (sets all cells to blank)
- * @param {string} transactionId - Transaction ID to clear
- * @return {Object} Result object with success status
+ * Save batch recurring transactions
+ * @param {Array} recurring - Array of recurring transaction objects
+ * @return {Object} Result object
  */
-function clearTransactionRow(transactionId) {
+function saveRecurringTransaction(recurring) {
   try {
-    // Get the expenses sheet
-    const sheet = getBudgetSheet("Expenses");
-    if (!sheet) {
-      return { success: false, error: "Expenses sheet not found" };
-    }
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
     
-    // Use TextFinder to locate the exact ID in column D
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
+    }
+
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = ss.getSheetByName("Recurring");
+    
+    if (!sheet) {
+      return { success: false, error: "Recurring sheet not found" };
+    }
+
+    let updated = 0;
+    let inserted = 0;
+
+    // Process each recurring transaction
+    for (const item of recurring) {
+      if (!item.amount || parseFloat(item.amount) <= 0) continue;
+
+      // Prepare row data (C through N columns)
+      const rowData = [
+        item.id || item.transactionId,                                    // C: transactionI
+        item.startDate ? new Date(item.startDate) : new Date(),          // D: dStart
+        new Date(),                                                       // E: Date (current)
+        item.name || '',                                                  // F: Name
+        item.category || '',                                              // G: Category
+        item.type || '',                                                  // H: Type
+        item.frequency || 'Monthly',                                      // I: Frequency
+        parseFloat(item.amount),                                          // J: Amount
+        item.account || '',                                               // K: Account
+        item.endDate ? new Date(item.endDate) : '',                      // L: End date
+        item.status || 'Active',                                          // M: Status
+        item.nextPayment ? new Date(item.nextPayment) : '',              // N: Next Payment
+      ];
+
+      if (item.rowIndex && item.rowIndex > 5) {
+        // Update existing row
+        sheet.getRange(item.rowIndex, 3, 1, 12).setValues([rowData]);
+        updated++;
+      } else {
+        // Insert new row - find first empty row starting from row 6
+        const lastRow = sheet.getLastRow();
+        const newRow = Math.max(6, lastRow + 1);
+        sheet.getRange(newRow, 3, 1, 12).setValues([rowData]);
+        inserted++;
+      }
+    }
+
+    return {
+      success: true,
+      updated: updated,
+      inserted: inserted
+    };
+
+  } catch (error) {
+    console.log("Error in saveRecurringTransaction: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Clear a recurring transaction row by ID
+ * @param {string} transactionId - Transaction ID to clear
+ * @return {Object} Result object
+ */
+function clearRecurringTransaction(transactionId) {
+  try {
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
+    }
+
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = ss.getSheetByName("Recurring");
+    
+    if (!sheet) {
+      return { success: false, error: "Recurring sheet not found" };
+    }
+
+    // Find the transaction by ID in column C
     const finder = sheet.createTextFinder(transactionId.toString())
                        .matchEntireCell(true)
                        .matchCase(false)
-                       .useRegularExpression(false)
                        .findNext();
+    
     if (!finder) {
       return {
         success: false,
-        error: "Transaction not found: " + transactionId
+        error: "Recurring transaction not found: " + transactionId
       };
     }
-    
-    // Determine the row of the found cell
+
     const rowIndex = finder.getRow();
     
-    // Clear the cells in that row (columns D through K)
-    sheet.getRange(rowIndex, 4, 1, 8).clearContent();
-    
-    // Update any caches
-    const { month, year } = getCurrentMonthYear();
+    // Clear the row (columns C through N)
+    sheet.getRange(rowIndex, 3, 1, 12).clearContent();
     
     return {
       success: true,
-      message: "Transaction row cleared successfully",
-      transactionId,
-      rowIndex
+      message: "Recurring transaction row cleared successfully",
+      transactionId: transactionId,
+      rowIndex: rowIndex
     };
-    
-  } catch (e) {
-    Logger.log("Error in clearTransactionRow: " + e.toString());
-    return { success: false, error: e.toString() };
-  }
-}
 
-/**
- * Get current month and year
- * @return {Object} Object with month and year properties
- */
-function getCurrentMonthYear() {
-  const now = new Date();
-  return {
-    month: now.getMonth() + 1, // JavaScript months are 0-based
-    year: now.getFullYear()
-  };
+  } catch (error) {
+    console.log("Error in clearRecurringTransaction: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
 }

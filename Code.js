@@ -588,11 +588,11 @@ function setCurrencyInSheet(currencySymbol) {
     // Generate the currency format once
     const numberFormat = getCurrencyFormat(currencySymbol, showDecimals);
     
-    // 2. Format Income:E5:E sheet
+    // 2. Format Income:F5:F sheet
     const incomeSheet = getBudgetSheet("Income");
     if (incomeSheet) {
-      incomeSheet.getRange("E5:E").setNumberFormat(numberFormat);
-      Logger.log("Applied format to Income sheet range E5:E");
+      incomeSheet.getRange("F5:F").setNumberFormat(numberFormat);
+      Logger.log("Applied format to Income sheet range F5:F");
     }
     
     // 3. Format Expenses:F5:F sheet
@@ -602,11 +602,11 @@ function setCurrencyInSheet(currencySymbol) {
       Logger.log("Applied format to Expenses sheet range F5:F");
     }
     
-    // 4. Format recurring:H6:H sheet
+    // 4. Format recurring:I6:I sheet
     const recurringSheet = getBudgetSheet("recurring");
     if (recurringSheet) {
-      recurringSheet.getRange("H6:H").setNumberFormat(numberFormat);
-      Logger.log("Applied format to recurring sheet range H6:H");
+      recurringSheet.getRange("I6:I").setNumberFormat(numberFormat);
+      Logger.log("Applied format to recurring sheet range I6:I");
     }
     
     // 5. Format Net Worth:G37:G sheet and additional ranges
