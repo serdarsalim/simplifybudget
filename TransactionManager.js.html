@@ -517,14 +517,6 @@ var TransactionManager = (function() {
   function saveTransactionBatch(transactions) {
     return new Promise((resolve, reject) => {
 
-        console.log("DETAILED DEBUG - Transaction batch:", 
-                JSON.stringify(transactions, (key, value) => {
-                  // Handle Date objects specially in the console
-                  if (value instanceof Date) {
-                    return value.toISOString();
-                  }
-                  return value;
-                }, 2));
 
       // Ensure API is available
       if (!window.API || typeof API.saveBatchExpenses !== 'function') {
@@ -587,7 +579,6 @@ var TransactionManager = (function() {
  * @return {Object} Expense object for API
  */
 function transformTransactionToExpense(transaction) {
-  console.log("transformTransactionToExpense - Input:", transaction);
   
   // Format date properly for Google Apps Script
   let formattedDate;
@@ -611,7 +602,6 @@ function transformTransactionToExpense(transaction) {
   let categoryWithEmoji = transaction.category;
   if (transaction.emoji && transaction.emoji.trim() !== '') {
     categoryWithEmoji = `${transaction.category} ${transaction.emoji}`;
-    console.log(`Combined category with emoji: ${categoryWithEmoji}`);
   }
   
   const result = {
@@ -625,7 +615,6 @@ function transformTransactionToExpense(transaction) {
     account: transaction.account || 'Main Account'
   };
   
-  console.log("transformTransactionToExpense - Output:", result);
   return result;
 }
   

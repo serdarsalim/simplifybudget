@@ -634,13 +634,10 @@ saveBatchExpenses: function(expenses, successCallback, errorCallback) {
       errorCallback(_lastError);
       return;
     }
-    
-    console.log("API: Sending batch of " + expenses.length + " expenses to server");
-    
+        
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success) {
-          console.log("API: Batch save successful:", result);
           successCallback(result);
         } else {
           _lastError = result && result.error ? result.error : "Unknown error in batch save";

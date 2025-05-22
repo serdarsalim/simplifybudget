@@ -36,12 +36,9 @@ var MonthlyGrid = (function() {
     
     if (!isSessionActive) {
       // This is a new session (page refresh/new tab)
-      console.log('New session detected - clearing all cache');
       clearCache();
       sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
-    } else {
-      console.log('Continuing existing session - cache preserved');
-    }
+    } 
   }
   
   /**
@@ -50,11 +47,7 @@ var MonthlyGrid = (function() {
   function getCachedExpenses(month, year) {
     const key = getCacheKey(month, year);
     
-    // Check in-memory cache first
-    if (_expenseCache.has(key)) {
-      console.log(`Found expenses in memory cache for ${month}/${year}`);
-      return _expenseCache.get(key);
-    }
+  
     
     // Check localStorage cache
     try {
@@ -68,7 +61,6 @@ var MonthlyGrid = (function() {
         const isExpired = cacheAge > 24 * 60 * 60 * 1000; // 24 hours
         
         if (data.version === CACHE_VERSION && !isExpired) {
-          console.log(`Found expenses in localStorage cache for ${month}/${year} (age: ${Math.round(cacheAge / 1000 / 60)} minutes)`);
           
           // Store in memory cache for faster access
           _expenseCache.set(key, data.expenses);
@@ -77,7 +69,6 @@ var MonthlyGrid = (function() {
         } else {
           // Cache expired, remove it
           localStorage.removeItem(storageKey);
-          console.log(`Cache expired for ${month}/${year}, removed (age: ${Math.round(cacheAge / 1000 / 60 / 60)} hours)`);
         }
       }
     } catch (error) {
@@ -108,7 +99,6 @@ var MonthlyGrid = (function() {
       };
       
       localStorage.setItem(storageKey, JSON.stringify(data));
-      console.log(`Cached expenses for ${month}/${year} in localStorage (valid for 24 hours)`);
       
       // Clean up old cache entries if we exceed the limit
       cleanupCache();
@@ -191,7 +181,6 @@ function prefetchMonth(month, year) {
     return Promise.resolve();
   }
   
-  console.log(`Prefetching expenses for ${month}/${year}...`);
   _prefetchQueue.add(key);
   
   return new Promise((resolve) => {
@@ -304,7 +293,6 @@ function loadCurrencyFromSettings() {
     return;
   }
   
-  console.log('Initializing Monthly Grid View...');
   
   // Initialize system month tracking
   _systemCurrentMonth = new Date().getMonth();
@@ -338,7 +326,6 @@ function loadCurrencyFromSettings() {
     const container = document.getElementById(containerId);
     if (container) {
       _elements['monthly-grid-container'] = container;
-      console.log("Found container, storing for rendering:", containerId);
     } else {
       console.error("Container not found:", containerId);
       return;
@@ -384,16 +371,13 @@ function loadCurrencyFromSettings() {
   }
   
   _initialized = true;
-  console.log('Monthly Grid View initialized');
 }
 
 /**
  * ADDED: Handle currency change events
  * @param {Event} event - The currency-changed event
  */
-function handleCurrencyChange(event) {
-  console.log('MonthlyGrid: Currency change detected:', event.detail.symbol);
-  
+function handleCurrencyChange(event) {  
   // Update the currency symbol
   _currencySymbol = event.detail.symbol;
   
@@ -406,14 +390,12 @@ function handleCurrencyChange(event) {
    */
   function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   if (_isLoading) {
-    console.log('Already loading expense data, skipping...');
     return Promise.resolve();
   }
   
   // Check cache first for instant loading
   const cachedExpenses = getCachedExpenses(month, year);
   if (cachedExpenses) {
-    console.log(`Loading from cache: ${cachedExpenses.length} expenses for ${month}/${year}`);
     
     // Load categories first, then process cached data
     return loadActiveCategories()
@@ -475,7 +457,6 @@ function checkCurrentMonth() {
     
     // If we were viewing the "current" month, update to the new current month
     if (viewingCurrentMonth) {
-      console.log('Real current month has changed, updating view...');
       _currentMonth = realCurrentMonth;
       _currentYear = realCurrentYear;
       updateMonthYearDisplay();
@@ -640,7 +621,6 @@ function addInactiveCategoriesWithSpending() {
         hasTransactions: true
       });
       
-      console.log(`Added non-active category with spending: ${categoryId}`);
     }
   });
 }
@@ -664,8 +644,6 @@ function addInactiveCategoriesWithSpending() {
           const allCategories = JSON.parse(cachedCategories);
           const active = JSON.parse(activeCategories);
           
-          console.log('All categories from cache:', allCategories);
-          console.log('Active categories list:', active);
           
           // FIXED: Parse categories immediately and store in correct format
           const parsedActiveCategories = allCategories
@@ -686,8 +664,6 @@ function addInactiveCategoriesWithSpending() {
           
           // Store PARSED categories in _categories
           _categories = parsedActiveCategories;
-          
-          console.log('Stored parsed active categories:', parsedActiveCategories);
           resolve(parsedActiveCategories);
           return;
         } catch (e) {
@@ -948,10 +924,6 @@ function processRealExpenseData(expenses) {
     
     processedTransactions.push(transaction);
     
-    // Log preserved transaction IDs for debugging
-    if (expense.transactionId) {
-      console.log(`Preserved transaction ID: ${expense.transactionId} -> ${formattedId}`);
-    }
   });
   
   // Store processed transactions (categories are loaded separately)
@@ -959,8 +931,6 @@ function processRealExpenseData(expenses) {
     addInactiveCategoriesWithSpending();
 
   _transactions.slice(0, 5).forEach(tx => {
-    // Log first few transactions to verify transaction IDs
-    console.log(`Transaction: ${tx.id}`, tx);
   });
 }
   
@@ -1024,7 +994,6 @@ function processRealExpenseData(expenses) {
  * Update currency symbol and refresh display
  */
 function updateCurrency() {
-  console.log('MonthlyGrid: Explicitly updating currency');
   loadCurrencyFromSettings();
   if (_initialized) {
     renderGrid(); // Re-render to show new currency
@@ -1048,7 +1017,6 @@ function updateCurrency() {
       prevMonth._monthlyGridHandler = function(e) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Previous month clicked - current month:', _currentMonth);
         navigateMonth(-1);
       };
       
@@ -1065,7 +1033,6 @@ function updateCurrency() {
       nextMonth._monthlyGridHandler = function(e) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Next month clicked - current month:', _currentMonth);
         navigateMonth(1);
       };
       
@@ -1086,7 +1053,6 @@ if (refreshExpenses) {
   refreshExpenses._monthlyGridHandler = function(e) {
     e.preventDefault();
     e.stopPropagation();
-    console.log('Refresh expenses clicked - AGGRESSIVE cache clearing');
     
     // Reset session tracking (from your index.html)
     sessionStorage.removeItem('monthlyGrid_sessionActive');
@@ -1645,7 +1611,6 @@ function getNextMonth(month, year) {
   function openTransactionModal(day, categoryId) {
     if (_isClosingModal) return;
     
-    console.log('Opening modal for day:', day, 'category:', categoryId);
     
     ensureModalExists();
     
@@ -1659,12 +1624,10 @@ function getNextMonth(month, year) {
     const category = _categories.find(c => c.id === categoryId);
     if (!category) {
       console.error('Category not found:', categoryId);
-      console.log('Available categories:', _categories);
       return;
     }
     
     const transactions = getTransactionsForDayAndCategory(parseInt(day), categoryId);
-    console.log('Transactions found:', transactions.length);
     
     const dateObj = new Date(_currentYear, _currentMonth, parseInt(day));
     const formattedDate = dateObj.toLocaleDateString('en-US', { 
@@ -1950,10 +1913,8 @@ if (deleteBtn) {
       
       if (existingTx) {
         TransactionManager.updateTransaction(transaction);
-        console.log('Updated transaction in queue:', transaction);
       } else {
         TransactionManager.addTransaction(transaction);
-        console.log('Added new transaction to queue:', transaction);
       }
     }
     
@@ -2004,7 +1965,6 @@ if (deleteBtn) {
     
     // Update cache with modified expenses
     setCachedExpenses(_currentMonth, _currentYear, cachedExpenses);
-    console.log('Updated expense cache with new/modified transaction');
   }
 }
    item._updateTransactionQueue = updateTransactionQueue;
@@ -2094,7 +2054,6 @@ if (deleteBtn) {
  * Close the transaction modal - with final transaction saving
  */
 function closeTransactionModal() {
-  console.log('Closing transaction modal');
   _isClosingModal = true;
   
   const modal = getElement('transaction-modal');
@@ -2143,7 +2102,6 @@ function closeTransactionModal() {
  * Add a new transaction row and force-save any existing transactions
  */
 function addTransactionRow() {
-  console.log('Adding additional transaction row');
   
   const transactionsList = getElement('transactions-list');
   const modal = getElement('transaction-modal');
@@ -2196,7 +2154,6 @@ function addTransactionRow() {
 function clearTransactionById(transactionId, skipRender) {
   if (!transactionId) return false;
   
-  console.log('Clearing transaction row:', transactionId);
   
   // Find transaction in _transactions array for UI updates
   const txIndex = _transactions.findIndex(tx => tx.id === transactionId);
@@ -2221,7 +2178,6 @@ function clearTransactionById(transactionId, skipRender) {
   
   // Use our new API function to clear the row on the server
   API.clearTransactionRow(transactionId, function(result) {
-    console.log('Transaction row cleared successfully:', result);
     
     // Re-render the grid unless specified not to
     if (!skipRender) {
@@ -2239,7 +2195,6 @@ function clearTransactionById(transactionId, skipRender) {
  * Refresh the grid with optional force reload from server
  */
 function refresh(forceServerRefresh) {
-  console.log('Refreshing monthly grid...');
   _isLoading = false; // Reset loading flag
   
   if (forceServerRefresh) {
@@ -2274,9 +2229,7 @@ function refresh(forceServerRefresh) {
       console.error('Invalid expense data provided:', expenses);
       return;
     }
-    
-    console.log('Setting expense data in MonthlyGrid:', expenses.length, 'transactions');
-    
+        
     // Process the new data
     processRealExpenseData(expenses);
     
@@ -2288,7 +2241,6 @@ function refresh(forceServerRefresh) {
    * Clear cache for testing or troubleshooting
    */
   function clearCache() {
-    console.log('Clearing all expense cache...');
     
     // Clear in-memory cache
     _expenseCache.clear();
@@ -2304,7 +2256,6 @@ function refresh(forceServerRefresh) {
       }
       
       keys.forEach(key => localStorage.removeItem(key));
-      console.log(`Cleared ${keys.length} cache entries from localStorage`);
     } catch (error) {
       console.warn('Error clearing localStorage cache:', error);
     }

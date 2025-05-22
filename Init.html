@@ -146,12 +146,10 @@ const _preloader = {
   start: function(excludeView) {
     // CRITICAL: Only allow one preload attempt per session
     if (this.hasRunInSession) {
-      console.log('Preloader: Already attempted in this session, skipping');
       return;
     }
 
     if (this.isRunning) {
-      console.log('Preloader: Already running, skipping start');
       return;
     }
 
@@ -183,7 +181,6 @@ const _preloader = {
     
     // Skip if already cached
     if (_cache.isValid(viewName)) {
-      console.log(`Preloader: Skipping ${viewName} (already cached)`);
       this.currentIndex++;
       setTimeout(() => this.processNext(), 200);
       return;
@@ -242,39 +239,20 @@ const _preloader = {
     );
   },
 
-  loadIncomeData: function(viewName) {
-    console.log(`Preloader: Income loading not implemented yet`);
-    this.onComplete(viewName, false);
-  },
-
-  loadRecurringData: function(viewName) {
-    console.log(`Preloader: Recurring loading not implemented yet`);
-    this.onComplete(viewName, false);
-  },
-
-  loadNetWorthData: function(viewName) {
-    console.log(`Preloader: Net Worth loading not implemented yet`);
-    this.onComplete(viewName, false);
-  },
-
-  
 
 
   loadIncomeData: function(viewName) {
     // TODO: Implement when income API is ready
-    console.log(`Preloader: Income loading not implemented yet`);
     this.onComplete(viewName, false);
   },
 
   loadRecurringData: function(viewName) {
     // TODO: Implement when recurring API is ready
-    console.log(`Preloader: Recurring loading not implemented yet`);
     this.onComplete(viewName, false);
   },
 
   loadNetWorthData: function(viewName) {
     // TODO: Implement when net worth API is ready
-    console.log(`Preloader: Net Worth loading not implemented yet`);
     this.onComplete(viewName, false);
   },
 
