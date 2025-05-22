@@ -604,6 +604,50 @@ function checkCurrentMonth() {
     return { name: categoryString, emoji: '' };
   }
   
+
+    /**
+   * Add non-active categories that have spending in the current month
+   * Called after transactions are loaded
+   */
+  /**
+ * Add non-active categories that have spending in the current month
+ */
+function addInactiveCategoriesWithSpending() {
+  // Get all unique category names used in transactions for current month
+  const usedCategories = new Set();
+  
+  _transactions.forEach(tx => {
+    if (tx.date.getMonth() === _currentMonth && 
+        tx.date.getFullYear() === _currentYear) {
+      usedCategories.add(tx.category);
+    }
+  });
+  
+  // Build list of active category IDs for quick lookup
+  const activeIds = new Set(_categories.map(c => c.id));
+  
+  // For each used category not in active list, add it
+  usedCategories.forEach(categoryId => {
+    if (!activeIds.has(categoryId)) {
+      // Parse the category string to extract name and emoji
+      const parsed = parseCategoryNameAndEmoji(categoryId);
+      
+      _categories.push({
+        id: parsed.name,
+        name: parsed.name,
+        emoji: parsed.emoji || '🛸', // Use default emoji only if none found
+        active: false,  // Mark as inactive but shown
+        hasTransactions: true
+      });
+      
+      console.log(`Added non-active category with spending: ${categoryId}`);
+    }
+  });
+}
+
+
+
+
   /**
    * Load categories exactly like QuickExpenseEntry does - FIXED to store parsed categories
    */
@@ -836,7 +880,7 @@ function checkCurrentMonth() {
  */
 function processRealExpenseData(expenses) {
   const processedTransactions = [];
-  
+
   // Process each expense
   expenses.forEach((expense, index) => {
     // Skip empty rows
@@ -912,6 +956,7 @@ function processRealExpenseData(expenses) {
   
   // Store processed transactions (categories are loaded separately)
   _transactions = processedTransactions;
+    addInactiveCategoriesWithSpending();
 
   _transactions.slice(0, 5).forEach(tx => {
     // Log first few transactions to verify transaction IDs
@@ -2569,8 +2614,8 @@ window.MonthlyGrid = MonthlyGrid;
 
 /* Color coding */
 .amount-small {
-  background-color: rgba(76, 175, 80, 0.15); /* Light green */
-  border-left: 3px solid #4CAF50;
+  background-color: rgb(73 217 231 / 15%);
+    border-left: 3px solid #99e2f6;
 }
 
 .amount-medium {
