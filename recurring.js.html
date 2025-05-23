@@ -719,16 +719,15 @@ var RecurringManager = (function() {
     const startDateStr = formatDate(item.startDate);
     const endDateStr = formatDate(item.endDate);
 
-    let typeDisplay = 'S';
+    let typeDisplay = 'Subscription';
     if (item.type) {
       const typeStr = item.type.toString().toUpperCase();
       if (typeStr === 'FALSE' || typeStr === 'FIXED' || typeStr === 'PAYMENT') {
-        typeDisplay = 'F';
+        typeDisplay = 'Fixed';
       }
     }
 
     const frequencyFull = item.frequency || 'Monthly';
-    const frequencyLetter = frequencyFull.charAt(0).toUpperCase();
 
     // Dynamic date column logic
     let dynamicDateValue = '';
@@ -767,11 +766,10 @@ var RecurringManager = (function() {
         <span class="category-emoji-only" title="${item.category}">${categoryEmoji}</span>
       </td>
       <td class="rec-type-cell">
-        <span class="rec-type-letter">${typeDisplay}</span>
+        <span class="rec-type-full">${typeDisplay}</span>
       </td>
       <td class="rec-frequency-cell">
         <span class="frequency-full">${frequencyFull}</span>
-        <span class="frequency-letter">${frequencyLetter}</span>
       </td>
       <td class="rec-amount-cell">${formatCurrency(item.amount)}</td>
       <td class="rec-account-cell">${item.account}</td>
@@ -1903,11 +1901,11 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
   font-size: 14px;
 }
 
-/* IMPROVEMENT #6: Reduced table padding */
+/* IMPROVEMENT #6: Reduced table padding and max 10px gap */
 .rec-table th,
 .rec-table td {
-  padding: 6px 4px;
-  text-align: left;
+  padding: 6px 5px;
+  text-align: center;
   border-bottom: 1px solid #eee;
   white-space: nowrap;
   overflow: hidden;
@@ -1925,19 +1923,17 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
   font-weight: 700;
 }
 
-/* IMPROVEMENT #6: Specific column widths */
+/* IMPROVEMENT #6: Updated column widths for full text */
 .rec-type-header,
 .rec-type-cell {
-  width: 40px !important;
-  max-width: 40px !important;
-  text-align: center !important;
+  width: 80px !important;
+  max-width: 80px !important;
 }
 
 .rec-frequency-header,
 .rec-frequency-cell {
-  width: 50px !important;
-  max-width: 50px !important;
-  text-align: center !important;
+  width: 90px !important;
+  max-width: 90px !important;
 }
 
 .rec-amount-header,
@@ -1955,12 +1951,14 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
 /* Name cell - prevent wrapping */
 .rec-name-cell {
   max-width: 200px;
+  text-align: left !important;
 }
 
 .rec-name-content {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: left;
 }
 
 /* Notes cell styling */
@@ -1979,6 +1977,7 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
 .rec-notes-header {
   width: 40px !important;
   text-align: center !important;
+  padding: 6px 5px !important;
 }
 
 /* Notes input in edit mode */
@@ -2035,7 +2034,6 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
 
 .rec-actions-cell {
   white-space: nowrap;
-  text-align: center;
 }
 
 .rec-save-btn {
@@ -2087,16 +2085,22 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
   color: #d32f2f;
 }
 
-/* IMPROVEMENT #4: Smaller font for type and frequency */
+/* Full text display for type and frequency */
 .rec-type-cell,
 .rec-frequency-cell {
-  font-size: 12px !important;
+  font-size: 13px !important;
 }
 
-.rec-type-letter,
-.frequency-letter {
-  font-weight: bold;
-  font-size: 12px !important;
+.rec-type-full,
+.frequency-full {
+  font-weight: 500;
+  font-size: 13px !important;
+  display: inline-block;
+}
+
+/* Make sure frequency shows up properly */
+.rec-frequency-cell .frequency-full {
+  display: inline-block !important;
 }
 
 /* Mobile optimizations */
@@ -2122,7 +2126,6 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
   .rec-table th:nth-child(3) {
     width: 30px;
     max-width: 30px;
-    text-align: center;
   }
   
   /* End date column - hide on mobile */
@@ -2167,14 +2170,13 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
     font-size: 11px;
   }
   
-  /* Hide frequency full text on mobile */
-  .frequency-full {
-    display: none;
+  /* Show abbreviated text on mobile for space */
+  .rec-type-cell .rec-type-full {
+    font-size: 11px;
   }
   
-  .frequency-letter {
-    display: inline-block;
-    font-weight: bold;
+  .rec-frequency-cell .frequency-full {
+    font-size: 11px;
   }
 }
 
@@ -2206,12 +2208,10 @@ body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
 }
 
 .rec-table th:nth-child(3) {
-  text-align: center !important;
   width: 40px !important;
 }
 
 .rec-category-cell {
-  text-align: center !important;
   width: 40px !important;
   cursor: help;
 }
