@@ -794,71 +794,245 @@ var RecurringManager = (function() {
   }
 
   /**
-   * Add new subscription
+   * Show add subscription popup
    */
-  function addNewSubscription() {
-    console.log('RecurringManager: Adding new subscription');
+  function showAddSubscriptionPopup() {
+    // Remove any existing popup
+    const existingPopup = document.querySelector('.rec-add-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
     
     // Always reload settings before creating new item to get current currency
     loadSettings();
     
-    // Clean up any existing unsaved new items first
-    const existingNewItem = _recurringData.find(item => item.isNew);
-    if (existingNewItem) {
-      // Check if the row still exists in DOM
-      const existingRow = document.querySelector(`tr[data-id="${existingNewItem.id}"]`);
-      if (existingRow) {
-        // Row exists, focus on it
-        console.log('RecurringManager: New item already being edited');
-        const nameInput = existingRow.querySelector('input[data-field="name"]');
-        if (nameInput) {
-          nameInput.focus();
-          nameInput.select();
-        }
-        return;
-      } else {
-        // Row doesn't exist (user switched tabs), remove from data
-        console.log('RecurringManager: Removing orphaned new item');
-        _recurringData = _recurringData.filter(item => !item.isNew);
-      }
-    }
+    // Create popup overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'rec-add-overlay';
     
-    // Check if any row is currently being edited
-    const editingRow = document.querySelector('tr.rec-editing');
-    if (editingRow) {
-      console.log('RecurringManager: Another item is being edited');
-      // Optionally show a message
+    // Create popup
+    const popup = document.createElement('div');
+    popup.className = 'rec-add-popup';
+    
+    popup.innerHTML = `
+      <div class="rec-add-header">
+        <h3>Add New Subscription</h3>
+      </div>
+      <div class="rec-add-body">
+        <div class="rec-add-grid">
+          <div class="rec-add-row">
+            <label>Name *</label>
+            <input type="text" id="addName" class="rec-add-input" placeholder="Subscription name" required>
+          </div>
+          <div class="rec-add-row">
+            <label>Amount *</label>
+            <div class="rec-add-amount-wrapper">
+              <span class="rec-add-currency">${_currencySymbol}</span>
+              <input type="number" id="addAmount" class="rec-add-input rec-add-amount" 
+                placeholder="0.00" step="0.01" min="0" required>
+            </div>
+          </div>
+          <div class="rec-add-row">
+            <label>Type</label>
+            <select id="addType" class="rec-add-input">
+              <option value="Subscription">Subscription</option>
+              <option value="Payment">Fixed Payment</option>
+            </select>
+          </div>
+          <div class="rec-add-row">
+            <label>Category</label>
+            <select id="addCategory" class="rec-add-input">
+              ${_categories.map(cat => 
+                `<option value="${cat.fullName}">${cat.emoji} ${cat.name}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="rec-add-row">
+            <label>Start Date *</label>
+            <input type="date" id="addStartDate" class="rec-add-input" required>
+          </div>
+          <div class="rec-add-row">
+            <label>End Date</label>
+            <input type="date" id="addEndDate" class="rec-add-input">
+          </div>
+          <div class="rec-add-row">
+            <label>Frequency</label>
+            <select id="addFrequency" class="rec-add-input">
+              <option value="Monthly">Monthly</option>
+              <option value="Quarterly">Quarterly</option>
+              <option value="Yearly">Yearly</option>
+            </select>
+          </div>
+          <div class="rec-add-row">
+            <label>Account</label>
+            <input type="text" id="addAccount" class="rec-add-input" placeholder="Account/Card">
+          </div>
+        </div>
+        <div class="rec-add-row rec-add-notes-row">
+          <label>Notes</label>
+          <textarea id="addNotes" class="rec-add-input rec-add-textarea" placeholder="Additional notes..."></textarea>
+        </div>
+      </div>
+      <div class="rec-add-actions">
+        <button class="rec-add-btn rec-add-cancel-btn" type="button">Cancel</button>
+        <button class="rec-add-btn rec-add-save-btn" type="button">Save</button>
+      </div>
+    `;
+    
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+    
+    // Set default start date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('addStartDate').value = today;
+    
+    // Focus the name input
+    setTimeout(() => {
+      const nameInput = document.getElementById('addName');
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
+      }
+    }, 100);
+    
+    // Handle button clicks
+    const saveBtn = popup.querySelector('.rec-add-save-btn');
+    const cancelBtn = popup.querySelector('.rec-add-cancel-btn');
+    
+    saveBtn.addEventListener('click', function() {
+      saveNewSubscriptionFromPopup(overlay);
+    });
+    
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+    });
+    
+    // Handle keyboard events
+    popup.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.target.matches('textarea')) {
+        e.preventDefault();
+        saveBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBtn.click();
+      }
+    });
+    
+    // Handle overlay click (close on outside click)
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        cancelBtn.click();
+      }
+    });
+  }
+
+  /**
+   * Save new subscription from popup
+   */
+  function saveNewSubscriptionFromPopup(overlay) {
+    const formData = {
+      name: document.getElementById('addName').value.trim(),
+      type: document.getElementById('addType').value,
+      category: document.getElementById('addCategory').value,
+      frequency: document.getElementById('addFrequency').value,
+      amount: document.getElementById('addAmount').value.trim(),
+      account: document.getElementById('addAccount').value.trim(),
+      startDate: document.getElementById('addStartDate').value,
+      endDate: document.getElementById('addEndDate').value,
+      notes: document.getElementById('addNotes').value.trim()
+    };
+    
+    // Validate required fields
+    let hasErrors = false;
+    const requiredFields = ['name', 'amount', 'startDate'];
+    
+    requiredFields.forEach(field => {
+      const input = document.getElementById('add' + field.charAt(0).toUpperCase() + field.slice(1));
+      if (!formData[field] || (field === 'amount' && parseFloat(formData[field]) <= 0)) {
+        input.classList.add('rec-input-error');
+        hasErrors = true;
+      } else {
+        input.classList.remove('rec-input-error');
+      }
+    });
+    
+    if (hasErrors) {
       if (window.Utils && Utils.showToast) {
-        Utils.showToast('Please save or cancel the current edit first', 'info');
+        Utils.showToast('Please fill all required fields (Name, Amount, Start Date)', 'error');
       }
       return;
     }
     
+    // Create new item object using existing logic
     const newItem = {
-      id: 'new-' + Date.now(),
+      id: `REC-${Date.now()}`,
       rowIndex: null,
-      startDate: null, // Start with null instead of new Date()
-      endDate: null,
-      name: '',
-      category: _categories[0]?.fullName || '',
-      type: 'TRUE',
-      frequency: 'Monthly',
-      amount: '', // IMPROVEMENT #1: Empty amount field
-      account: '',
-      status: 'Active',
-      nextPayment: null,
-      expiration: null,
-      notes: '',
-      isNew: true
+      startDate: new Date(formData.startDate),
+      endDate: formData.endDate ? new Date(formData.endDate) : null,
+      name: formData.name,
+      category: formData.category,
+      type: formData.type === 'Subscription' ? 'TRUE' : 'FALSE',
+      frequency: formData.frequency,
+      amount: parseFloat(formData.amount),
+      account: formData.account,
+      notes: formData.notes
     };
-
-    _recurringData.unshift(newItem);
-    updateRecurringTable();
-
-    const newRow = document.querySelector(`tr[data-id="${newItem.id}"]`);
-    if (newRow) {
-      startEditingRow(newRow, newItem);
+    
+    // Calculate status and dates using existing logic
+    const now = new Date();
+    const isSubscription = newItem.type === 'TRUE';
+    
+    if (newItem.endDate) {
+      newItem.expiration = calculateExpirationDate(newItem.startDate, newItem.frequency, newItem.endDate, newItem.type);
+      
+      if (isSubscription) {
+        if (newItem.expiration && newItem.expiration < now) {
+          newItem.status = 'Ended';
+          newItem.nextPayment = null;
+        } else if (newItem.expiration) {
+          newItem.status = 'Expires';
+          newItem.nextPayment = calculateNextPayment(newItem.startDate, newItem.frequency, newItem.endDate);
+        } else {
+          newItem.status = 'Active';
+          newItem.nextPayment = calculateNextPayment(newItem.startDate, newItem.frequency, newItem.endDate);
+        }
+      } else {
+        if (newItem.endDate < now) {
+          newItem.status = 'Ended';
+          newItem.nextPayment = null;
+        } else {
+          newItem.status = 'Active';
+          newItem.nextPayment = calculateNextPayment(newItem.startDate, newItem.frequency, newItem.endDate);
+        }
+      }
+    } else {
+      newItem.status = 'Active';
+      newItem.nextPayment = calculateNextPayment(newItem.startDate, newItem.frequency, null);
+      newItem.expiration = null;
     }
+    
+    // Add to data and save using existing logic
+    _recurringData.unshift(newItem);
+    saveToServer([newItem]);
+    
+    // Update UI
+    updateSummaryCards();
+    updateRecurringTable();
+    
+    // Close popup
+    overlay.remove();
+    
+    if (window.Utils && Utils.showToast) {
+      Utils.showToast('Subscription added successfully', 'success');
+    }
+  }
+
+  /**
+   * Add new subscription - Updated to show popup
+   */
+  function addNewSubscription() {
+    console.log('RecurringManager: Opening add subscription popup');
+    showAddSubscriptionPopup();
   }
 
   /**
@@ -1598,7 +1772,253 @@ body.dark-mode .rec-notes-popup {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
-/* ======== CONFIRMATION DIALOG ======== */
+/* ======== ADD SUBSCRIPTION POPUP ======== */
+.rec-add-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+}
+
+.rec-add-popup {
+  background: white;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  min-width: 400px;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: rec-dialog-appear 0.2s ease-out;
+}
+
+.rec-add-header {
+  background-color: #fe9aa1;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.rec-add-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.rec-add-body {
+  padding: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.rec-add-row {
+  margin-bottom: 16px;
+}
+
+.rec-add-row label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #2c3e50;
+  margin-bottom: 6px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.rec-add-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  font-size: 14px;
+  background-color: white;
+  color: #2c3e50;
+  box-sizing: border-box;
+}
+
+.rec-add-input:focus {
+  border-color: #2c3e50;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.2);
+}
+
+.rec-add-textarea {
+  height: 40px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.rec-add-amount-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.rec-add-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.rec-add-amount {
+  padding-left: 36px !important;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.rec-add-actions {
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  border-top: 1px solid #eee;
+}
+
+.rec-add-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 0px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+
+.rec-add-cancel-btn {
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.rec-add-cancel-btn:hover {
+  background-color: #e8e8e8;
+  color: #2c3e50;
+}
+
+.rec-add-save-btn {
+  background-color: #2c3e50;
+  color: white;
+}
+
+.rec-add-save-btn:hover {
+  background-color: #1984c5;
+}
+
+.rec-add-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.3);
+}
+
+/* Dark mode for add subscription popup */
+body.dark-mode .rec-add-popup {
+  background: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-add-header {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-add-header h3 {
+  color: #DDA15E;
+}
+
+body.dark-mode .rec-add-row label {
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-add-input {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-add-input:focus {
+  border-color: #DDA15E;
+  box-shadow: 0 0 0 2px rgba(221, 161, 94, 0.3);
+}
+
+body.dark-mode .rec-add-currency {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+body.dark-mode .rec-add-actions {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-add-cancel-btn {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-add-cancel-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-add-save-btn {
+  background-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .rec-add-save-btn:hover {
+  background-color: #c9955a;
+}
+
+body.dark-mode .rec-add-btn:focus {
+  box-shadow: 0 0 0 2px rgba(221, 161, 94, 0.3);
+}
+
+/* Mobile responsive for add popup */
+@media (max-width: 768px) {
+  .rec-add-popup {
+    width: 95%;
+    max-width: 95%;
+    margin: 10px;
+  }
+  
+  /* Single column on mobile */
+  .rec-add-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .rec-add-row {
+    margin-bottom: 16px;
+  }
+  
+  .rec-add-body {
+    padding: 16px;
+  }
+  
+  .rec-add-actions {
+    padding: 12px 16px;
+    flex-direction: column;
+  }
+  
+  .rec-add-btn {
+    width: 100%;
+  }
+}
 .rec-confirm-overlay {
   position: fixed;
   top: 0;
@@ -2405,4 +2825,20 @@ body.dark-mode .rec-delete-btn:hover {
   padding: 0 !important;
   border: none !important;
 }
+
+/* Add this to your CSS section */
+.rec-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Two equal columns */
+  gap: 10px;
+  margin-bottom: 0px;
+}
+
+/* Keep your existing mobile rule which changes it to 1 column */
+@media (max-width: 768px) {
+  .rec-add-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 </style>
