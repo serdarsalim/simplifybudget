@@ -188,12 +188,12 @@
         </div>
 
 
-
  
 
       </div>
     
     
+<button onclick="debugData()" style="display: none;">Debug Data</button>
 
     </div>
     
@@ -219,6 +219,20 @@
     
 
      <script>
+      function debugData() {
+  // Get January 2025 expenses
+  API.getExpenseData(
+  function(result) { 
+    console.log("All expenses:");
+    result.expenses.forEach((exp, i) => {
+      const date = new Date(exp.date);
+      console.log(`${i}: ${exp.name} - ${exp.amount} - ${date.getMonth()+1}/${date.getFullYear()}`);
+    });
+  },
+  function(error) { console.error("Error:", error); }
+);
+}
+
        // Main entry point - Initialize the application
        document.addEventListener('DOMContentLoaded', function() {
     SimBudget.initialize();

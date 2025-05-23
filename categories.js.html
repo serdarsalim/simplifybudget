@@ -32,80 +32,94 @@ var CategoriesManager = (function() {
     return _elements[id];
   }
   
-  // Replace the existing init function with this improved version:
-function init(categories, activeCategories) {
-  console.log('Initializing Categories Manager...');
-  
-  // Store initialization attempt for debugging
-  window._lastCategoryInitTime = new Date().getTime();
-  
-  // Force reset if explicit data provided
-  if (categories && Array.isArray(categories)) {
-    console.log('Explicit category data provided, resetting initialization state');
-    _initialized = false;
-  }
-  
-  // If already initialized with data, just refresh UI and exit
-  if (_initialized && _categories && _categories.length > 0) {
-    console.log('Categories Manager already initialized with data - refreshing UI');
-    renderCategories();
-    return;
-  }
-  
-  // If categories data is provided directly, use it
-  if (categories && Array.isArray(categories)) {
-    console.log('Using provided categories data:', categories.length, 'items');
-    _categories = processCategories(categories, activeCategories || []);
-    renderCategories();
-    _initialized = true;
+  function init(categories, activeCategories) {
+    console.log('Initializing Categories Manager...');
     
-    // Ensure QuickExpenseEntry has latest data - even if modal not open
-    setTimeout(() => {
-      if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
-        QuickExpenseEntry.ensureCategoriesLoaded(_categories);
-      }
-    }, 100);
-  } else {
-    // First try localStorage before API
-    const cachedCategories = localStorage.getItem('simbudget_categories');
-    const cachedActiveCategories = localStorage.getItem('simbudget_active_categories');
+    // Store initialization attempt for debugging
+    window._lastCategoryInitTime = new Date().getTime();
     
-    if (cachedCategories) {
-      try {
-        console.log('Using categories from localStorage');
-        const parsedCategories = JSON.parse(cachedCategories);
-        let activeList = [];
-        
-        // Try to get active categories list
-        if (cachedActiveCategories) {
-          activeList = JSON.parse(cachedActiveCategories);
+    // Force reset if explicit data provided
+    if (categories && Array.isArray(categories)) {
+      console.log('Explicit category data provided, resetting initialization state');
+      _initialized = false;
+    }
+    
+    // If already initialized with data, just refresh UI and exit
+    if (_initialized && _categories && _categories.length > 0) {
+      console.log('Categories Manager already initialized with data - refreshing UI');
+      renderCategories();
+      return;
+    }
+    
+    // If categories data is provided directly, use it
+    if (categories && Array.isArray(categories)) {
+      console.log('Using provided categories data:', categories.length, 'items');
+      _categories = processCategories(categories, activeCategories || []);
+      renderCategories();
+      _initialized = true;
+      
+      // Ensure QuickExpenseEntry has latest data - even if modal not open
+      setTimeout(() => {
+        if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+          QuickExpenseEntry.ensureCategoriesLoaded(_categories);
         }
-        
-        _categories = processCategories(parsedCategories, activeList);
+      }, 100);
+     
+     
+    } else {
+      // Check CacheManager first, then fall back to localStorage
+      const cachedData = window.CacheManager ? window.CacheManager.getCategories() : null;
+  
+      if (cachedData && Array.isArray(cachedData) && cachedData.length > 0) {
+        console.log('Using categories from CacheManager');
+        _categories = cachedData;
         renderCategories();
         _initialized = true;
         
-        // Ensure QuickExpenseEntry has latest data
+        // Ensure QuickExpenseEntry has latest data - even if modal not open
         setTimeout(() => {
           if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
             QuickExpenseEntry.ensureCategoriesLoaded(_categories);
           }
         }, 100);
         
-        // Load from server in background ONLY if not navigating
-        if (!_isNavigating) {
-          setTimeout(() => loadCategories(false), 500);
+
+      } else {
+        // Fall back to localStorage for backward compatibility
+        const cachedCategories = localStorage.getItem('simbudget_categories');
+        const cachedActiveCategories = localStorage.getItem('simbudget_active_categories');
+        
+        if (cachedCategories) {
+          try {
+            console.log('Using categories from localStorage');
+            const parsedCategories = JSON.parse(cachedCategories);
+            let activeList = [];
+            
+            if (cachedActiveCategories) {
+              activeList = JSON.parse(cachedActiveCategories);
+            }
+            
+            _categories = processCategories(parsedCategories, activeList);
+            renderCategories();
+            _initialized = true;
+            
+            setTimeout(() => {
+              if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+                QuickExpenseEntry.ensureCategoriesLoaded(_categories);
+              }
+            }, 100);
+            
+           
+          } catch (e) {
+            console.error('Error parsing cached categories, falling back to API:', e);
+            loadCategories();
+          }
+        } else {
+          loadCategories();
         }
-      } catch (e) {
-        console.error('Error parsing cached categories, falling back to API:', e);
-        loadCategories();
       }
-    } else {
-      // No cache, load from API
-      loadCategories();
     }
   }
-}
   
   /**
    * Load categories from server with caching
@@ -177,33 +191,36 @@ function init(categories, activeCategories) {
     }
   }
   
-  /**
-   * Process raw categories data
-   * @param {Array} categories - Categories array from API
-   * @param {Array} activeCategories - Active categories array 
-   * @return {Array} Processed categories
-   */
-    function processCategories(categories, activeCategories) {
-    console.log('Processing categories data:', categories);
-    console.log('Active categories data:', activeCategories);
-    
-    // CRITICAL FIX: Check if data is already in object format vs. string format
-    if (categories.length > 0 && typeof categories[0] === 'object' && 'name' in categories[0]) {
-        console.log('Categories already in object format, using directly');
-        return categories;
-    }
-    
+ function processCategories(categories, activeCategories) {
+  console.log('Processing categories data:', categories);
+  console.log('Active categories data:', activeCategories);
+  
+  let processedCategories;
+  
+  // CRITICAL FIX: Check if data is already in object format vs. string format
+  if (categories.length > 0 && typeof categories[0] === 'object' && 'name' in categories[0]) {
+    console.log('Categories already in object format, using directly');
+    processedCategories = categories;
+  } else {
     // Original processing for string arrays
-    return categories
-        .filter(cat => typeof cat === 'string' && cat.trim() !== '')
-        .map(cat => {
+    processedCategories = categories
+      .filter(cat => typeof cat === 'string' && cat.trim() !== '')
+      .map(cat => {
         return {
-            name: cat,
-            active: Array.isArray(activeCategories) && activeCategories.includes(cat),
-            original: cat
+          name: cat,
+          active: Array.isArray(activeCategories) && activeCategories.includes(cat),
+          original: cat
         };
-        });
-    }
+      });
+  }
+  
+  // After processing, cache the result:
+  if (window.CacheManager) {
+    window.CacheManager.setCategories(processedCategories);
+  }
+  
+  return processedCategories;
+}
   
   /**
    * Render categories to the UI
@@ -277,6 +294,7 @@ function init(categories, activeCategories) {
       
       // Toggle the category
       toggleCategory(index, this.checked, function() {
+        
         // On success, hide indicator and re-enable checkbox
         savingIndicator.style.display = 'none';
         checkbox.disabled = false;
@@ -355,6 +373,12 @@ function init(categories, activeCategories) {
         console.log('Category status updated in spreadsheet:', result);
         
         // Store THE WHOLE CATEGORIES ARRAY in the same format it's needed on load
+        if (window.CacheManager) {
+        window.CacheManager.setCategories(_categories);
+        // Invalidate dashboard so it recalculates with new active categories
+        window.CacheManager.invalidate('dashboardData');
+      } else {
+        // Fallback to localStorage for backward compatibility
         localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
         
         // Also keep the active categories list for quick access
@@ -362,12 +386,30 @@ function init(categories, activeCategories) {
           .filter(cat => cat.active)
           .map(cat => cat.name);
         localStorage.setItem('simbudget_active_categories', JSON.stringify(activeCategories));
+      }
         
-        // IMPROVED: First directly update QuickExpenseEntry (even if modal closed)
-        if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+       // Force update QuickExpenseEntry with fresh data
+        if (window.QuickExpenseEntry) {
+          // Clear any cached categories in QuickExpenseEntry
+          if (QuickExpenseEntry._categories) {
+            QuickExpenseEntry._categories = null;
+          }
+          // Force reload with our current data
           QuickExpenseEntry.ensureCategoriesLoaded(_categories);
-          console.log('Directly updated QuickExpenseEntry with new categories data');
         }
+
+        // Force update expense grid if it's loaded
+        if (window.MonthlyGrid && MonthlyGrid._categories) {
+          // Update MonthlyGrid's internal categories array
+          MonthlyGrid._categories = _categories.filter(cat => cat.active);
+          // Re-render the grid to reflect changes
+          if (window.SimBudget?.Views?.getCurrent() === 'expense') {
+            MonthlyGrid.renderGrid();
+          }
+        }
+
+        // Update any other dropdowns
+        window.updateAllCategoryDropdowns();
         
         // Then use the global function for any other components
         window.updateAllCategoryDropdowns();

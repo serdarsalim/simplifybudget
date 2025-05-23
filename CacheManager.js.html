@@ -1,9 +1,7 @@
 <script>
 /**
  * CacheManager - Centralized cache management for SimBudget
- * Handles interconnected budget data with smart invalidation
- * 
- * UPDATED: Added dashboard-specific caching and improved month/year handling
+ * Handles all data caching with smart invalidation and client-side calculations
  */
 const CacheManager = (function() {
   // Cache storage
@@ -15,20 +13,17 @@ const CacheManager = (function() {
   // Default config
   const config = {
     defaultTTL: 24 * 60 * 60 * 1000, // 24 hours
-    dashboardTTL: 30 * 60 * 1000,    // 30 minutes for dashboard data
     prefix: 'simbudget_cache_',
     maxSize: 5 * 1024 * 1024, // 5MB limit for localStorage
   };
   
   // Define data relationships - when X changes, invalidate Y
   const dependencies = {
-    expenses: ['monthlyTotals', 'categoryTotals', 'budgetSummary', 'dashboardData'],
-    budget: ['budgetSummary', 'dashboardData'],
-    categories: ['categoryTotals', 'quickExpenseList', 'dashboardData'],
-    income: ['budgetSummary', 'netWorth', 'dashboardData'],
-    recurring: ['monthlyTotals', 'subscriptionSummary', 'dashboardData'],
-    // Dashboard invalidates nothing - it's the end consumer
-    dashboardData: []
+    expenses: ['dashboardData'],
+    recurring: ['dashboardData'],
+    categories: ['dashboardData'],
+    income: ['dashboardData'],
+    networth: ['dashboardData'],
   };
   
   // Track current month/year
@@ -63,8 +58,7 @@ const CacheManager = (function() {
     cache.metadata[cacheKey] = {
       expires: Date.now() + ttl,
       size: JSON.stringify(data).length,
-      monthYear: monthYear,
-      timestamp: Date.now()
+      monthYear: monthYear
     };
     
     // Invalidate dependent data
@@ -82,8 +76,6 @@ const CacheManager = (function() {
   function invalidate(key, monthYear = null) {
     const cacheKey = monthYear ? `${key}_${monthYear}` : key;
     
-    console.log(`CacheManager: Invalidating ${cacheKey}`);
-    
     // Remove from memory
     delete cache.data[cacheKey];
     delete cache.metadata[cacheKey];
@@ -91,12 +83,17 @@ const CacheManager = (function() {
     // Remove from localStorage
     try {
       localStorage.removeItem(config.prefix + cacheKey);
-    } catch (e) {
-      console.error('CacheManager: Error removing from localStorage', e);
-    }
+    } catch (e) {}
     
     // Invalidate dependents
     invalidateDependents(key, monthYear);
+  }
+
+  /**
+   * Force refresh - just an alias for invalidate
+   */
+  function forceRefresh(key, monthYear = null) {
+    invalidate(key, monthYear);
   }
 
   /**
@@ -104,9 +101,7 @@ const CacheManager = (function() {
    */
   function invalidateDependents(key, monthYear) {
     const deps = dependencies[key];
-    if (!deps || deps.length === 0) return;
-    
-    console.log(`CacheManager: Invalidating dependents of ${key}:`, deps);
+    if (!deps) return;
     
     deps.forEach(depKey => {
       if (monthYear) {
@@ -118,9 +113,6 @@ const CacheManager = (function() {
           if (cacheKey.startsWith(depKey)) {
             delete cache.data[cacheKey];
             delete cache.metadata[cacheKey];
-            try {
-              localStorage.removeItem(config.prefix + cacheKey);
-            } catch (e) {}
           }
         });
       }
@@ -160,7 +152,6 @@ const CacheManager = (function() {
    * Load from localStorage on init
    */
   function hydrate() {
-    console.log('CacheManager: Hydrating from localStorage');
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -169,7 +160,6 @@ const CacheManager = (function() {
       }
     }
     
-    let hydratedCount = 0;
     keys.forEach(storageKey => {
       try {
         const cacheKey = storageKey.replace(config.prefix, '');
@@ -178,7 +168,6 @@ const CacheManager = (function() {
         if (stored && stored.metadata && stored.metadata.expires > Date.now()) {
           cache.data[cacheKey] = stored.data;
           cache.metadata[cacheKey] = stored.metadata;
-          hydratedCount++;
         } else {
           // Expired, remove it
           localStorage.removeItem(storageKey);
@@ -188,8 +177,6 @@ const CacheManager = (function() {
         localStorage.removeItem(storageKey);
       }
     });
-    
-    console.log(`CacheManager: Hydrated ${hydratedCount} items from localStorage`);
   }
 
   /**
@@ -240,7 +227,7 @@ const CacheManager = (function() {
     // Update single expense
     updateExpense(expense, month = currentMonth, year = currentYear) {
       const expenses = this.getExpenses(month, year) || [];
-      const index = expenses.findIndex(e => e.id === expense.id);
+      const index = expenses.findIndex(e => e.transactionId === expense.transactionId);
       
       if (index >= 0) {
         expenses[index] = expense;
@@ -250,83 +237,268 @@ const CacheManager = (function() {
       
       return this.setExpenses(expenses, month, year);
     },
+
+
+// Add to budgetHelpers object in CacheManager.js
+getCategories() {
+  return get('categories');
+},
+
+setCategories(categories) {
+  // Store with longer TTL since categories don't change often
+  return set('categories', categories, { ttl: 7 * 24 * 60 * 60 * 1000 }); // 7 days
+},
+
+// Get only active categories for quick access
+getActiveCategories() {
+  const allCategories = this.getCategories();
+  if (!allCategories) return null;
+  
+  return allCategories.filter(cat => cat.active);
+},
+
+// Update a single category's status
+updateCategoryStatus(categoryName, active) {
+  const categories = this.getCategories();
+  if (!categories) return false;
+  
+  const category = categories.find(cat => cat.name === categoryName);
+  if (category) {
+    category.active = active;
+    return this.setCategories(categories);
+  }
+  return false;
+},
+
     
-    // Get category totals (computed or cached)
-    getCategoryTotals(month = currentMonth, year = currentYear) {
-      const cacheKey = `${year}-${month}`;
-      let totals = get('categoryTotals', cacheKey);
+    // Get recurring data
+    getRecurring() {
+      return get('recurring');
+    },
+    
+    // Set recurring data
+    setRecurring(recurring) {
+      return set('recurring', recurring, { ttl: 24 * 60 * 60 * 1000 });
+    },
+    
+    // Get dashboard data (calculated from expenses + recurring)
+    getDashboardData(month = currentMonth, year = currentYear) {
+      const expenses = this.getExpenses(month, year);
+      const recurring = this.getRecurring();
       
-      if (!totals) {
-        // Calculate from expenses
-        const expenses = this.getExpenses(month, year) || [];
-        totals = {};
-        
-        expenses.forEach(expense => {
-          if (expense.category) {
-            totals[expense.category] = (totals[expense.category] || 0) + expense.amount;
-          }
-        });
-        
-        set('categoryTotals', totals, { monthYear: cacheKey, ttl: 60 * 60 * 1000 }); // 1 hour
+      if (!expenses || !recurring) {
+        console.log('CacheManager: Missing data for dashboard calculation');
+        return null;
       }
+      
+      // Calculate dashboard data from raw data
+      return this.calculateDashboardData(expenses, recurring, month, year);
+    },
+    
+    // Calculate dashboard data from raw expenses and recurring
+    calculateDashboardData(expenses, recurring, month, year) {
+      console.log('CacheManager: Calculating dashboard for', month + 1, '/', year);
+      console.log('CacheManager: Raw expenses:', expenses.length, 'items');
+      console.log('CacheManager: All recurring:', recurring.length, 'items');
+      
+      // Initialize summary
+      const summary = {
+        income: 0, // TODO: Will add income later
+        spent: 0,
+        leftToSpend: 0
+      };
+      
+      // Initialize categories map with ALL active categories first
+const categoriesMap = {};
+
+// Get active categories from cache
+const allCategories = this.getCategories() || [];
+const activeCategories = allCategories.filter(cat => cat.active);
+
+// Add all active categories with 0 values
+activeCategories.forEach(cat => {
+  const categoryName = cat.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+  categoriesMap[categoryName] = {
+    name: cat.name, // Keep original with emoji
+    budgeted: 0, // TODO: Get from budget sheet
+    actual: 0,
+    isActive: true
+  };
+});
+
+// Process expenses for this month
+expenses.forEach(expense => {
+  if (!expense.category || !expense.amount) return;
+  
+  const categoryName = expense.category.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+  
+  if (!categoriesMap[categoryName]) {
+    // This is an inactive category with transactions
+    categoriesMap[categoryName] = {
+      name: expense.category, // Keep original with emoji
+      budgeted: 0,
+      actual: 0,
+      isActive: false
+    };
+  }
+  
+  categoriesMap[categoryName].actual += expense.amount;
+  summary.spent += expense.amount;
+});
+
+// Process recurring items that occur in this month
+const recurringThisMonth = this.getRecurringForMonth(recurring, month, year);
+recurringThisMonth.forEach(item => {
+  if (!item.amount) return;
+  
+  const categoryName = item.category ? 
+    item.category.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim() : 
+    'Subscriptions';
+  const categoryDisplay = item.category || 'Subscriptions 🔁';
+  
+  if (!categoriesMap[categoryName]) {
+    categoriesMap[categoryName] = {
+      name: categoryDisplay,
+      budgeted: 0,
+      actual: 0,
+      isActive: false
+    };
+  }
+  
+  categoriesMap[categoryName].actual += item.amount;
+  summary.spent += item.amount;
+});
+
+// Convert map to array - active categories first, then inactive with transactions
+const categories = Object.values(categoriesMap)
+  .sort((a, b) => {
+    // Active categories first
+    if (a.isActive && !b.isActive) return -1;
+    if (!a.isActive && b.isActive) return 1;
+    // Then by name
+    return a.name.localeCompare(b.name);
+  });
+      
+      // Build dashboard data structure matching the original API response
+      return {
+        summary: summary,
+        categories: categories,
+        header: {
+          month: new Date(year, month).toLocaleDateString('en-US', { month: 'long' }),
+          year: year
+        },
+        netWorth: {
+          total: 0, // TODO: Add later
+          savings: 0,
+          debts: 0
+        },
+        subscriptions: {
+          count: recurringThisMonth.length,
+          total: recurringThisMonth.reduce((sum, item) => sum + item.amount, 0),
+          items: recurringThisMonth.slice(0, 10).map((item, index) => ({
+            id: index + 1,
+            name: item.name,
+            amount: item.amount,
+            nextDate: this.getNextPaymentDate(item, month, year)
+          }))
+        }
+      };
+    },
+    
+    // Get recurring items that occur in a specific month
+    getRecurringForMonth(allRecurring, month, year) {
+      return allRecurring.filter(item => {
+        if (!item.startDate) return false;
+        
+        const start = new Date(item.startDate);
+        const frequency = (item.frequency || 'Monthly').toLowerCase();
+        const currentMonthStart = new Date(year, month, 1);
+        const currentMonthEnd = new Date(year, month + 1, 0); // Last day of month
+        
+        // Skip if subscription hasn't started yet
+        if (start > currentMonthEnd) return false;
+        
+        // Calculate when the payment would occur in this month
+        let paymentDate;
+        
+        if (frequency.includes('monthly')) {
+          // Payment occurs on the same day each month
+          const paymentDay = start.getDate();
+          paymentDate = new Date(year, month, paymentDay);
+          
+          // If start date is in the future but within this month, use start date
+          if (start > currentMonthStart && start <= currentMonthEnd) {
+            paymentDate = start;
+          }
+        } else if (frequency.includes('yearly') || frequency.includes('annual')) {
+          // Payment occurs once a year on anniversary
+          if (start.getMonth() !== month) return false;
+          paymentDate = new Date(year, month, start.getDate());
+        } else if (frequency.includes('quarterly')) {
+          // Check if this is a quarter month
+          const monthsSinceStart = (year - start.getFullYear()) * 12 + (month - start.getMonth());
+          if (monthsSinceStart < 0 || monthsSinceStart % 3 !== 0) return false;
+          paymentDate = new Date(year, month, start.getDate());
+        } else {
+          // Default to monthly
+          const paymentDay = start.getDate();
+          paymentDate = new Date(year, month, paymentDay);
+        }
+        
+        // Check if payment date is after start date
+        if (paymentDate < start) return false;
+        
+        // Check if subscription was canceled before the payment date
+        if (item.endDate) {
+          const end = new Date(item.endDate);
+          if (end < paymentDate) return false;
+        }
+        
+        return true;
+      });
+    },
+    
+    // Calculate next payment date for display
+    getNextPaymentDate(item, month, year) {
+      if (!item.startDate) return '';
+      
+      const start = new Date(item.startDate);
+      const targetDate = new Date(year, month);
+      const frequency = (item.frequency || 'Monthly').toLowerCase();
+      
+      // For monthly, it's this month
+      if (frequency.includes('monthly')) {
+        const nextDate = new Date(year, month, start.getDate());
+        return nextDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+      }
+      
+      // TODO: Calculate for other frequencies
+      return '';
+    },
+    
+    // Get category totals (computed from expenses)
+    getCategoryTotals(month = currentMonth, year = currentYear) {
+      const expenses = this.getExpenses(month, year) || [];
+      const totals = {};
+      
+      expenses.forEach(expense => {
+        if (expense.category) {
+          const categoryName = expense.category.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+          totals[categoryName] = (totals[categoryName] || 0) + expense.amount;
+        }
+      });
       
       return totals;
     },
     
-    // Dashboard data management
-    getDashboardData(month = currentMonth, year = currentYear) {
-      return get('dashboardData', `${year}-${month}`);
-    },
-
-    setDashboardData(data, month = currentMonth, year = currentYear) {
-      // Dashboard data includes budget, summary, categories, subscriptions
-      return set('dashboardData', data, { 
-        monthYear: `${year}-${month}`,
-        ttl: config.dashboardTTL
-      });
+    // Clear all data for a month
+    clearMonth(month = currentMonth, year = currentYear) {
+      const monthYear = `${year}-${month}`;
+      invalidate('expenses', monthYear);
+      invalidate('dashboardData', monthYear);
     },
     
-    // Get budget summary data
-    getBudgetSummary(month = currentMonth, year = currentYear) {
-      return get('budgetSummary', `${year}-${month}`);
-    },
-    
-    setBudgetSummary(summary, month = currentMonth, year = currentYear) {
-      return set('budgetSummary', summary, { 
-        monthYear: `${year}-${month}`,
-        ttl: 60 * 60 * 1000 // 1 hour
-      });
-    },
-    
-    // Income data management
-    getIncome(month = currentMonth, year = currentYear) {
-      return get('income', `${year}-${month}`);
-    },
-    
-    setIncome(income, month = currentMonth, year = currentYear) {
-      return set('income', income, { monthYear: `${year}-${month}` });
-    },
-    
-    // Recurring transactions
-    getRecurring() {
-      // Recurring is not month-specific
-      return get('recurring');
-    },
-    
-    setRecurring(recurring) {
-      return set('recurring', recurring, { ttl: 2 * 60 * 60 * 1000 }); // 2 hours
-    },
-    
-    // Net worth data
-    getNetWorth(month = currentMonth, year = currentYear) {
-      return get('netWorth', `${year}-${month}`);
-    },
-    
-    setNetWorth(netWorth, month = currentMonth, year = currentYear) {
-      return set('netWorth', netWorth, { monthYear: `${year}-${month}` });
-    },
-    
-    // Prefetch adjacent months
+    // Prefetch month data
     prefetchMonth(month, year) {
       const monthKey = `${year}-${month}`;
       
@@ -368,35 +540,6 @@ const CacheManager = (function() {
           resolve();
         }
       });
-    },
-    
-    // Clear all data for a month
-    clearMonth(month = currentMonth, year = currentYear) {
-      const monthYear = `${year}-${month}`;
-      const keysToInvalidate = [
-        'expenses', 
-        'monthlyTotals', 
-        'categoryTotals', 
-        'budgetSummary',
-        'dashboardData',
-        'income',
-        'netWorth'
-      ];
-      
-      keysToInvalidate.forEach(key => {
-        invalidate(key, monthYear);
-      });
-      
-      console.log(`CacheManager: Cleared all data for ${month}/${year}`);
-    },
-    
-    // Check if dashboard data needs refresh
-    isDashboardStale(month = currentMonth, year = currentYear) {
-      const meta = cache.metadata[`dashboardData_${year}-${month}`];
-      if (!meta) return true;
-      
-      // Consider stale if older than 30 minutes
-      return (Date.now() - meta.timestamp) > config.dashboardTTL;
     }
   };
 
@@ -408,90 +551,43 @@ const CacheManager = (function() {
     get,
     set,
     invalidate,
+    forceRefresh,
     clear: () => {
       cache.data = {};
       cache.metadata = {};
       cleanupStorage();
-      console.log('CacheManager: Cleared all cache');
     },
     
     // Month/year management
     setCurrentMonth: (month, year) => {
-      const changed = currentMonth !== month || currentYear !== year;
       currentMonth = month;
       currentYear = year;
-      
-      if (changed) {
-        console.log(`CacheManager: Current month/year changed to ${month}/${year}`);
-        
-        // Prefetch adjacent months in background
-        if (window.API) {
-          // Previous month
-          const prevMonth = month === 0 ? 11 : month - 1;
-          const prevYear = month === 0 ? year - 1 : year;
-          budgetHelpers.prefetchMonth(prevMonth, prevYear);
-          
-          // Next month
-          const nextMonth = month === 11 ? 0 : month + 1;
-          const nextYear = month === 11 ? year + 1 : year;
-          budgetHelpers.prefetchMonth(nextMonth, nextYear);
-        }
-      }
     },
-    
-    getCurrentMonth: () => currentMonth,
-    getCurrentYear: () => currentYear,
     
     // Budget-specific methods
     ...budgetHelpers,
     
-    // Debugging and maintenance
+    // Debugging
     getStats: () => {
       const stats = {
         itemCount: Object.keys(cache.data).length,
         totalSize: 0,
-        items: {},
-        currentMonth: currentMonth,
-        currentYear: currentYear
+        items: {}
       };
       
       Object.entries(cache.metadata).forEach(([key, meta]) => {
         stats.totalSize += meta.size || 0;
         stats.items[key] = {
           expires: new Date(meta.expires),
-          size: meta.size,
-          age: Date.now() - meta.timestamp,
-          monthYear: meta.monthYear
+          size: meta.size
         };
       });
       
-      // Sort by size descending
-      stats.largestItems = Object.entries(stats.items)
-        .sort((a, b) => (b[1].size || 0) - (a[1].size || 0))
-        .slice(0, 5);
-      
       return stats;
-    },
-    
-    // Force refresh specific data type
-    forceRefresh: (dataType, month = currentMonth, year = currentYear) => {
-      console.log(`CacheManager: Force refresh requested for ${dataType}`);
-      invalidate(dataType, `${year}-${month}`);
-    },
-    
-    // Check if any data exists for a month
-    hasDataForMonth: (month = currentMonth, year = currentYear) => {
-      const monthYear = `${year}-${month}`;
-      return Object.keys(cache.data).some(key => key.includes(monthYear));
     }
   };
 })();
 
 // Make available globally
 window.CacheManager = CacheManager;
-
-// Also expose on SimBudget namespace if it exists
-if (window.SimBudget) {
-  window.SimBudget.CacheManager = CacheManager;
-}
 </script>

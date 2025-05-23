@@ -2230,7 +2230,14 @@ function refresh(forceServerRefresh) {
     updateCurrency: updateCurrency,
     openTransactionModal: openTransactionModal,
     unbindEvents: unbindEvents,
-    clearCache: clearCache  // For debugging
+    clearCache: clearCache,
+    updateCategories: function(categories) {
+    _categories = categories.filter(cat => cat.active);
+    if (SimBudget?.Views?.getCurrent() === 'expense') {
+      renderGrid();
+    }
+  }
+
   };
 })();
 

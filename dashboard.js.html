@@ -479,7 +479,11 @@ SimBudget.makeEditableBudgetValues = function() {
             cell.classList.remove('editing', 'saving');
             cell.classList.add('saved');
              cell.dataset.value = finalValue;
-            // Update our local data with the final value
+             if (window.CacheManager) {
+                // Invalidate dashboard cache so it recalculates
+                  window.CacheManager.invalidate('dashboardData');
+                }
+              // Update our local data with the final value
             let budgetChanged = false;
             SimBudget._currentBudgetData.categories.forEach(cat => {
               if (cat.name === categoryName) {

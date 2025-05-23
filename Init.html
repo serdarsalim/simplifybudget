@@ -778,39 +778,27 @@ Views: {
        * Update month and year when changed by user
        */
       updateMonthYear: function (month, year) {
-        // Skip if we're in the middle of rendering
-        if (_isRendering) {
-          console.log(`Skipping month/year update during rendering`);
-          return;
+      if (_isRendering) return;
+      if (_loadingView) return;
+
+      console.log(`Updating month/year to ${month} ${year}`);
+      
+      // ADD THIS:
+      if (window.CacheManager) {
+        // Convert month name to month number (0-based)
+        const monthNum = new Date(Date.parse(month + " 1, 2000")).getMonth();
+        window.CacheManager.setCurrentMonth(monthNum, parseInt(year));
+      }
+      
+      API.setMonthYear(month, year,
+        function (result) {
+          // Existing code...
+        },
+        function (error) {
+          // Existing code...
         }
-
-        // Skip if we're already loading a view
-        if (_loadingView) {
-          console.log(
-            `Skipping month/year update during ${_loadingView} loading`
-          );
-          return;
-        }
-
-        console.log(`Updating month/year to ${month} ${year}`);
-        API.setMonthYear(
-          month,
-          year,
-          function (result) {
-
-            // Invalidate budget cache when month/year changes
-            if (_cache.config.invalidateOnMonthYearChange) {
-              _cache.invalidateRelated("budget");
-            }
-
-            // Reload budget data with new month/year
-            SimBudget.loadViewData("budget", true);
-          },
-          function (error) {
-            Utils.showToast("Error updating month/year: " + error, "error");
-          }
-        );
-      },
+      );
+    },
 
       /**
        * Bind all event listeners
@@ -1586,238 +1574,105 @@ loadViewData: function(viewName, forceRefresh = false) {
       /**
        * Load budget data using a single consolidated API call
        */
-      /**
- * Load budget data using a single consolidated API call with preloader trigger
- * REPLACE the existing loadBudgetData function in SimBudget's return object
- */
-loadBudgetData: function() {
-  const contentArea = document.getElementById("budgetContent");
-
-  // Show loading state (keeping your existing loading state code)
-  if (contentArea) {
-    // Check if dashboard container exists
-    if (contentArea.querySelector(".dashboard-container")) {
-      // Create loading overlay instead of replacing content
-      const overlay = document.createElement("div");
-      overlay.className = "loading-overlay";
-
-      // CHANGE: Use a container with proper vertical stacking
-      overlay.innerHTML = `
-        <div class="loading-container">
-          <div class="loading-spinner"></div>
-        </div>
-      `;
-
-      // Keep all your existing styles
-      overlay.style.position = "absolute";
-      overlay.style.top = "0";
-      overlay.style.left = "0";
-      overlay.style.width = "100%";
-      overlay.style.height = "100%";
-      overlay.style.display = "flex";
-      overlay.style.alignItems = "center";
-      overlay.style.justifyContent = "center";
-      overlay.style.backdropFilter = "blur(5px)";
-      overlay.style.zIndex = "100";
-
-      // Position the container relative
-      contentArea.style.position = "relative";
-
-      // Add the overlay
-      contentArea.appendChild(overlay);
-
-      // ADD QUOTE - minimal change approach
-      try {
-        const quoteText =
-          (SimBudget.translations &&
-            SimBudget.translations.budget_quote) ||
-          "Budgeting is telling your money where to go, not wondering where it went.";
-        overlay
-          .querySelector(".loading-container")
-          .insertAdjacentHTML(
-            "beforeend",
-            '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
-              quoteText +
-              "</p>"
-          );
-      } catch (e) {
-        console.error("Non-critical error adding quote:", e);
-      }
-    } else {
-      // First load - use full dashboard structure with loading spinner in center
-      contentArea.innerHTML = `
-        <div class="dashboard-container" style="opacity: 0.5;">
-          <!-- First Column: Financial Summary & Chart -->
-          <div class="col-left">
-            <!-- Top: Income, Spent, Left to Spend -->
-            <div class="dashboard-card budget-summary-card">
-              <div class="budget-summary-row">
-                <div>
-                  <div class="value-label">Income</div>
-                  <div id="income-value" class="value-amount">€0</div>
-                </div>
-                <div>
-                  <div class="value-label">Spent</div>
-                  <div id="spent-value" class="value-amount">€0</div>
-                </div>
-                <div>
-                  <div class="value-label">Left to Spend</div>
-                  <div id="left-to-spend-value" class="value-amount">€0</div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Middle: Net Worth Summary -->
-            <div class="dashboard-card budget-summary-card">
-              <div class="budget-summary-row">
-                <div>
-                  <div class="value-label">Net Worth</div>
-                  <div id="net-worth-value" class="value-amount">€0</div>
-                </div>
-                <div>
-                  <div class="value-label">Savings</div>
-                  <div id="savings-value" class="value-amount">€0</div>
-                </div>
-                <div>
-                  <div class="value-label">Debts</div>
-                  <div id="debts-value" class="value-amount">€0</div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Bottom: Monthly Expense Donut Chart -->
-            <div class="dashboard-card donut-chart-card">
-              <h3 class="donut-chart-header">Monthly Expense Breakdown</h3>
-              <div class="donut-chart-container">
-                <canvas id="expense-donut-chart"></canvas>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Second Column: Budget Categories -->
-          <div class="dashboard-card budget-data-card">
-            <div id="budget-alert" class="budget-alert">
-              <!-- Budget alert message will be populated dynamically -->
-            </div>
-            
-            <div class="budget-table-container">
-              <table class="budget-table">
-                <thead>
-                  <tr>
-                    <th>Category</th>
-                    <th>Budgeted</th>
-                    <th>Actual</th>
-                    <th>Progress</th>
-                  </tr>
-                </thead>
-                <tbody id="budget-categories-body">
-                  <!-- Will be populated dynamically -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-          
-          <!-- Third Column: Subscription Summary & List -->
-          <div class="col-right">
-            <!-- Top: Subscription Summary Card -->
-            <div class="dashboard-card subscription-summary">
-              <div class="subscription-info">
-              </div>
-            </div>
-            
-            <!-- Bottom: Subscription List Card -->
-            <div class="dashboard-card subscription-list-card">
-              <h3 class="subscription-list-header">Subscriptions</h3>
-              <div class="subscription-list-container">
-                <table class="subscription-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Name</th>
-                      <th class="amount-column">Amount</th>
-                      <th>Next Due</th>
-                    </tr>
-                  </thead>
-                  <tbody id="subscription-list-body">
-                    <!-- Will be populated dynamically -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="loading-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 100;">
-          <div class="loading-spinner"></div>
-        </div>
-      `;
-
-      // Position the container relative to make absolute positioning work
-      contentArea.style.position = "relative";
-
-      // ADD QUOTE - minimal change approach
-      try {
-        const quoteText =
-          typeof Utils.getRandomQuote === "function"
-            ? Utils.getRandomQuote()
-            : "Budgeting is telling your money where to go, not wondering where it went.";
-        contentArea
-          .querySelector(".loading-spinner")
-          .insertAdjacentHTML(
-            "afterend",
-            '<p class="loading-quote" style="padding: 0 1rem;" data-translate="budget_quote">' +
-              quoteText +
-              "</p>"
-          );
-      } catch (e) {
-        console.error("Non-critical error adding quote:", e);
-      }
-    }
+      loadBudgetData: function() {
+      console.log('LoadBudgetData: Starting...');
+        // Make sure we have current month/year
+  if (typeof _currentMonth === 'undefined') {
+    _currentMonth = new Date().getMonth();
+    _currentYear = new Date().getFullYear();
+    console.log('LoadBudgetData: Set default month/year:', _currentMonth, _currentYear);
   }
-
-  // Make a single API call instead of 5 separate calls
-  API.getDashboardData(
-    function (result) {
-
-      // Cache the data FIRST
-      _cache.set("budget", result.dashboardData);
-
-      // Set rendering flag to prevent event loops
-      _isRendering = true;
-
-      // Temporarily remove event listeners
-      _eventManager.detach();
-
-      // Render the dashboard with the full data
-      SimBudget.renderBudgetDashboard(result.dashboardData);
-
-      // Re-enable events after render completes
-      setTimeout(() => {
-        _eventManager.attach();
-        _isRendering = false;
-        _loadingView = null; // Clear loading flag
-        
-        // TRIGGER PRELOADER: Start background loading if not already running
-        if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
-          _preloader.start('budget');
-        }
-      }, 500);
-    },
-    function (error) {
-      console.error("LoadBudgetData: Error loading dashboard data:", error);
-      _loadingView = null; // Clear loading flag
-
-      // Show error message
-      if (contentArea) {
-        contentArea.innerHTML = `
-          <div class="error-message">
-            <i class="material-icons">error</i>
-            <span>Error loading budget data: ${error}</span>
-          </div>
-        `;
+      const contentArea = document.getElementById("budgetContent");
+      
+      // Check cache first
+      const cachedData = window.CacheManager.getDashboardData();
+      if (cachedData) {
+        console.log('LoadBudgetData: Using cached dashboard data');
+        SimBudget.renderBudgetDashboard(cachedData);
+        _loadingView = null;
+        return;
       }
-    }
-  );
-},
+      
+      // Show simple loading overlay
+      if (contentArea) {
+        const existingDashboard = contentArea.querySelector('.dashboard-container');
+        if (existingDashboard) {
+          // Add loading overlay to existing content
+          const overlay = document.createElement('div');
+          overlay.className = 'loading-overlay';
+          overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);z-index:100;';
+          overlay.innerHTML = '<div class="loading-spinner"></div>';
+          contentArea.style.position = 'relative';
+          contentArea.appendChild(overlay);
+        } else {
+          // First load - simple loading message
+          contentArea.innerHTML = '<div style="padding:40px;text-align:center;"><div class="loading-spinner"></div><p>Loading budget data...</p></div>';
+        }
+      }
+      
+      // Load both expenses and recurring data
+      let expensesLoaded = false;
+      let recurringLoaded = false;
+      let expensesData = null;
+      let recurringData = null;
+      
+      const checkAndRender = () => {
+        if (expensesLoaded && recurringLoaded) {
+          console.log('LoadBudgetData: Both data sources loaded');
+          
+          // Store in cache
+          if (expensesData) {
+            window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
+          }
+          if (recurringData) {
+            window.CacheManager.setRecurring(recurringData);
+          }
+          
+          // Calculate and render
+          const dashboardData = window.CacheManager.getDashboardData(_currentMonth, _currentYear);
+          console.log('LoadBudgetData: Dashboard data structure:', dashboardData);
+
+          if (dashboardData) {
+            SimBudget.renderBudgetDashboard(dashboardData);
+          } else {
+            console.error('LoadBudgetData: Failed to calculate dashboard data');
+          }
+          
+          _loadingView = null;
+        }
+      };
+      
+      // Load expenses
+      API.getExpenseData(_currentMonth, _currentYear,
+        function(result) {
+          console.log('LoadBudgetData: Expenses loaded', result.expenses?.length || 0, 'items');
+          expensesData = result.expenses || [];
+          expensesLoaded = true;
+          checkAndRender();
+        },
+        function(error) {
+          console.error('LoadBudgetData: Error loading expenses:', error);
+          expensesLoaded = true; // Continue anyway
+          checkAndRender();
+        }
+      );
+      
+      // Load recurring
+      API.getRecurringData(
+        function(result) {
+          console.log('LoadBudgetData: Recurring loaded', result.recurring?.length || 0, 'items');
+          recurringData = result.recurring || [];
+          recurringLoaded = true;
+          checkAndRender();
+        },
+        function(error) {
+          console.error('LoadBudgetData: Error loading recurring:', error);
+          recurringLoaded = true; // Continue anyway
+          checkAndRender();
+        }
+      );
+    },
+
 
       /**
        * This function remains in init.html even though it's referenced from dashboard.js
