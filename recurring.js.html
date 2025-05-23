@@ -1,11 +1,8 @@
 <script>
 // ============================================================================
-// CLIENT-SIDE RECURRING MODULE - OPTIMIZED VERSION
+// CLIENT-SIDE RECURRING MODULE - CURRENCY FIX
 // ============================================================================
 
-/**
- * Enhanced RecurringManager - Using SimBudget's cache system
- */
 var RecurringManager = (function() {
   // Private variables
   let _initialized = false;
@@ -283,6 +280,11 @@ var RecurringManager = (function() {
         if (result && result.success && Array.isArray(result.recurring)) {
           _recurringData = processRecurringData(result.recurring);
           
+          // Cache the data in SimBudget's cache system
+          if (window._cache && typeof _cache.set === 'function') {
+            _cache.set('recurring', result.recurring);
+          }
+          
           if (!isBackgroundRefresh) {
             renderRecurringView();
             bindEvents();
@@ -337,9 +339,9 @@ var RecurringManager = (function() {
         status = 'Expires';
       }
       
-      // Calculate next payment and expiration
-      const nextPayment = calculateNextPayment(startDate, item.frequency || 'Monthly', endDate);
-      const expiration = calculateExpirationDate(startDate, item.frequency || 'Monthly', endDate);
+      // Calculate next payment and expiration only if start date exists
+      const nextPayment = startDate ? calculateNextPayment(startDate, item.frequency || 'Monthly', endDate) : null;
+      const expiration = startDate ? calculateExpirationDate(startDate, item.frequency || 'Monthly', endDate) : null;
       
       return {
         id: item.id,
@@ -393,8 +395,8 @@ var RecurringManager = (function() {
     let budgetImpact = 0;
     if (window._dataCache && typeof _dataCache.get === 'function') {
       const budgetData = _dataCache.get('budget');
-      if (budgetData && budgetData.dashboardData && budgetData.dashboardData.summary) {
-        const monthlyBudget = budgetData.dashboardData.summary.income;
+      if (budgetData && budgetData.summary) {
+        const monthlyBudget = budgetData.summary.income;
         budgetImpact = monthlyBudget > 0 ? (monthlyTotal / monthlyBudget) * 100 : 0;
       }
     }
@@ -679,6 +681,10 @@ var RecurringManager = (function() {
       // Show expiration if no next payment
       dynamicDateValue = `Expires ${formatDate(item.expiration)}`;
       dynamicDateClass = 'status-expires';
+    } else if (item.isNew || !item.startDate) {
+      // For new items or items without start date, show empty
+      dynamicDateValue = '';
+      dynamicDateClass = '';
     } else {
       dynamicDateValue = 'Ended';
       dynamicDateClass = 'status-ended';
@@ -730,10 +736,41 @@ var RecurringManager = (function() {
   function addNewSubscription() {
     console.log('RecurringManager: Adding new subscription');
     
+    // FIX: Always reload settings before creating new item to get current currency
+    loadSettings();
+    
+    // Check if there's already a new item being edited
+    const existingNewItem = _recurringData.find(item => item.isNew);
+    if (existingNewItem) {
+      console.log('RecurringManager: New item already being edited');
+      
+      // Find the row and focus on the name field
+      const existingRow = document.querySelector(`tr[data-id="${existingNewItem.id}"]`);
+      if (existingRow) {
+        const nameInput = existingRow.querySelector('input[data-field="name"]');
+        if (nameInput) {
+          nameInput.focus();
+          nameInput.select();
+        }
+      }
+      return; // Don't create another new item
+    }
+    
+    // Check if any row is currently being edited
+    const editingRow = document.querySelector('tr.rec-editing');
+    if (editingRow) {
+      console.log('RecurringManager: Another item is being edited');
+      // Optionally show a message
+      if (window.Utils && Utils.showToast) {
+        Utils.showToast('Please save or cancel the current edit first', 'info');
+      }
+      return;
+    }
+    
     const newItem = {
       id: 'new-' + Date.now(),
       rowIndex: null,
-      startDate: new Date(),
+      startDate: null, // Start with null instead of new Date()
       endDate: null,
       name: '',
       category: _categories[0]?.fullName || '',
@@ -743,6 +780,7 @@ var RecurringManager = (function() {
       account: '',
       status: 'Active',
       nextPayment: null,
+      expiration: null,
       notes: '',
       isNew: true
     };
@@ -762,6 +800,9 @@ var RecurringManager = (function() {
   function startEditingRow(row, item) {
     console.log('RecurringManager: Start editing', item.id);
     
+    // FIX: Always reload settings before editing to get current currency
+    loadSettings();
+    
     row.classList.add('rec-editing');
 
     const cells = row.querySelectorAll('td');
@@ -772,7 +813,9 @@ var RecurringManager = (function() {
     cells[0].innerHTML = `
       <input type="date" class="rec-edit-input" 
         value="${startDateValue}" 
-        data-field="startDate">
+        data-field="startDate"
+        placeholder="Select date"
+        required>
     `;
 
     // Name (1)
@@ -815,7 +858,7 @@ var RecurringManager = (function() {
       </select>
     `;
 
-    // Amount (5)
+    // Amount (5) - FIX: Use current currency symbol
     cells[5].innerHTML = `
       <div class="rec-amount-wrapper">
         <span class="rec-currency">${_currencySymbol}</span>
@@ -888,11 +931,19 @@ var RecurringManager = (function() {
     const editedData = {};
     let hasErrors = false;
 
+    // Validate required fields
     row.querySelectorAll('.rec-edit-input').forEach(input => {
       const field = input.getAttribute('data-field');
       const value = input.value.trim();
 
+      // Check required fields
       if (field === 'name' && !value) {
+        input.classList.add('rec-input-error');
+        hasErrors = true;
+        return;
+      }
+
+      if (field === 'startDate' && !value) {
         input.classList.add('rec-input-error');
         hasErrors = true;
         return;
@@ -915,11 +966,12 @@ var RecurringManager = (function() {
 
     if (hasErrors) {
       if (window.Utils && Utils.showToast) {
-        Utils.showToast('Please fill in required fields', 'error');
+        Utils.showToast('Please fill in all required fields (Name, Start Date, Amount)', 'error');
       }
       return;
     }
 
+    // Update item with edited data
     Object.assign(item, editedData);
     
     if (editedData.startDate) {
@@ -931,6 +983,7 @@ var RecurringManager = (function() {
     
     item.amount = parseFloat(editedData.amount) || 0;
 
+    // Recalculate status and dates
     const now = new Date();
     if (item.endDate && item.endDate < now) {
       item.status = 'Ended';
@@ -945,11 +998,17 @@ var RecurringManager = (function() {
     
     item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate);
 
+    // Mark as no longer new
+    delete item.isNew;
+
+    // Save to server
     saveToServer([item]);
 
+    // Replace row with updated view
     const newRow = createRecurringRow(item);
     row.replaceWith(newRow);
 
+    // Update summary metrics
     updateSummaryCards();
   }
 
@@ -1021,36 +1080,198 @@ var RecurringManager = (function() {
     }
   }
 
-  /**
-   * Save data to server
-   */
-  function saveToServer(items) {
-    console.log('RecurringManager: Saving to server', items.length, 'items');
+/**
+ * Updated saveToServer function following transaction.js pattern
+ * Replace the existing saveToServer function in your recurring module with this
+ */
+function saveToServer(items) {
+  console.log('RecurringManager: Saving to server', items.length, 'items');
+  
+  if (!window.API || typeof API.saveBatchRecurring !== 'function') {
+    console.error('RecurringManager: API.saveBatchRecurring not available');
+    return;
+  }
+
+  // Filter out items without required fields before saving
+  const validItems = items.filter(item => 
+    item.name && item.amount > 0 && item.startDate
+  );
+
+  if (validItems.length === 0) {
+    console.log('RecurringManager: No valid items to save');
+    return;
+  }
+
+  // Prepare items for saving - ensure proper date formatting
+  const itemsToSave = validItems.map(item => {
+    const saveItem = {
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      type: item.type,
+      frequency: item.frequency,
+      amount: item.amount,
+      account: item.account,
+      status: item.status,
+      notes: item.notes || ''
+    };
     
-    if (!window.API || typeof API.saveBatchRecurring !== 'function') {
-      console.error('RecurringManager: API.saveBatchRecurring not available');
+    // Handle dates - convert to ISO strings for transmission
+    if (item.startDate instanceof Date) {
+      saveItem.startDate = item.startDate.toISOString();
+    } else if (item.startDate) {
+      saveItem.startDate = new Date(item.startDate).toISOString();
+    }
+    
+    if (item.endDate instanceof Date) {
+      saveItem.endDate = item.endDate.toISOString();
+    } else if (item.endDate) {
+      saveItem.endDate = new Date(item.endDate).toISOString();
+    }
+    
+    if (item.nextPayment instanceof Date) {
+      saveItem.nextPayment = item.nextPayment.toISOString();
+    } else if (item.nextPayment) {
+      saveItem.nextPayment = new Date(item.nextPayment).toISOString();
+    }
+    
+    return saveItem;
+  });
+
+  if (window.Utils && Utils.showToast) {
+    Utils.showToast('Saving...', 'info');
+  }
+
+  API.saveBatchRecurring(itemsToSave,
+    function(result) {
+      console.log('RecurringManager: Save success', result);
+      
+      if (window.Utils && Utils.showToast) {
+        const message = result.inserted > 0 ? 
+          `Saved successfully (${result.inserted} added, ${result.updated} updated)` :
+          'Updated successfully';
+        Utils.showToast(message, 'success');
+      }
+      
+      // Update cache after successful save
+      if (window._cache && typeof _cache.invalidate === 'function') {
+        _cache.invalidate('recurring');
+      }
+      
+      // Refresh the data to get proper row indices
+      // This ensures new items get their proper IDs from the spreadsheet
+      setTimeout(() => {
+        loadRealRecurringData(true); // true = background refresh
+      }, 500);
+    },
+    function(error) {
+      console.error('RecurringManager: Save error', error);
+      if (window.Utils && Utils.showToast) {
+        Utils.showToast('Error saving: ' + error, 'error');
+      }
+    }
+  );
+}
+
+/**
+ * Updated saveEditedRow to ensure proper ID assignment for new items
+ * Replace the existing saveEditedRow function with this enhanced version
+ */
+function saveEditedRow(itemId) {
+  console.log('RecurringManager: Saving row', itemId);
+  
+  const row = document.querySelector(`tr[data-id="${itemId}"]`);
+  if (!row) return;
+
+  const item = _recurringData.find(r => r.id === itemId);
+  if (!item) return;
+
+  const editedData = {};
+  let hasErrors = false;
+
+  // Validate required fields
+  row.querySelectorAll('.rec-edit-input').forEach(input => {
+    const field = input.getAttribute('data-field');
+    const value = input.value.trim();
+
+    // Check required fields
+    if (field === 'name' && !value) {
+      input.classList.add('rec-input-error');
+      hasErrors = true;
       return;
     }
 
-    if (window.Utils && Utils.showToast) {
-      Utils.showToast('Saving...', 'info');
+    if (field === 'startDate' && !value) {
+      input.classList.add('rec-input-error');
+      hasErrors = true;
+      return;
     }
 
-    API.saveBatchRecurring(items,
-      function(result) {
-        console.log('RecurringManager: Save success', result);
-        if (window.Utils && Utils.showToast) {
-          Utils.showToast('Saved successfully', 'success');
-        }
-      },
-      function(error) {
-        console.error('RecurringManager: Save error', error);
-        if (window.Utils && Utils.showToast) {
-          Utils.showToast('Error saving: ' + error, 'error');
-        }
-      }
-    );
+    if (field === 'amount' && (!value || parseFloat(value) <= 0)) {
+      input.classList.add('rec-input-error');
+      hasErrors = true;
+      return;
+    }
+
+    input.classList.remove('rec-input-error');
+    
+    if (field === 'type') {
+      editedData[field] = value === 'Subscription' ? 'TRUE' : 'FALSE';
+    } else {
+      editedData[field] = value;
+    }
+  });
+
+  if (hasErrors) {
+    if (window.Utils && Utils.showToast) {
+      Utils.showToast('Please fill in all required fields (Name, Start Date, Amount)', 'error');
+    }
+    return;
   }
+
+  // Update item with edited data
+  Object.assign(item, editedData);
+  
+  if (editedData.startDate) {
+    item.startDate = new Date(editedData.startDate);
+  }
+  if (editedData.endDate) {
+    item.endDate = new Date(editedData.endDate);
+  }
+  
+  item.amount = parseFloat(editedData.amount) || 0;
+
+  // Recalculate status and dates
+  const now = new Date();
+  if (item.endDate && item.endDate < now) {
+    item.status = 'Ended';
+    item.nextPayment = null;
+  } else if (item.endDate && item.endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
+    item.status = 'Expires';
+    item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+  } else {
+    item.status = 'Active';
+    item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+  }
+  
+  item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate);
+
+  // For new items, generate a proper ID if still using temporary ID
+  if (item.isNew || item.id.startsWith('new-')) {
+    item.id = `REC-${Date.now()}`;
+    delete item.isNew;
+  }
+
+  // Save to server
+  saveToServer([item]);
+
+  // Replace row with updated view
+  const newRow = createRecurringRow(item);
+  row.replaceWith(newRow);
+
+  // Update summary metrics
+  updateSummaryCards();
+}
 
   /**
    * Update summary cards only
@@ -1236,7 +1457,7 @@ var RecurringManager = (function() {
     init: init,
     refresh: refresh,
     setRecurringData: setRecurringData,
-    isInitialized: function() { return _initialized; } // Check initialization status
+    isInitialized: function() { return _initialized; }
   };
 })();
 
