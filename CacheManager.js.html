@@ -75,7 +75,8 @@ const CacheManager = (function() {
    */
   function invalidate(key, monthYear = null) {
     const cacheKey = monthYear ? `${key}_${monthYear}` : key;
-    
+    console.log('CACHE INVALIDATE CALLED:', key, monthYear);
+  console.trace(); // This will show what called it
     // Remove from memory
     delete cache.data[cacheKey];
     delete cache.metadata[cacheKey];
@@ -216,12 +217,13 @@ const CacheManager = (function() {
   const budgetHelpers = {
     // Get expense data for current or specific month
     getExpenses(month = currentMonth, year = currentYear) {
-      return get('expenses', `${year}-${month}`);
+      const paddedMonth = String(month).padStart(2, '0');
+      return get('expenses', `${year}-${paddedMonth}`);
     },
-    
-    // Set expense data
+
     setExpenses(expenses, month = currentMonth, year = currentYear) {
-      return set('expenses', expenses, { monthYear: `${year}-${month}` });
+      const paddedMonth = String(month).padStart(2, '0');
+      return set('expenses', expenses, { monthYear: `${year}-${paddedMonth}` });
     },
     
     // Update single expense
@@ -285,21 +287,19 @@ updateCategoryStatus(categoryName, active) {
     getDashboardData(month = currentMonth, year = currentYear) {
       const expenses = this.getExpenses(month, year);
       const recurring = this.getRecurring();
+      const categories = this.getCategories();
       
-      if (!expenses || !recurring) {
+      if (!expenses || !recurring || !categories) {
         console.log('CacheManager: Missing data for dashboard calculation');
         return null;
       }
       
-      // Calculate dashboard data from raw data
       return this.calculateDashboardData(expenses, recurring, month, year);
     },
     
     // Calculate dashboard data from raw expenses and recurring
     calculateDashboardData(expenses, recurring, month, year) {
-      console.log('CacheManager: Calculating dashboard for', month + 1, '/', year);
-      console.log('CacheManager: Raw expenses:', expenses.length, 'items');
-      console.log('CacheManager: All recurring:', recurring.length, 'items');
+  
       
       // Initialize summary
       const summary = {
@@ -370,13 +370,29 @@ recurringThisMonth.forEach(item => {
 });
 
 // Convert map to array - active categories first, then inactive with transactions
+// Get the original order from allCategories
+const categoryOrder = {};
+allCategories.forEach((cat, index) => {
+  const cleanName = cat.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+  categoryOrder[cleanName] = index;
+});
+
+// Convert map to array - active categories first (in original order), then inactive with transactions
 const categories = Object.values(categoriesMap)
   .sort((a, b) => {
     // Active categories first
     if (a.isActive && !b.isActive) return -1;
     if (!a.isActive && b.isActive) return 1;
-    // Then by name
-    return a.name.localeCompare(b.name);
+    
+    // For categories of the same type (both active or both inactive)
+    // Use the original order if available
+    const cleanNameA = a.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+    const cleanNameB = b.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+    
+    const orderA = categoryOrder[cleanNameA] ?? 999;
+    const orderB = categoryOrder[cleanNameB] ?? 999;
+    
+    return orderA - orderB;
   });
       
       // Build dashboard data structure matching the original API response

@@ -246,6 +246,20 @@ function loadCurrencyFromSettings() {
   // Handle session start (clear cache on page refresh/new session)
   handleSessionStart();
   
+
+  // Use the app's current month/year from CacheManager if available
+if (window.CacheManager) {
+  // Use the app's current month/year instead of system date
+  const appMonth = window.SimBudget?._currentMonth;
+  const appYear = window.SimBudget?._currentYear;
+  
+  if (typeof appMonth !== 'undefined' && typeof appYear !== 'undefined') {
+    _currentMonth = appMonth;
+    _currentYear = appYear;
+    console.log('MonthlyGrid: Using app month/year:', _currentMonth, _currentYear);
+  }
+}
+
   // Load currency symbol from user settings
   loadCurrencyFromSettings();
   
@@ -347,6 +361,7 @@ function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
         
         // PREFETCH HERE - when using cached data
         if (window.CacheManager) {
+          
           // Prefetch adjacent months in background
           const prev = getPreviousMonth(month, year);
           const next = getNextMonth(month, year);
@@ -2236,7 +2251,14 @@ function refresh(forceServerRefresh) {
     if (SimBudget?.Views?.getCurrent() === 'expense') {
       renderGrid();
     }
+  },
+   setMonthYear: function(month, year) {
+    _currentMonth = month;
+    _currentYear = year;
+    updateMonthYearDisplay();
+    // Don't reload - just update the display
   }
+
 
   };
 })();

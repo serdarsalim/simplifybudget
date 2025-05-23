@@ -774,31 +774,41 @@ Views: {
         }
       },
 
-      /**
-       * Update month and year when changed by user
-       */
       updateMonthYear: function (month, year) {
-      if (_isRendering) return;
-      if (_loadingView) return;
+        if (_isRendering) return;
+        if (_loadingView) return;
 
-      console.log(`Updating month/year to ${month} ${year}`);
-      
-      // ADD THIS:
-      if (window.CacheManager) {
+        console.log(`Updating month/year to ${month} ${year}`);
+        
         // Convert month name to month number (0-based)
         const monthNum = new Date(Date.parse(month + " 1, 2000")).getMonth();
-        window.CacheManager.setCurrentMonth(monthNum, parseInt(year));
-      }
-      
-      API.setMonthYear(month, year,
-        function (result) {
-          // Existing code...
-        },
-        function (error) {
-          // Existing code...
+        
+        // Update local state
+        _currentMonth = monthNum;
+        _currentYear = parseInt(year);
+        
+        // Update CacheManager
+        if (window.CacheManager) {
+          window.CacheManager.setCurrentMonth(monthNum, parseInt(year));
         }
-      );
-    },
+        
+        // If we're on budget view, refresh it with new month/year
+        if (_currentView === 'budget') {
+          // Invalidate dashboard cache for the old month to force recalculation
+          window.CacheManager.invalidate('dashboardData');
+          
+          // Load budget data for new month/year
+          this.loadBudgetData();
+        }
+        
+        // If we're on expense view, update MonthlyGrid
+        if (_currentView === 'expense' && window.MonthlyGrid) {
+          MonthlyGrid.setMonthYear(monthNum, parseInt(year));
+          MonthlyGrid.refresh();
+        }
+        
+        // No need to call API anymore - we're working locally!
+      },
 
       /**
        * Bind all event listeners
@@ -1575,20 +1585,26 @@ loadViewData: function(viewName, forceRefresh = false) {
        * Load budget data using a single consolidated API call
        */
       loadBudgetData: function() {
-      console.log('LoadBudgetData: Starting...');
+     
+
+        
         // Make sure we have current month/year
-  if (typeof _currentMonth === 'undefined') {
-    _currentMonth = new Date().getMonth();
-    _currentYear = new Date().getFullYear();
-    console.log('LoadBudgetData: Set default month/year:', _currentMonth, _currentYear);
-  }
-      const contentArea = document.getElementById("budgetContent");
-      
-      // Check cache first
-      const cachedData = window.CacheManager.getDashboardData();
+        if (typeof _currentMonth === 'undefined') {
+          _currentMonth = new Date().getMonth();
+          _currentYear = new Date().getFullYear();
+          console.log('LoadBudgetData: Set default month/year:', _currentMonth, _currentYear);
+        }
+            const contentArea = document.getElementById("budgetContent");
+            
+            // Check cache first
+          const cachedData = window.CacheManager.getDashboardData();
       if (cachedData) {
         console.log('LoadBudgetData: Using cached dashboard data');
         SimBudget.renderBudgetDashboard(cachedData);
+        
+        // ALSO update Init's cache system
+        _cache.set('budget', cachedData);
+        
         _loadingView = null;
         return;
       }
@@ -1616,10 +1632,21 @@ loadViewData: function(viewName, forceRefresh = false) {
       let expensesData = null;
       let recurringData = null;
       
-      const checkAndRender = () => {
+            const checkAndRender = () => {
+        if (!window.CacheManager.getCategories()) {
+          // Load categories from localStorage or API
+          const cachedCats = localStorage.getItem('simbudget_categories');
+          if (cachedCats) {
+            try {
+              const cats = JSON.parse(cachedCats);
+              window.CacheManager.setCategories(cats);
+            } catch (e) {
+              console.error('Failed to load categories from localStorage');
+            }
+          }
+        }
+      
         if (expensesLoaded && recurringLoaded) {
-          console.log('LoadBudgetData: Both data sources loaded');
-          
           // Store in cache
           if (expensesData) {
             window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
@@ -1630,10 +1657,12 @@ loadViewData: function(viewName, forceRefresh = false) {
           
           // Calculate and render
           const dashboardData = window.CacheManager.getDashboardData(_currentMonth, _currentYear);
-          console.log('LoadBudgetData: Dashboard data structure:', dashboardData);
-
+      
           if (dashboardData) {
             SimBudget.renderBudgetDashboard(dashboardData);
+            
+            // ALSO cache in Init's cache system
+            _cache.set('budget', dashboardData);
           } else {
             console.error('LoadBudgetData: Failed to calculate dashboard data');
           }
@@ -1645,7 +1674,6 @@ loadViewData: function(viewName, forceRefresh = false) {
       // Load expenses
       API.getExpenseData(_currentMonth, _currentYear,
         function(result) {
-          console.log('LoadBudgetData: Expenses loaded', result.expenses?.length || 0, 'items');
           expensesData = result.expenses || [];
           expensesLoaded = true;
           checkAndRender();
@@ -1660,7 +1688,6 @@ loadViewData: function(viewName, forceRefresh = false) {
       // Load recurring
       API.getRecurringData(
         function(result) {
-          console.log('LoadBudgetData: Recurring loaded', result.recurring?.length || 0, 'items');
           recurringData = result.recurring || [];
           recurringLoaded = true;
           checkAndRender();
@@ -1753,7 +1780,6 @@ loadViewData: function(viewName, forceRefresh = false) {
        * Always shows the grid with sample data first, then updates with real data if available
        */
       loadExpenseData: function () {
-        console.log("Loading expense view...");
 
         const contentArea = document.getElementById("expenseContent");
         if (!contentArea) {
@@ -1765,16 +1791,17 @@ loadViewData: function(viewName, forceRefresh = false) {
         // 1. FIRST create a clean container with unique ID and proper dimensions
         const containerId = "expense-grid-" + Date.now();
         contentArea.innerHTML = `
-    <div id="${containerId}" class="monthly-grid-container" 
-         style="width:100%; height:100%; position:relative; overflow:auto;">
-    </div>
-  `;
+        <div id="${containerId}" class="monthly-grid-container" 
+            style="width:100%; height:100%; position:relative; overflow:auto;">
+        </div>
+      `;
 
-        // 2. THEN initialize MonthlyGrid with the container
-        //    This will show the grid with sample data immediately
         if (window.MonthlyGrid) {
-          console.log("Initializing MonthlyGrid with container:", containerId);
           MonthlyGrid.init(containerId);
+
+           if (window.CacheManager && typeof _currentMonth !== 'undefined') {
+           window.CacheManager.setCurrentMonth(_currentMonth, _currentYear);
+             }
 
           // 3. FINALLY (optionally) fetch real data
           //    Grid is already visible, so this is non-blocking
@@ -1921,17 +1948,15 @@ renderExpenseView: function(cachedExpenses) {
   }
 },
 
-loadExpenseData: function() {
-  console.log("Loading expense view...");
+    loadExpenseData: function() {
   
-  const contentArea = document.getElementById("expenseContent");
+    const contentArea = document.getElementById("expenseContent");
   if (!contentArea) {
     console.error("Expense content area not found");
     _loadingView = null;
     return;
   }
 
-  // Create container for MonthlyGrid
   const containerId = "expense-grid-" + Date.now();
   contentArea.innerHTML = `
     <div id="${containerId}" class="monthly-grid-container" 
@@ -1939,15 +1964,16 @@ loadExpenseData: function() {
     </div>
   `;
 
-  // Initialize MonthlyGrid - it will use CacheManager internally
   if (window.MonthlyGrid) {
     console.log("Initializing MonthlyGrid with container:", containerId);
     MonthlyGrid.init(containerId);
-  } else {
-    contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
-    console.error("MonthlyGrid component not found");
+    
+    // FORCE MonthlyGrid to use the app's current month/year
+    if (typeof _currentMonth !== 'undefined' && typeof _currentYear !== 'undefined') {
+      MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
+    }
   }
-
+  
   _loadingView = null;
 },
    
