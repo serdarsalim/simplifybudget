@@ -17,11 +17,10 @@ var MonthlyGrid = (function() {
   let _isLoading = false;
  let _currencySymbol = '$';
   
-  // ENHANCED: Smart caching system
-  let _expenseCache = new Map(); // In-memory cache for current session
-  let _prefetchQueue = new Set(); // Track ongoing prefetch operations
-  const CACHE_PREFIX = 'monthlyGrid_expenses_';
-  const CACHE_VERSION = '1.0';
+// ENHANCED: Smart caching system
+// Using centralized CacheManager now
+// Removed: _expenseCache, _prefetchQueue, CACHE_PREFIX, CACHE_VERSION
+
   const MAX_CACHE_MONTHS = 6; // Limit cache size
   const SESSION_STORAGE_KEY = 'monthlyGrid_sessionActive'; // Track if session is new
   
@@ -107,210 +106,41 @@ function showDayDetailsPopup(day) {
   /**
    * Check if this is a new session (page refresh/new tab) and clear cache if so
    */
-  function handleSessionStart() {
-    // Check if this is a new session
-    const isSessionActive = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    
-    if (!isSessionActive) {
-      // This is a new session (page refresh/new tab)
-      clearCache();
-      sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
-    } 
+ function handleSessionStart() {
+  // Check if this is a new session
+  const isSessionActive = sessionStorage.getItem(SESSION_STORAGE_KEY);
+  
+  if (!isSessionActive) {
+    // This is a new session - clear cache
+    console.log('New session detected, clearing cache');
+    if (window.CacheManager) {
+      CacheManager.clear();
+    }
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
   }
+}
   
   /**
    * Get expense data from cache (memory first, then localStorage)
    */
   function getCachedExpenses(month, year) {
-    const key = getCacheKey(month, year);
-    
-  
-    
-    // Check localStorage cache
-    try {
-      const storageKey = CACHE_PREFIX + key;
-      const cached = localStorage.getItem(storageKey);
-      if (cached) {
-        const data = JSON.parse(cached);
-        
-        // Check cache version and 24-hour expiry (within session)
-        const cacheAge = Date.now() - data.timestamp;
-        const isExpired = cacheAge > 24 * 60 * 60 * 1000; // 24 hours
-        
-        if (data.version === CACHE_VERSION && !isExpired) {
-          
-          // Store in memory cache for faster access
-          _expenseCache.set(key, data.expenses);
-          
-          return data.expenses;
-        } else {
-          // Cache expired, remove it
-          localStorage.removeItem(storageKey);
-        }
-      }
-    } catch (error) {
-      console.warn('Error reading from localStorage cache:', error);
-    }
-    
-    return null;
-  }
+  if (!window.CacheManager) return null;
+  return CacheManager.getExpenses(month, year);
+}
   
   /**
    * Store expense data in cache (both memory and localStorage)
    */
   function setCachedExpenses(month, year, expenses) {
-    const key = getCacheKey(month, year);
-    
-    // Store in memory cache
-    _expenseCache.set(key, expenses);
-    
-    // Store in localStorage with timestamp for 24-hour expiry
-    try {
-      const storageKey = CACHE_PREFIX + key;
-      const data = {
-        version: CACHE_VERSION,
-        timestamp: Date.now(),
-        month: month,
-        year: year,
-        expenses: expenses
-      };
-      
-      localStorage.setItem(storageKey, JSON.stringify(data));
-      
-      // Clean up old cache entries if we exceed the limit
-      cleanupCache();
-      
-    } catch (error) {
-      console.warn('Error writing to localStorage cache:', error);
-    }
-  }
-  
-/**
- * Enhanced cleanup of expired cache entries
- */
-function cleanupCache() {
-  try {
-    const keys = [];
-    
-    // Find all cache keys in localStorage
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(CACHE_PREFIX)) {
-        keys.push(key);
-      }
-    }
-    
-    // Get the current date for age calculation
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    
-    // Process all cache entries
-    keys.forEach(key => {
-      try {
-        const data = JSON.parse(localStorage.getItem(key));
-        
-        // Skip if missing required data
-        if (!data || !data.year || data.month === undefined) return;
-        
-        // Calculate how many months old this cache entry is
-        const ageInMonths = (currentYear - data.year) * 12 + (currentMonth - data.month);
-        
-        // Remove entries older than MAX_CACHE_MONTHS
-        if (ageInMonths > MAX_CACHE_MONTHS) {
-          localStorage.removeItem(key);
-        }
-        
-        // Also remove entries with timestamp older than 1 day
-        const ageInMs = Date.now() - (data.timestamp || 0);
-        if (ageInMs > 24 * 60 * 60 * 1000) { // 24 hours
-          localStorage.removeItem(key);
-        }
-      } catch (e) {
-        // If we can't parse the entry, just remove it
-        localStorage.removeItem(key);
-      }
-    });
-  } catch (error) {
-    console.warn('Error during cache cleanup:', error);
-  }
+  if (!window.CacheManager) return;
+  CacheManager.setExpenses(expenses, month, year);
 }
   
-  /**
- * Enhanced prefetch logic 
- */
-function prefetchMonth(month, year) {
-  const key = getCacheKey(month, year);
+
   
-  // Skip if already cached or currently being fetched
-  if (getCachedExpenses(month, year) || _prefetchQueue.has(key)) {
-    return Promise.resolve();
-  }
+
   
-  // Avoid prefetching future months that are too far ahead
-  const now = new Date();
-  const currentRealMonth = now.getMonth();
-  const currentRealYear = now.getFullYear();
-  const monthsAhead = (year - currentRealYear) * 12 + (month - currentRealMonth);
-  
-  // We always prefetch past months, but limit future months to 2 months ahead
-  if (monthsAhead > 2) {
-    return Promise.resolve();
-  }
-  
-  _prefetchQueue.add(key);
-  
-  return new Promise((resolve) => {
-    if (!window.API || typeof API.getExpenseData !== 'function') {
-      _prefetchQueue.delete(key);
-      resolve();
-      return;
-    }
-    
-    API.getExpenseData(
-      month,
-      year,
-      function(result) {
-        _prefetchQueue.delete(key);
-        
-        if (result && result.success && result.expenses) {
-          setCachedExpenses(month, year, result.expenses);
-        } else {
-          // Even if we get an empty result, we should cache it to avoid repeated fetches
-          const emptyResult = result && result.expenses ? result.expenses : [];
-          console.log(`Prefetch for ${month}/${year} returned empty or error, caching empty result`);
-          setCachedExpenses(month, year, emptyResult);
-        }
-        
-        resolve();
-      },
-      function(error) {
-        _prefetchQueue.delete(key);
-        console.log(`Prefetch error for ${month}/${year}:`, error);
-        
-        // Cache empty array on error to prevent repeated failing requests
-        setCachedExpenses(month, year, []);
-        
-        resolve();
-      }
-    );
-  });
-}
-  
-  /**
-   * Get previous month/year
-   */
-  function getPreviousMonth(month, year) {
-    let prevMonth = month - 1;
-    let prevYear = year;
-    
-    if (prevMonth < 0) {
-      prevMonth = 11;
-      prevYear = year - 1;
-    }
-    
-    return { month: prevMonth, year: prevYear };
-  }
+
   
   /**
    * Get an element by ID with caching
@@ -322,7 +152,39 @@ function prefetchMonth(month, year) {
     return _elements[id];
   }
 
-    // BRUTE FORCE FIX for monthlyGrid.js
+
+
+/**
+ * Get previous month/year
+ */
+function getPreviousMonth(month, year) {
+  let prevMonth = month - 1;
+  let prevYear = year;
+  
+  if (prevMonth < 0) {
+    prevMonth = 11;
+    prevYear = year - 1;
+  }
+  
+  return { month: prevMonth, year: prevYear };
+}
+
+/**
+ * Get next month/year
+ */
+function getNextMonth(month, year) {
+  let nextMonth = month + 1;
+  let nextYear = year;
+  
+  if (nextMonth > 11) {
+    nextMonth = 0;
+    nextYear = year + 1;
+  }
+  
+  return { month: nextMonth, year: nextYear };
+}
+
+
 
 // Replace the loadCurrencyFromSettings function with this:
 function loadCurrencyFromSettings() {
@@ -462,44 +324,38 @@ function handleCurrencyChange(event) {
   renderGrid();
 }
   
-  /**
-   * ENHANCED: Load real expense data with smart caching and prefetching
-   */
-  function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
+/**
+ * ENHANCED: Load real expense data with smart caching and prefetching
+ */
+/**
+ * ENHANCED: Load real expense data with smart caching and prefetching
+ */
+function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   if (_isLoading) {
     return Promise.resolve();
   }
   
   // Check cache first for instant loading
-  const cachedExpenses = getCachedExpenses(month, year);
-  if (cachedExpenses) {
+  const monthExpenses = getCachedExpenses(month, year);  
+  if (monthExpenses) {
     
     // Load categories first, then process cached data
     return loadActiveCategories()
       .then(categories => {
-        processRealExpenseData(cachedExpenses);
+        processRealExpenseData(monthExpenses);  // ← And here
         renderGrid();
         
-        // Bidirectional prefetching - both previous and next months
-        const prev = getPreviousMonth(month, year);
-        const next = getNextMonth(month, year);
-        
-        setTimeout(() => {
-          // First check if it makes sense to prefetch (avoid future months too far ahead)
-          const now = new Date();
-          const currentRealMonth = now.getMonth();
-          const currentRealYear = now.getFullYear();
+        // PREFETCH HERE - when using cached data
+        if (window.CacheManager) {
+          // Prefetch adjacent months in background
+          const prev = getPreviousMonth(month, year);
+          const next = getNextMonth(month, year);
           
-          // Prefetch previous month (always)
-          prefetchMonth(prev.month, prev.year);
-          
-          // Only prefetch next month if it's not too far in the future
-          // (next month OR current month + max 2 months ahead)
-          const monthsAhead = (next.year - currentRealYear) * 12 + (next.month - currentRealMonth);
-          if (monthsAhead <= 2) {
-            prefetchMonth(next.month, next.year);
-          }
-        }, 100);
+          setTimeout(() => {
+            CacheManager.prefetchMonth(prev.month, prev.year);
+            CacheManager.prefetchMonth(next.month, next.year);
+          }, 500);
+        }
         
         return Promise.resolve();
       })
@@ -612,14 +468,19 @@ function checkCurrentMonth() {
         // STEP 4: Render the grid with fresh data
         renderGrid();
         
-        hideLoadingIndicator();
-        _isLoading = false;
-        
-        // Start prefetching previous month in background
+              hideLoadingIndicator();
+      _isLoading = false;
+
+      // PREFETCH HERE TOO - after loading fresh data
+      if (window.CacheManager) {
         const prev = getPreviousMonth(month, year);
+        const next = getNextMonth(month, year);
+        
         setTimeout(() => {
-          prefetchMonth(prev.month, prev.year);
+          CacheManager.prefetchMonth(prev.month, prev.year);
+          CacheManager.prefetchMonth(next.month, next.year);
         }, 500);
+      }
         
         return Promise.resolve();
       })
@@ -768,7 +629,6 @@ function addInactiveCategoriesWithSpending() {
                 // Store PARSED categories in _categories
                 _categories = parsedActiveCategories;
                 
-                console.log('Loaded and parsed active categories from API:', parsedActiveCategories);
                 resolve(parsedActiveCategories);
               } else {
                 reject('No categories in API result');
@@ -1759,22 +1619,27 @@ function getNextMonth(month, year) {
     }, 10);
   }
   
-  /**
-   * Create an empty transaction object for quick entry
-   */
-  function createEmptyTransaction(day, categoryId) {
-    const newId = `tx-new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-    
-    return {
-      id: newId,
-      date: new Date(_currentYear, _currentMonth, parseInt(day)),
-      category: categoryId,
-      amount: 0,
-      description: '',
-      account: 'Main Account',
-      notes: ''
-    };
-  }
+/**
+ * Create an empty transaction object for quick entry
+ */
+function createEmptyTransaction(day, categoryId) {
+  // Generate a unique ID
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substr(2, 9);
+  const newId = `tx-${timestamp}-${random}`;  
+  
+  
+  return {
+    id: newId,
+    date: new Date(_currentYear, _currentMonth, parseInt(day)),
+    category: categoryId,
+    amount: 0,
+    description: '',
+    account: 'Main Account',
+    notes: '',
+    isNew: true  // Mark as new
+  };
+}
   
   /**
  * Create a transaction item in the modal - REORDERED FIELDS: description, amount, account
@@ -1900,146 +1765,143 @@ function createTransactionItem(tx) {
 
 
 /**
- * Setup event handlers for transaction items
- * Modified to use TransactionManager
+ * Setup event handlers for transaction items with modification tracking
  */
 function setupTransactionItemEvents(item, tx) {
-const deleteBtn = item.querySelector('.transaction-delete');
-if (deleteBtn) {
-  deleteBtn.addEventListener('click', function(e) {
-    e.stopPropagation();
-    
-    // Remove from UI immediately for better UX
-    item.remove();
-    
-    // Use our clearing function instead of deletion
-    if (tx.id) {
-      clearTransactionById(tx.id, true);
-    }
-    
-    // Update transaction total in modal
-    updateTransactionTotal();
-  });
-}
-    
-      const amountInput = item.querySelector('.transaction-amount');
-      const descriptionInput = item.querySelector('.transaction-description');
-      const accountSelect = item.querySelector('.transaction-account');
+  const deleteBtn = item.querySelector('.transaction-delete');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
       
-        // In MonthlyGrid.js - look for the updateTransactionQueue function inside setupTransactionItemEvents
-        // This function is called when a transaction is updated or added
-
-
-
-    // WITH THIS UPDATED VERSION:
-    function updateTransactionQueue() {
-      // Only queue transactions with valid amounts
-      if (parseFloat(amountInput.value) > 0) {
-        // Get the category emoji
-        let categoryEmoji = '';
-        if (window.getCategoryEmoji) {
-          categoryEmoji = getCategoryEmoji(tx.category);
-        } else {
-          // Fallback: Try to find the category in the categories array
-          const category = _categories.find(c => c.id === tx.category);
-          if (category && category.emoji) {
-            categoryEmoji = category.emoji;
-          }
-        }
-    
-    // Create transaction for queue
-    const transaction = {
-      id: tx.id,
-      date: tx.date,
-      amount: parseFloat(amountInput.value) || 0,
-      category: tx.category,
-      description: descriptionInput.value,
-      account: accountSelect ? accountSelect.value : 'Main Account',
-      notes: tx.notes || '',
-      emoji: categoryEmoji
-    };
-    
-    // Update the transaction in our local array
-    tx.amount = transaction.amount;
-    tx.description = transaction.description;
-    if (accountSelect) {
-      tx.account = transaction.account;
-    }
-    
-    // Add/update in TransactionManager's queue
-    if (window.TransactionManager) {
-      // Check if this transaction is already in the queue
-      const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
+      // Remove from UI immediately for better UX
+      item.remove();
       
-      if (existingTx) {
-        TransactionManager.updateTransaction(transaction);
-      } else {
-        TransactionManager.addTransaction(transaction);
+      // Use our clearing function instead of deletion
+      if (tx.id) {
+        clearTransactionById(tx.id, true);
       }
-    }
+      
+      // Update transaction total in modal
+      updateTransactionTotal();
+    });
+  }
     
-    // Check if this transaction is already in our local array
-    const existingIndex = _transactions.findIndex(t => t.id === tx.id);
-    if (existingIndex === -1) {
-      // Add to local transactions array for immediate UI update
-      _transactions.push(tx);
-    } else {
-      // Update the existing transaction
-      _transactions[existingIndex] = tx;
-    }
-    
-    // CRITICAL FIX: Update the cache with the updated transactions array
-    // This ensures the transaction persists when switching months/categories
-    const key = getCacheKey(_currentMonth, _currentYear);
-    
-    // Get currently cached expenses for this month
-    let cachedExpenses = getCachedExpenses(_currentMonth, _currentYear) || [];
-    
-    // Check if this transaction already exists in cache
-    const cachedIndex = cachedExpenses.findIndex(e => e.rowIndex === tx.id || e.id === tx.id);
-    
-    if (cachedIndex >= 0) {
-      // Update existing transaction in cache
-      cachedExpenses[cachedIndex] = {
-        ...cachedExpenses[cachedIndex],
-        amount: transaction.amount,
-        name: transaction.description,
-        description: transaction.description,
-        account: transaction.account,
-        notes: transaction.notes
-      };
-    } else {
-      // Add new transaction to cache
-      cachedExpenses.push({
-        rowIndex: tx.id,
+  const amountInput = item.querySelector('.transaction-amount');
+  const descriptionInput = item.querySelector('.transaction-description');
+  const accountSelect = item.querySelector('.transaction-account');
+  
+  // Add a modified flag to track changes
+  item.setAttribute('data-modified', 'false');
+  
+  // This function is called when a transaction is updated or added
+  function updateTransactionQueue() {
+    // Only queue transactions with valid amounts
+    if (parseFloat(amountInput.value) > 0) {
+      // Mark as modified
+      item.setAttribute('data-modified', 'true');
+      
+      // Get the category emoji
+      let categoryEmoji = '';
+      if (window.getCategoryEmoji) {
+        categoryEmoji = getCategoryEmoji(tx.category);
+      } else {
+        // Fallback: Try to find the category in the categories array
+        const category = _categories.find(c => c.id === tx.category);
+        if (category && category.emoji) {
+          categoryEmoji = category.emoji;
+        }
+      }
+
+      // Create transaction for queue
+      const transaction = {
         id: tx.id,
         date: tx.date,
+        amount: parseFloat(amountInput.value) || 0,
         category: tx.category,
-        amount: transaction.amount,
-        name: transaction.description,
-        description: transaction.description,
-        account: transaction.account,
-        notes: transaction.notes
-      });
+        description: descriptionInput.value,
+        account: accountSelect ? accountSelect.value : 'Main Account',
+        notes: tx.notes || '',
+        emoji: categoryEmoji
+      };
+      
+      // Update the transaction in our local array
+      tx.amount = transaction.amount;
+      tx.description = transaction.description;
+      if (accountSelect) {
+        tx.account = transaction.account;
+      }
+      
+      // Add/update in TransactionManager's queue
+      if (window.TransactionManager) {
+        // Check if this transaction is already in the queue
+        const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
+        
+        if (existingTx) {
+          TransactionManager.updateTransaction(transaction);
+        } else {
+          TransactionManager.addTransaction(transaction);
+        }
+      }
+      
+      // Check if this transaction is already in our local array
+      const existingIndex = _transactions.findIndex(t => t.id === tx.id);
+      if (existingIndex === -1) {
+        // Add to local transactions array for immediate UI update
+        _transactions.push(tx);
+      } else {
+        // Update the existing transaction
+        _transactions[existingIndex] = tx;
+      }
+      
+      // Update cache using CacheManager
+      if (window.CacheManager) {
+        CacheManager.updateExpense({
+          id: tx.id,
+          rowIndex: tx.id,
+          date: tx.date,
+          category: tx.category,
+          amount: transaction.amount,
+          name: transaction.description,
+          description: transaction.description,
+          account: transaction.account,
+          notes: transaction.notes
+        }, _currentMonth, _currentYear);
+      }
     }
-    
-    // Update cache with modified expenses
-    setCachedExpenses(_currentMonth, _currentYear, cachedExpenses);
   }
-}
-   item._updateTransactionQueue = updateTransactionQueue;
+  
+  item._updateTransactionQueue = updateTransactionQueue;
 
-   if (amountInput) {
+  if (amountInput) {
     // Update when amount changes
     amountInput.addEventListener('input', function() {
+      item.setAttribute('data-modified', 'true');
       tx.amount = parseFloat(this.value) || 0;
       updateTransactionTotal();
+    });
+    
+    // Move to account field when Enter is pressed on amount
+    amountInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (accountSelect) {
+          accountSelect.focus();
+        }
+      }
+    });
+    
+    // Queue for saving when amount is complete (on blur)
+    amountInput.addEventListener('blur', function() {
+      if (parseFloat(this.value) > 0 && descriptionInput.value.trim()) {
+        updateTransactionQueue();
+      }
     });
   }
   
   if (descriptionInput) {
-    // Update transaction when description changes
+    // Update transaction when description changes - mark as modified
     descriptionInput.addEventListener('input', function() {
+      item.setAttribute('data-modified', 'true');
       tx.description = this.value;
     });
     
@@ -2062,66 +1924,60 @@ if (deleteBtn) {
     });
   }
   
-  if (amountInput) {
-    // Move to account field when Enter is pressed on amount
-    amountInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (accountSelect) {
-          accountSelect.focus();
-        }
-      }
-    });
-    
-    // Queue for saving when amount is complete (on blur)
-    amountInput.addEventListener('blur', function() {
-      if (parseFloat(this.value) > 0 && descriptionInput.value.trim()) {
+  if (accountSelect) {
+    // Update transaction data when account changes - mark as modified
+    accountSelect.addEventListener('change', function() {
+      item.setAttribute('data-modified', 'true');
+      tx.account = this.value;
+      // Auto-save when account is selected and other fields are filled
+      if (parseFloat(amountInput.value) > 0 && descriptionInput.value.trim()) {
         updateTransactionQueue();
       }
     });
   }
   
- if (accountSelect) {
-  // Update transaction data in memory only (don't save)
-  accountSelect.addEventListener('change', function() {
-    tx.account = this.value;
-    // Auto-save when account is selected and other fields are filled
+  // Add a listener for the forceSave event (used in addTransactionRow)
+  item.addEventListener('forceSave', function() {
     if (parseFloat(amountInput.value) > 0 && descriptionInput.value.trim()) {
       updateTransactionQueue();
     }
   });
 }
-}
+
+
+
+
+
   
-  function updateTransactionTotal() {
-    const transactionsList = getElement('transactions-list');
-    const modalTitle = getElement('modal-title');
-    if (!transactionsList || !modalTitle) return;
-    
-    const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
-      .map(input => parseFloat(input.value) || 0);
-    
-    const total = amounts.reduce((sum, amount) => sum + amount, 0);
-    
-    const titleTotal = modalTitle.querySelector('.title-total');
-    if (titleTotal) {
-      titleTotal.textContent = `Total: ${formatCurrency(total, 2)}`;
-    } else if (total > 0) {
-      const titleContent = modalTitle.querySelector('.integrated-title');
-      if (titleContent) {
-        const divider = document.createElement('span');
-        divider.className = 'title-divider';
-        divider.textContent = '|';
-        
-        const newTotal = document.createElement('span');
-        newTotal.className = 'title-total';
-        newTotal.textContent = `Total: ${formatCurrency(total, 2)}`;
-        
-        titleContent.appendChild(divider);
-        titleContent.appendChild(newTotal);
-      }
-    }
-  }
+        function updateTransactionTotal() {
+          const transactionsList = getElement('transactions-list');
+          const modalTitle = getElement('modal-title');
+          if (!transactionsList || !modalTitle) return;
+          
+          const amounts = Array.from(transactionsList.querySelectorAll('.transaction-amount'))
+            .map(input => parseFloat(input.value) || 0);
+          
+          const total = amounts.reduce((sum, amount) => sum + amount, 0);
+          
+          const titleTotal = modalTitle.querySelector('.title-total');
+          if (titleTotal) {
+            titleTotal.textContent = `Total: ${formatCurrency(total, 2)}`;
+          } else if (total > 0) {
+            const titleContent = modalTitle.querySelector('.integrated-title');
+            if (titleContent) {
+              const divider = document.createElement('span');
+              divider.className = 'title-divider';
+              divider.textContent = '|';
+              
+              const newTotal = document.createElement('span');
+              newTotal.className = 'title-total';
+              newTotal.textContent = `Total: ${formatCurrency(total, 2)}`;
+              
+              titleContent.appendChild(divider);
+              titleContent.appendChild(newTotal);
+            }
+          }
+        }
   
   function handleEscKey(e) {
     if (e.key === 'Escape') {
@@ -2135,31 +1991,39 @@ if (deleteBtn) {
 
 
 /**
- * Close the transaction modal - with final transaction saving
+ * Close the transaction modal - with saving only for modified transactions
  */
 function closeTransactionModal() {
   _isClosingModal = true;
   
   const modal = getElement('transaction-modal');
+  
   if (modal) {
-    // Save all transactions before closing
+    // Save ONLY MODIFIED transactions before closing
     const transactionsList = getElement('transactions-list');
+    
     if (transactionsList) {
       const items = transactionsList.querySelectorAll('.transaction-item');
       
-      // Process each transaction - FIXED VERSION
-      items.forEach(item => {
+      // Process each transaction - ONLY if it was modified
+      items.forEach((item, index) => {
         const amountInput = item.querySelector('.transaction-amount');
         const descriptionInput = item.querySelector('.transaction-description');
+        const wasModified = item.getAttribute('data-modified') === 'true';
         
-        // Only save transactions with valid amounts AND descriptions
-        if (amountInput && descriptionInput && 
+        // Only save transactions that were modified AND have valid data
+        if (wasModified && amountInput && descriptionInput && 
             parseFloat(amountInput.value) > 0 && 
             descriptionInput.value.trim()) {
           // We need to trigger the save in the item's context
           if (item._updateTransactionQueue) {
-            // Use the function stored on the item during setup
-            item._updateTransactionQueue();
+            try {
+              item._updateTransactionQueue();
+            } catch (error) {
+              console.error('Error updating transaction:', error);
+            }
+          } else {
+            console.warn(`Item ${index} missing _updateTransactionQueue function`);
           }
         }
       });
@@ -2181,29 +2045,41 @@ function closeTransactionModal() {
     setTimeout(() => {
       _isClosingModal = false;
     }, 300);
+  } else {
+    console.error('closeTransactionModal: Modal element not found!');
   }
 }
+
 
   
 /**
  * Add a new transaction row and force-save any existing transactions
  */
 function addTransactionRow() {
-  
   const transactionsList = getElement('transactions-list');
   const modal = getElement('transaction-modal');
-  
+   
   if (!transactionsList || !modal) {
     console.error('Required elements not found');
     return;
   }
   
   // Force save any existing transactions before adding new one
+  // but ONLY if they've been modified and have valid data
   const existingTransactions = transactionsList.querySelectorAll('.transaction-item');
   if (existingTransactions.length > 0) {
     const lastTransaction = existingTransactions[existingTransactions.length - 1];
-    // Dispatch event to force-save the previous transaction
-    lastTransaction.dispatchEvent(new CustomEvent('forceSave'));
+    const lastAmountInput = lastTransaction.querySelector('.transaction-amount');
+    const lastDescriptionInput = lastTransaction.querySelector('.transaction-description');
+    const wasModified = lastTransaction.getAttribute('data-modified') === 'true';
+    
+    // Only force save if the transaction was modified and has valid data
+    if (wasModified && lastAmountInput && lastDescriptionInput && 
+        parseFloat(lastAmountInput.value) > 0 && 
+        lastDescriptionInput.value.trim()) {
+      // Dispatch event to force-save the previous transaction
+      lastTransaction.dispatchEvent(new CustomEvent('forceSave'));
+    }
   }
   
   const day = modal.getAttribute('data-day');
@@ -2235,6 +2111,7 @@ function addTransactionRow() {
 
 
 
+
 /**
  * Clear a transaction by directly clearing the row in the spreadsheet
  */
@@ -2242,37 +2119,47 @@ function clearTransactionById(transactionId, skipRender) {
   if (!transactionId) return false;
   
   
-  // Find transaction in _transactions array for UI updates
-  const txIndex = _transactions.findIndex(tx => tx.id === transactionId);
+  // Find transaction in _transactions array
+  const txIndex = _transactions.findIndex(tx => {
+    return tx.id === transactionId || 
+           tx.originalTransactionId === transactionId ||
+           tx.rowIndex === transactionId;
+  });
+  
   if (txIndex === -1) {
-    console.warn('Transaction not found for clearing:', transactionId);
+    console.warn('Transaction not found locally:', transactionId);
     return false;
   }
   
-  // Remove from local transactions array for UI
+  // Get the transaction before removing
+  const transaction = _transactions[txIndex];
+  
+  // Remove from local array
   _transactions.splice(txIndex, 1);
   
   // Update the cache
-  const key = getCacheKey(_currentMonth, _currentYear);
-  let cachedExpenses = getCachedExpenses(_currentMonth, _currentYear) || [];
-  const cachedIndex = cachedExpenses.findIndex(e => 
-    e.rowIndex === transactionId || e.id === transactionId);
+  const currentExpenses = CacheManager.getExpenses(_currentMonth, _currentYear) || [];
+  const cacheIndex = currentExpenses.findIndex(e => 
+    e.id === transactionId || 
+    e.rowIndex === transactionId ||
+    e.originalTransactionId === transactionId
+  );
   
-  if (cachedIndex >= 0) {
-    cachedExpenses.splice(cachedIndex, 1);
-    setCachedExpenses(_currentMonth, _currentYear, cachedExpenses);
+  if (cacheIndex >= 0) {
+    currentExpenses.splice(cacheIndex, 1);
+    CacheManager.setExpenses(currentExpenses, _currentMonth, _currentYear);
   }
   
-  // Use our new API function to clear the row on the server
+  // ALWAYS ALWAYS ALWAYS call API - REMOVE THE CHECK!
   API.clearTransactionRow(transactionId, function(result) {
-    
-    // Re-render the grid unless specified not to
-    if (!skipRender) {
-      renderGrid();
-    }
   }, function(error) {
     console.error('Failed to clear transaction row:', error);
   });
+  
+  // Re-render unless specified not to
+  if (!skipRender) {
+    renderGrid();
+  }
   
   return true;
 }
@@ -2328,25 +2215,11 @@ function refresh(forceServerRefresh) {
    * Clear cache for testing or troubleshooting
    */
   function clearCache() {
-    
-    // Clear in-memory cache
-    _expenseCache.clear();
-    
-    // Clear localStorage cache
-    try {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(CACHE_PREFIX)) {
-          keys.push(key);
-        }
-      }
-      
-      keys.forEach(key => localStorage.removeItem(key));
-    } catch (error) {
-      console.warn('Error clearing localStorage cache:', error);
-    }
+  console.log('MonthlyGrid: Clearing cache');
+  if (window.CacheManager) {
+    CacheManager.clear();
   }
+}
 
   // Public methods
   return {

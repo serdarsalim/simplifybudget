@@ -198,12 +198,13 @@
     </div>
     
     <!-- Include JavaScript -->
-        <?!= include('settings.js'); ?>
-     <?!= include('API'); ?>
-      <?!= include('TransactionManager.js'); ?>
-     <?!= include('Utils'); ?>
-     <?!= include('Init'); ?>
-     <?!= include('dashboard.js'); ?>
+    <?!= include('CacheManager.js'); ?> 
+    <?!= include('settings.js'); ?>
+    <?!= include('API'); ?>
+    <?!= include('TransactionManager.js'); ?>
+    <?!= include('Utils'); ?>
+    <?!= include('Init'); ?>
+    <?!= include('dashboard.js'); ?>
      <?!= include('transactionEntry.js'); ?>
      <?!= include('categories.js'); ?> 
      <?!= include('monthlyGrid.js'); ?>
@@ -217,35 +218,33 @@
 
     
 
-<script>
-  // Main entry point - Initialize the application
-  document.addEventListener('DOMContentLoaded', function() {
+     <script>
+       // Main entry point - Initialize the application
+       document.addEventListener('DOMContentLoaded', function() {
     SimBudget.initialize();
     // REMOVED: The setTimeout that was forcing expenses view
     // Now the initialize function handles view selection with session persistence
   });
 
 
-    // Direct binding for refresh button that bypasses all the complexity
   document.addEventListener('DOMContentLoaded', function() {
-    const refreshBtn = document.getElementById('refreshExpenses');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', function() {
-        console.log('Manual refresh triggered');
-        
-        // Reset session tracking
-        sessionStorage.removeItem('monthlyGrid_sessionActive');
-        
-        // Signal fresh data needed
-        window.FORCE_FRESH_DATA = true;
-        
-        // Force refresh with hard reload
-        if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
-          MonthlyGrid.refresh();
-        }
-      });
-    }
-  });
+  const refreshBtn = document.getElementById('refreshExpenses');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function() {
+      console.log('Manual refresh triggered');
+      
+      // Clear ALL cache
+      if (window.CacheManager) {
+        CacheManager.clear();
+      }
+      
+      // Force refresh
+      if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
+        MonthlyGrid.refresh();
+      }
+    });
+  }
+});
 </script>
 
   </body>

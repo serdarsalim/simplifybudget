@@ -2067,15 +2067,16 @@ renderExpenseView: function(cachedExpenses) {
 },
 
 loadExpenseData: function() {
-
+  console.log("Loading expense view...");
+  
   const contentArea = document.getElementById("expenseContent");
   if (!contentArea) {
-    console.error("LoadExpenseData: Expense content area not found");
+    console.error("Expense content area not found");
     _loadingView = null;
     return;
   }
 
-  // 1. FIRST create a clean container with unique ID and proper dimensions
+  // Create container for MonthlyGrid
   const containerId = "expense-grid-" + Date.now();
   contentArea.innerHTML = `
     <div id="${containerId}" class="monthly-grid-container" 
@@ -2083,79 +2084,15 @@ loadExpenseData: function() {
     </div>
   `;
 
-  // 2. THEN initialize MonthlyGrid with the container
-  //    This will show the grid with sample data immediately
+  // Initialize MonthlyGrid - it will use CacheManager internally
   if (window.MonthlyGrid) {
+    console.log("Initializing MonthlyGrid with container:", containerId);
     MonthlyGrid.init(containerId);
-
-    // 3. FINALLY (optionally) fetch real data
-    //    Grid is already visible, so this is non-blocking
-    if (window.API && typeof API.getExpenseData === "function") {
-     
-
-      // Show subtle loading indicator
-      const loadingIndicator = document.createElement("div");
-      loadingIndicator.style.position = "absolute";
-      loadingIndicator.style.top = "10px";
-      loadingIndicator.style.right = "10px";
-      loadingIndicator.style.background = "rgba(255,255,255,0.8)";
-      loadingIndicator.style.padding = "5px 10px";
-      loadingIndicator.style.borderRadius = "4px";
-      loadingIndicator.style.fontSize = "12px";
-      loadingIndicator.innerHTML = "Loading data...";
-      document.getElementById(containerId).appendChild(loadingIndicator);
-
-      API.getExpenseData(
-        function(result) {
-
-          // Update grid with real data if available
-          if (result && result.success && result.expenses) {
-            MonthlyGrid.setExpenseData(result.expenses);
-          }
-
-          // Cache the result
-          _cache.set("expense", result.expenses || []);
-
-          // Remove loading indicator
-          loadingIndicator.remove();
-          
-          // TRIGGER PRELOADER: Start background loading if not already running
-          if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
-            _preloader.start('expense');
-          }
-        },
-        function(error) {
-          console.log("LoadExpenseData: Couldn't load expense data. Better luck next time. Ugh.", error);
-
-          // Update loading indicator to show info message
-          loadingIndicator.style.background = "rgba(255, 248, 225, 0.9)";
-          loadingIndicator.style.border = "1px solid #FFE082";
-          loadingIndicator.innerHTML = "Using sample data";
-
-          // Make indicator disappear after 3 seconds
-          setTimeout(function() {
-            loadingIndicator.style.opacity = "0";
-            loadingIndicator.style.transition = "opacity 0.5s";
-
-            // Remove from DOM after fade out
-            setTimeout(function() {
-              loadingIndicator.remove();
-            }, 500);
-          }, 3000);
-          
-          // Still trigger preloader even on error
-          if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
-            _preloader.start('expense');
-          }
-        }
-      );
-    }
   } else {
     contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
-    console.error("LoadExpenseData: MonthlyGrid component not found");
+    console.error("MonthlyGrid component not found");
   }
 
-  // Clear loading flag
   _loadingView = null;
 },
    
