@@ -1,6 +1,6 @@
 <script>
 // ============================================================================
-// CLIENT-SIDE RECURRING MODULE - SIMPLE FIX
+// CLIENT-SIDE RECURRING MODULE - ENHANCED VERSION
 // ============================================================================
 
 var RecurringManager = (function() {
@@ -64,6 +64,9 @@ var RecurringManager = (function() {
    */
   function init(containerId, cachedData) {
     console.log('RecurringManager: init called');
+    
+    // Clean up any unsaved new items when re-initializing (tab switch)
+    _recurringData = _recurringData.filter(item => !item.isNew);
     
     // Clear element cache when re-initializing
     Object.keys(_elements).forEach(key => {
@@ -236,31 +239,32 @@ var RecurringManager = (function() {
   /**
    * Calculate expiration date for current subscription period
    */
-  function calculateExpirationDate(startDate, frequency, endDate) {
-    if (!startDate || !(startDate instanceof Date)) return null;
+  function calculateExpirationDate(startDate, frequency, endDate, itemType) {
+    if (!startDate || !(startDate instanceof Date) || !endDate) return null;
     
-    const now = new Date();
+    // Check if this is a subscription (TRUE) vs fixed payment (FALSE)
+    const isSubscription = itemType && itemType.toString().toUpperCase() === 'TRUE';
     
-    // If has end date and it's passed, use end date
-    if (endDate && endDate < now) return endDate;
-    
-    let expDate = new Date(startDate);
-    const freq = frequency.toLowerCase();
-    
-    // Find the current period's end
-    while (expDate < now) {
-      if (freq.includes('monthly')) {
-        expDate.setMonth(expDate.getMonth() + 1);
-      } else if (freq.includes('yearly') || freq.includes('annual')) {
-        expDate.setFullYear(expDate.getFullYear() + 1);
-      } else if (freq.includes('quarterly')) {
-        expDate.setMonth(expDate.getMonth() + 3);
-      } else {
-        expDate.setMonth(expDate.getMonth() + 1);
-      }
+    // For Fixed Payments, end date is just the end date
+    if (!isSubscription) {
+      return endDate;
     }
     
-    // Subtract 1 day since it expires the day before renewal
+    // For Subscriptions - SIMPLE LOGIC
+    const freq = frequency.toLowerCase();
+    let expDate = new Date(startDate);
+    
+    // Add one full cycle from start date
+    if (freq.includes('yearly') || freq.includes('annual')) {
+      expDate.setFullYear(expDate.getFullYear() + 1);
+    } else if (freq.includes('quarterly')) {
+      expDate.setMonth(expDate.getMonth() + 3);
+    } else {
+      // Default to monthly
+      expDate.setMonth(expDate.getMonth() + 1);
+    }
+    
+    // Subtract 1 day (expires day before next cycle)
     expDate.setDate(expDate.getDate() - 1);
     
     return expDate;
@@ -310,6 +314,9 @@ var RecurringManager = (function() {
           } else {
             updateSummaryCards();
             updateRecurringTable();
+    
+    // Update header based on initial filter
+    updateDynamicDateHeader(_currentFilter);
           }
           
           console.log('RecurringManager: Data loaded successfully');
@@ -341,18 +348,37 @@ var RecurringManager = (function() {
       const startDate = item.startDate ? new Date(item.startDate) : null;
       const endDate = item.endDate ? new Date(item.endDate) : null;
       
-      // Calculate status based on dates
-      let status = 'Active';
-      const now = new Date();
-      if (endDate && endDate < now) {
-        status = 'Ended';
-      } else if (endDate && endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
-        status = 'Expires';
-      }
-      
-      // Calculate next payment and expiration only if start date exists
+      // Calculate next payment 
       const nextPayment = startDate ? calculateNextPayment(startDate, item.frequency || 'Monthly', endDate) : null;
-      const expiration = startDate ? calculateExpirationDate(startDate, item.frequency || 'Monthly', endDate) : null;
+      
+      // Calculate status - ONLY use expiration logic if there's an actual end date
+      let status = 'Active';
+      let expiration = null;
+      const now = new Date();
+      const isSubscription = item.type && item.type.toString().toUpperCase() === 'TRUE';
+      
+      if (endDate) {
+        // Only calculate expiration if there's an end date
+        expiration = calculateExpirationDate(startDate, item.frequency || 'Monthly', endDate, item.type);
+        
+        if (isSubscription) {
+          // For subscriptions, use calculated expiration date
+          if (expiration && expiration < now) {
+            status = 'Ended';
+          } else if (expiration) {
+            // Any subscription with an expiration date shows as "Expires"
+            status = 'Expires';
+          }
+        } else {
+          // For fixed payments, use raw end date
+          if (endDate < now) {
+            status = 'Ended';
+          } else if (endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
+            status = 'Expires';
+          }
+        }
+      }
+      // If no end date, status stays 'Active' and expiration stays null
       
       return {
         id: item.id,
@@ -554,8 +580,8 @@ var RecurringManager = (function() {
                 <th class="rec-frequency-header" data-translate="frequency">Frequency</th>
                 <th class="rec-amount-header" data-translate="amount">Amount</th>
                 <th class="rec-account-header" data-translate="account">Account</th>
-                <th class="rec-enddate-header" data-translate="end_date">End date</th>
                 <th class="rec-dynamic-date-header" id="dynamicDateHeader" data-translate="next_payment">Next Payment</th>
+                <th class="rec-enddate-header" data-translate="end_date">End date</th>
                 <th class="rec-notes-header">📝</th>
                 <th class="rec-actions-header" data-translate="actions">Actions</th>
               </tr>
@@ -580,18 +606,37 @@ var RecurringManager = (function() {
    */
   function updateDynamicDateHeader(filter) {
     const header = getElement('dynamicDateHeader');
-    if (header) {
-      if (filter === 'ended') {
-        header.setAttribute('data-translate', 'end_date');
-        header.textContent = 'End Date';
-      } else {
-        header.setAttribute('data-translate', 'next_payment');
-        header.textContent = 'Next Payment';
-      }
-      
-      if (window.SimBudget && SimBudget.applyTranslations) {
-        SimBudget.applyTranslations();
-      }
+    if (!header) return;
+    
+    if (filter === 'ended') {
+      // Hide the Next Payment column completely for ended items
+      header.style.display = 'none';
+      // Also hide all existing cells in this column
+      document.querySelectorAll('.rec-dynamic-date-cell').forEach(cell => {
+        cell.style.display = 'none';
+      });
+    } else if (filter === 'expires') {
+      // Show "Expires on" for expires filter
+      header.style.display = '';
+      header.setAttribute('data-translate', 'expires_on');
+      header.textContent = 'Expires on';
+      // Show all existing cells in this column
+      document.querySelectorAll('.rec-dynamic-date-cell').forEach(cell => {
+        cell.style.display = '';
+      });
+    } else {
+      // Show the Next Payment column for active items
+      header.style.display = '';
+      header.setAttribute('data-translate', 'next_payment');
+      header.textContent = 'Next Payment';
+      // Show all existing cells in this column
+      document.querySelectorAll('.rec-dynamic-date-cell').forEach(cell => {
+        cell.style.display = '';
+      });
+    }
+    
+    if (window.SimBudget && SimBudget.applyTranslations) {
+      SimBudget.applyTranslations();
     }
   }
 
@@ -630,12 +675,21 @@ var RecurringManager = (function() {
     filteredData.forEach(item => {
       const row = createRecurringRow(item);
       tbody.appendChild(row);
+      
+      // Hide next payment column if on ended filter
+      if (statusFilter === 'ended') {
+        const dynamicCell = row.querySelector('.rec-dynamic-date-cell');
+        if (dynamicCell) {
+          dynamicCell.style.display = 'none';
+        }
+      }
     });
 
     if (filteredData.length === 0) {
       const emptyRow = document.createElement('tr');
+      const colSpan = statusFilter === 'ended' ? '10' : '11'; // Less columns when Next Payment is hidden
       emptyRow.innerHTML = `
-        <td colspan="11" class="rec-empty-message" data-translate="no_recurring_found">
+        <td colspan="${colSpan}" class="rec-empty-message" data-translate="no_recurring_found">
           No recurring transactions found
         </td>
       `;
@@ -681,15 +735,15 @@ var RecurringManager = (function() {
     let dynamicDateClass = '';
     
     if (item.status.toLowerCase() === 'ended') {
-      dynamicDateValue = endDateStr;
+      dynamicDateValue = 'Ended';
       dynamicDateClass = 'status-ended';
+    } else if (item.status.toLowerCase() === 'expires' && item.expiration) {
+      // Show expiration date for items that expire
+      dynamicDateValue = formatDate(item.expiration);
+      dynamicDateClass = 'status-expires';
     } else if (item.nextPayment) {
       dynamicDateValue = formatDate(item.nextPayment);
       dynamicDateClass = 'status-active';
-    } else if (item.expiration) {
-      // Show expiration if no next payment
-      dynamicDateValue = `Expires ${formatDate(item.expiration)}`;
-      dynamicDateClass = 'status-expires';
     } else if (item.isNew || !item.startDate) {
       // For new items or items without start date, show empty
       dynamicDateValue = '';
@@ -721,18 +775,20 @@ var RecurringManager = (function() {
       </td>
       <td class="rec-amount-cell">${formatCurrency(item.amount)}</td>
       <td class="rec-account-cell">${item.account}</td>
-      <td class="rec-enddate-cell">${endDateStr}</td>
       <td class="rec-dynamic-date-cell ${dynamicDateClass}">${dynamicDateValue}</td>
+      <td class="rec-enddate-cell">${endDateStr}</td>
       <td class="rec-notes-cell" data-notes="${item.notes || ''}" title="Click to view notes">
         ${item.notes ? '📝' : ''}
       </td>
       <td class="rec-actions-cell">
-        <button class="rec-action-btn rec-edit-btn" data-id="${item.id}" title="Edit">
-          <i class="material-icons">edit</i>
-        </button>
-        <button class="rec-action-btn rec-delete-btn" data-id="${item.id}" title="Delete">
-          <i class="material-icons">delete</i>
-        </button>
+        <div class="rec-action-buttons">
+          <button class="rec-action-btn rec-edit-btn" data-id="${item.id}" title="Edit">
+            <i class="material-icons">edit</i>
+          </button>
+          <button class="rec-action-btn rec-delete-btn" data-id="${item.id}" title="Delete">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
       </td>
     `;
 
@@ -748,21 +804,25 @@ var RecurringManager = (function() {
     // Always reload settings before creating new item to get current currency
     loadSettings();
     
-    // Check if there's already a new item being edited
+    // Clean up any existing unsaved new items first
     const existingNewItem = _recurringData.find(item => item.isNew);
     if (existingNewItem) {
-      console.log('RecurringManager: New item already being edited');
-      
-      // Find the row and focus on the name field
+      // Check if the row still exists in DOM
       const existingRow = document.querySelector(`tr[data-id="${existingNewItem.id}"]`);
       if (existingRow) {
+        // Row exists, focus on it
+        console.log('RecurringManager: New item already being edited');
         const nameInput = existingRow.querySelector('input[data-field="name"]');
         if (nameInput) {
           nameInput.focus();
           nameInput.select();
         }
+        return;
+      } else {
+        // Row doesn't exist (user switched tabs), remove from data
+        console.log('RecurringManager: Removing orphaned new item');
+        _recurringData = _recurringData.filter(item => !item.isNew);
       }
-      return; // Don't create another new item
     }
     
     // Check if any row is currently being edited
@@ -785,7 +845,7 @@ var RecurringManager = (function() {
       category: _categories[0]?.fullName || '',
       type: 'TRUE',
       frequency: 'Monthly',
-      amount: 0,
+      amount: '', // IMPROVEMENT #1: Empty amount field
       account: '',
       status: 'Active',
       nextPayment: null,
@@ -866,12 +926,13 @@ var RecurringManager = (function() {
       </select>
     `;
 
-    // Amount (5) - Use current currency symbol
+    // Amount (5) - IMPROVEMENT #1: Empty value for new items
+    const amountValue = item.isNew ? '' : item.amount;
     cells[5].innerHTML = `
       <div class="rec-amount-wrapper">
         <span class="rec-currency">${_currencySymbol}</span>
         <input type="number" class="rec-edit-input rec-amount" 
-          value="${item.amount}" 
+          value="${amountValue}" 
           data-field="amount" 
           placeholder="0.00" 
           step="0.01" 
@@ -887,17 +948,22 @@ var RecurringManager = (function() {
         placeholder="Account/Card">
     `;
 
-    // End Date (7)
+    // IMPROVEMENT #5: Reordered columns - Dynamic Date (7) - non-editable (hide if ended filter)
+    if (_currentFilter === 'ended') {
+      cells[7].style.display = 'none';
+    } else {
+      cells[7].style.display = '';
+      cells[7].innerHTML = `<span class="rec-noneditable">${cells[7].textContent}</span>`;
+    }
+
+    // IMPROVEMENT #5: Reordered columns - End Date (8)
     const endDateValue = item.endDate && item.endDate instanceof Date ? 
       item.endDate.toISOString().split('T')[0] : '';
-    cells[7].innerHTML = `
+    cells[8].innerHTML = `
       <input type="date" class="rec-edit-input" 
         value="${endDateValue}" 
         data-field="endDate">
     `;
-
-    // Dynamic Date (8) - non-editable
-    cells[8].innerHTML = `<span class="rec-noneditable">${cells[8].textContent}</span>`;
 
     // Notes (9)
     cells[9].innerHTML = `
@@ -907,14 +973,16 @@ var RecurringManager = (function() {
         placeholder="Notes">
     `;
 
-    // Actions (10)
+    // Actions (10) - IMPROVEMENT #2: Side-by-side buttons
     cells[10].innerHTML = `
-      <button class="rec-action-btn rec-save-btn" data-id="${item.id}" title="Save">
-        <i class="material-icons">check</i>
-      </button>
-      <button class="rec-action-btn rec-cancel-btn" data-id="${item.id}" title="Cancel">
-        <i class="material-icons">close</i>
-      </button>
+      <div class="rec-action-buttons">
+        <button class="rec-action-btn rec-save-btn" data-id="${item.id}" title="Save">
+          <i class="material-icons">check</i>
+        </button>
+        <button class="rec-action-btn rec-cancel-btn" data-id="${item.id}" title="Cancel">
+          <i class="material-icons">close</i>
+        </button>
+      </div>
     `;
 
     const nameInput = cells[1].querySelector('input');
@@ -993,24 +1061,52 @@ var RecurringManager = (function() {
 
     // Recalculate status and dates
     const now = new Date();
-    if (item.endDate && item.endDate < now) {
-      item.status = 'Ended';
-      item.nextPayment = null;
-    } else if (item.endDate && item.endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
-      item.status = 'Expires';
-      item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
-    } else {
-      item.status = 'Active';
-      item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
-    }
+    const isSubscription = item.type && item.type.toString().toUpperCase() === 'TRUE';
     
-    item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate);
+    // Only calculate expiration if there's an end date
+    if (item.endDate) {
+      item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate, item.type);
+      
+      if (isSubscription) {
+        // For subscriptions, use calculated expiration date
+        if (item.expiration && item.expiration < now) {
+          item.status = 'Ended';
+          item.nextPayment = null;
+        } else if (item.expiration) {
+          // Any subscription with an expiration date shows as "Expires"
+          item.status = 'Expires';
+          item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+        } else {
+          item.status = 'Active';
+          item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+        }
+      } else {
+        // For fixed payments, use raw end date
+        if (item.endDate < now) {
+          item.status = 'Ended';
+          item.nextPayment = null;
+        } else if (item.endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
+          item.status = 'Expires';
+          item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+        } else {
+          item.status = 'Active';
+          item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
+        }
+      }
+    } else {
+      // No end date = Active subscription
+      item.status = 'Active';
+      item.nextPayment = calculateNextPayment(item.startDate, item.frequency, null);
+      item.expiration = null;
+    }
 
     // For new items, generate a proper ID if still using temporary ID
     if (item.isNew || item.id.startsWith('new-')) {
       item.id = `REC-${Date.now()}`;
-      delete item.isNew;
     }
+    
+    // Always remove the isNew flag after successful save
+    delete item.isNew;
 
     // Save to server
     saveToServer([item]);
@@ -1059,6 +1155,76 @@ var RecurringManager = (function() {
   }
 
   /**
+   * Show custom confirmation dialog
+   */
+  function showConfirmDialog(message, onConfirm, onCancel) {
+    // Remove any existing dialog
+    const existingDialog = document.querySelector('.rec-confirm-dialog');
+    if (existingDialog) {
+      existingDialog.remove();
+    }
+    
+    // Create dialog overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'rec-confirm-overlay';
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'rec-confirm-dialog';
+    
+    dialog.innerHTML = `
+      <div class="rec-confirm-header">
+        <h3>Confirm Delete</h3>
+      </div>
+      <div class="rec-confirm-body">
+        <p>${message}</p>
+      </div>
+      <div class="rec-confirm-actions">
+        <button class="rec-confirm-btn rec-cancel-btn" type="button">Cancel</button>
+        <button class="rec-confirm-btn rec-delete-btn" type="button">Delete</button>
+      </div>
+    `;
+    
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    
+    // Focus the delete button
+    const deleteBtn = dialog.querySelector('.rec-delete-btn');
+    const cancelBtn = dialog.querySelector('.rec-cancel-btn');
+    
+    setTimeout(() => deleteBtn.focus(), 100);
+    
+    // Handle button clicks
+    deleteBtn.addEventListener('click', function() {
+      overlay.remove();
+      if (onConfirm) onConfirm();
+    });
+    
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+      if (onCancel) onCancel();
+    });
+    
+    // Handle keyboard events
+    dialog.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        deleteBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBtn.click();
+      }
+    });
+    
+    // Handle overlay click (close on outside click)
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        cancelBtn.click();
+      }
+    });
+  }
+
+  /**
    * Delete recurring item
    */
   function deleteRecurringItem(itemId) {
@@ -1067,28 +1233,39 @@ var RecurringManager = (function() {
     const item = _recurringData.find(r => r.id === itemId);
     if (!item) return;
 
-    if (confirm(`Delete "${item.name}"?`)) {
-      const row = document.querySelector(`tr[data-id="${itemId}"]`);
-      if (row) row.remove();
+    showConfirmDialog(
+      `Are you sure you want to delete "${item.name}"?`,
+      function() {
+        // On confirm - delete the item
+        const row = document.querySelector(`tr[data-id="${itemId}"]`);
+        if (row) row.remove();
 
-      _recurringData = _recurringData.filter(r => r.id !== itemId);
-      
-      updateSummaryCards();
+        _recurringData = _recurringData.filter(r => r.id !== itemId);
+        
+        updateSummaryCards();
 
-      if (window.API && typeof API.clearRecurringRow === 'function') {
-        API.clearRecurringRow(itemId, 
-          function(result) {
-            console.log('RecurringManager: Item deleted on server');
-          },
-          function(error) {
-            console.error('RecurringManager: Delete error', error);
-            if (window.Utils && Utils.showToast) {
-              Utils.showToast('Error deleting item: ' + error, 'error');
+        if (window.API && typeof API.clearRecurringRow === 'function') {
+          API.clearRecurringRow(itemId, 
+            function(result) {
+              console.log('RecurringManager: Item deleted on server');
+              if (window.Utils && Utils.showToast) {
+                Utils.showToast(`"${item.name}" deleted successfully`, 'success');
+              }
+            },
+            function(error) {
+              console.error('RecurringManager: Delete error', error);
+              if (window.Utils && Utils.showToast) {
+                Utils.showToast('Error deleting item: ' + error, 'error');
+              }
             }
-          }
-        );
+          );
+        }
+      },
+      function() {
+        // On cancel - do nothing
+        console.log('RecurringManager: Delete cancelled');
       }
-    }
+    );
   }
 
   /**
@@ -1235,6 +1412,9 @@ var RecurringManager = (function() {
         });
         e.target.classList.add('active');
         _currentFilter = e.target.getAttribute('data-status');
+        
+        // Update table and header based on new filter
+        updateDynamicDateHeader(_currentFilter);
         updateRecurringTable();
         return;
       }
@@ -1370,11 +1550,9 @@ var RecurringManager = (function() {
 window.RecurringManager = RecurringManager;
 </script>
 
-
-
 <style>
 /* ==============================================================
-   RECURRING MANAGEMENT - OPTIMIZED STYLES
+   RECURRING MANAGEMENT - ENHANCED STYLES
    ==============================================================
 */
 
@@ -1420,6 +1598,166 @@ body.dark-mode .rec-notes-popup {
   background: var(--dark-surface, #1e1e1e);
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+/* ======== CONFIRMATION DIALOG ======== */
+.rec-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+}
+
+.rec-confirm-dialog {
+  background: white;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: rec-dialog-appear 0.2s ease-out;
+}
+
+@keyframes rec-dialog-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.rec-confirm-header {
+  background-color: #fe9aa1;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.rec-confirm-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.rec-confirm-body {
+  padding: 20px;
+}
+
+.rec-confirm-body p {
+  margin: 0;
+  font-size: 15px;
+  color: #2c3e50;
+  line-height: 1.4;
+}
+
+.rec-confirm-actions {
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  border-top: 1px solid #eee;
+}
+
+.rec-confirm-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 0px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+
+.rec-confirm-btn.rec-cancel-btn {
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.rec-confirm-btn.rec-cancel-btn:hover {
+  background-color: #e8e8e8;
+  color: #2c3e50;
+}
+
+.rec-confirm-btn.rec-delete-btn {
+  background-color: transparent;
+  color: #f44336;
+  border: 1px solid #f44336;
+}
+
+.rec-confirm-btn.rec-delete-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #d32f2f;
+}
+
+.rec-confirm-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.3);
+}
+
+/* Dark mode for confirmation dialog */
+body.dark-mode .rec-confirm-dialog {
+  background: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-confirm-header {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-confirm-header h3 {
+  color: #DDA15E;
+}
+
+body.dark-mode .rec-confirm-body p {
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-confirm-actions {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-confirm-btn.rec-cancel-btn {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .rec-confirm-btn.rec-cancel-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .rec-confirm-btn.rec-delete-btn:focus {
+  box-shadow: 0 0 0 2px rgba(239, 83, 80, 0.3);
+}
+
+body.dark-mode .rec-confirm-btn.rec-delete-btn {
+  background-color: transparent;
+  color: #ef5350;
+  border-color: #ef5350;
+}
+
+body.dark-mode .rec-confirm-btn.rec-delete-btn:hover {
+  background-color: rgba(239, 83, 80, 0.1);
+  color: #f44336;
 }
 
 /* ======== SUMMARY BOX ======== */
@@ -1565,9 +1903,10 @@ body.dark-mode .rec-notes-popup {
   font-size: 14px;
 }
 
+/* IMPROVEMENT #6: Reduced table padding */
 .rec-table th,
 .rec-table td {
-  padding: 10px 8px;
+  padding: 6px 4px;
   text-align: left;
   border-bottom: 1px solid #eee;
   white-space: nowrap;
@@ -1584,6 +1923,33 @@ body.dark-mode .rec-notes-popup {
   z-index: 10;
   font-family: 'Lato', sans-serif;
   font-weight: 700;
+}
+
+/* IMPROVEMENT #6: Specific column widths */
+.rec-type-header,
+.rec-type-cell {
+  width: 40px !important;
+  max-width: 40px !important;
+  text-align: center !important;
+}
+
+.rec-frequency-header,
+.rec-frequency-cell {
+  width: 50px !important;
+  max-width: 50px !important;
+  text-align: center !important;
+}
+
+.rec-amount-header,
+.rec-amount-cell {
+  width: 80px !important;
+  max-width: 80px !important;
+}
+
+.rec-account-header,
+.rec-account-cell {
+  width: 80px !important;
+  max-width: 80px !important;
 }
 
 /* Name cell - prevent wrapping */
@@ -1641,6 +2007,14 @@ body.dark-mode .rec-notes-popup {
   color: #2c3e50;
 }
 
+/* IMPROVEMENT #2: Side-by-side action buttons */
+.rec-action-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+}
+
 .rec-action-btn {
   background: none;
   border: none;
@@ -1649,8 +2023,8 @@ body.dark-mode .rec-notes-popup {
   align-items: center;
   justify-content: center;
   color: #666;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 0px;
 }
 
@@ -1661,6 +2035,7 @@ body.dark-mode .rec-notes-popup {
 
 .rec-actions-cell {
   white-space: nowrap;
+  text-align: center;
 }
 
 .rec-save-btn {
@@ -1669,6 +2044,16 @@ body.dark-mode .rec-notes-popup {
 
 .rec-cancel-btn {
   color: #757575;
+}
+
+/* IMPROVEMENT #3: Red X icon for delete button */
+.rec-delete-btn {
+  color: #f44336 !important;
+}
+
+.rec-delete-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1) !important;
+  color: #d32f2f !important;
 }
 
 .rec-edit-input {
@@ -1702,15 +2087,22 @@ body.dark-mode .rec-notes-popup {
   color: #d32f2f;
 }
 
+/* IMPROVEMENT #4: Smaller font for type and frequency */
+.rec-type-cell,
+.rec-frequency-cell {
+  font-size: 12px !important;
+}
+
+.rec-type-letter,
+.frequency-letter {
+  font-weight: bold;
+  font-size: 12px !important;
+}
+
 /* Mobile optimizations */
 @media (max-width: 768px) {
   .rec-table {
     font-size: 12px;
-  }
-  
-  .rec-table th,
-  .rec-table td {
-    padding: 6px 4px;
   }
   
   /* Hide start date column on mobile */
@@ -1733,43 +2125,15 @@ body.dark-mode .rec-notes-popup {
     text-align: center;
   }
   
-  /* Type column */
-  .rec-type-cell,
-  .rec-table th:nth-child(4) {
-    width: 25px;
-    max-width: 25px;
-    text-align: center;
-  }
-  
-  /* Frequency column */
-  .rec-frequency-cell,
-  .rec-table th:nth-child(5) {
-    width: 25px;
-    max-width: 25px;
-    text-align: center;
-  }
-  
-  /* Amount column */
-  .rec-amount-cell,
-  .rec-table th:nth-child(6) {
-    width: 50px;
-  }
-  
-  /* Account column */
-  .rec-account-cell,
-  .rec-table th:nth-child(7) {
-    max-width: 60px;
-  }
-  
   /* End date column - hide on mobile */
   .rec-enddate-cell,
-  .rec-table th:nth-child(8) {
+  .rec-table th:nth-child(9) {
     display: none;
   }
   
   /* Dynamic date column */
   .rec-dynamic-date-cell,
-  .rec-table th:nth-child(9) {
+  .rec-table th:nth-child(8) {
     width: 70px;
   }
   
@@ -1782,7 +2146,7 @@ body.dark-mode .rec-notes-popup {
   /* Actions column */
   .rec-actions-cell,
   .rec-table th:nth-child(11) {
-    width: 36px;
+    width: 60px;
     padding-left: 0;
     padding-right: 0;
   }
@@ -1794,7 +2158,7 @@ body.dark-mode .rec-notes-popup {
   }
   
   .rec-action-btn i {
-    font-size: 18px;
+    font-size: 16px;
   }
   
   /* Filter adjustments */
@@ -1824,12 +2188,6 @@ body.dark-mode .rec-notes-popup {
     display: inline-block;
     font-weight: bold;
   }
-}
-
-/* Enhanced type display */
-.rec-type-letter {
-  font-weight: bold;
-  font-size: 14px;
 }
 
 /* Emoji-only category display */
@@ -1981,6 +2339,16 @@ body.dark-mode .rec-notes-cell:hover {
   color: #DDA15E;
 }
 
+/* IMPROVEMENT #3: Dark mode delete button styling */
+body.dark-mode .rec-delete-btn {
+  color: #ef5350 !important;
+}
+
+body.dark-mode .rec-delete-btn:hover {
+  background-color: rgba(239, 83, 80, 0.1) !important;
+  color: #f44336 !important;
+}
+
 /* ======== DESKTOP STYLES ======== */
 @media (min-width: 769px) {
   .rec-box-item {
@@ -2028,5 +2396,13 @@ body.dark-mode .rec-notes-cell:hover {
   color: #999;
   font-style: italic;
   padding: 20px !important;
+}
+
+/* Hide Next Payment column completely when display is none */
+.rec-dynamic-date-header[style*="display: none"],
+.rec-dynamic-date-cell[style*="display: none"] {
+  width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
 }
 </style>
