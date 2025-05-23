@@ -2257,6 +2257,25 @@ function refresh(forceServerRefresh) {
     _currentYear = year;
     updateMonthYearDisplay();
     // Don't reload - just update the display
+  },
+   navigateToMonth: function(month, year) {
+    console.log('MonthlyGrid: Navigating to', month, year);
+    
+    // Check if we're already showing this month
+    if (_currentMonth === month && _currentYear === year) {
+      console.log('MonthlyGrid: Already showing this month');
+      return;
+    }
+    
+    // Update internal state
+    _currentMonth = month;
+    _currentYear = year;
+    
+    // Update the display
+    updateMonthYearDisplay();
+    
+    // Load data for this month (will use cache if available)
+    loadRealExpenseData(_currentMonth, _currentYear);
   }
 
 

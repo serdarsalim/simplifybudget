@@ -567,45 +567,55 @@ Views: {
    * Switch to a view - ENHANCED with session persistence
    */
   switchTo: function(viewName) {
-    if (!viewName) return;
+  if (!viewName) return;
 
+  // Store the current month/year before switching
+  const fromView = _currentView;
+  const toView = viewName;
+  
+  // Save the view choice for session persistence
+  try {
+    localStorage.setItem('simbudget_lastActiveView', viewName);
+  } catch (error) {
+    console.warn("Session persistence: Could not save active view", error);
+  }
 
-    // Save the view choice for session persistence
-    try {
-      localStorage.setItem('simbudget_lastActiveView', viewName);
-    } catch (error) {
-      console.warn("Session persistence: Could not save active view", error);
+  // Hide all views
+  document.querySelectorAll(".view").forEach((view) => {
+    view.classList.remove("active-view");
+  });
+
+  // Show the selected view
+  const targetView = document.getElementById(viewName + "View");
+  if (targetView) {
+    targetView.classList.add("active-view");
+    _currentView = viewName;
+
+    // Update sidebar active state
+    this.updateSidebarActiveState(viewName);
+    
+    // SYNC MONTH/YEAR when switching between budget and expenses
+    if (fromView === 'budget' && toView === 'expense') {
+      // Going from budget to expenses - sync the month
+      if (window.MonthlyGrid && typeof _currentMonth !== 'undefined') {
+        console.log('Syncing expense view to budget month:', _currentMonth, _currentYear);
+        // This will update MonthlyGrid's month without reloading if data is cached
+        setTimeout(() => {
+          MonthlyGrid.navigateToMonth(_currentMonth, _currentYear);
+        }, 100);
+      }
     }
-
-    // Hide all views
-    document.querySelectorAll(".view").forEach((view) => {
-      view.classList.remove("active-view");
+    
+    // Dispatch event when view is activated
+    const event = new CustomEvent("view-activated", {
+      detail: { view: viewName }
     });
+    document.dispatchEvent(event);
 
-    // Show the selected view
-    const targetView = document.getElementById(viewName + "View");
-    if (targetView) {
-      targetView.classList.add("active-view");
-      _currentView = viewName;
-
-      // Update sidebar active state - ENHANCED for reliability
-      this.updateSidebarActiveState(viewName);
-
-      
-      // Dispatch event when view is activated
-      const event = new CustomEvent("view-activated", {
-        detail: { view: viewName },
-      });
-      document.dispatchEvent(event);
-
-      // Load data for the view
-      SimBudget.loadViewData(viewName);
-
-
-    } else {
-      console.error("Views.switchTo: Target view not found", viewName + "View");
-    }
-  },
+    // Load data for the view
+    SimBudget.loadViewData(viewName);
+  }
+},
 
   /**
    * Update sidebar active state - NEW helper function
@@ -1587,7 +1597,7 @@ loadViewData: function(viewName, forceRefresh = false) {
       loadBudgetData: function() {
      
 
-        
+
         // Make sure we have current month/year
         if (typeof _currentMonth === 'undefined') {
           _currentMonth = new Date().getMonth();
