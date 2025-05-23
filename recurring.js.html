@@ -1,12 +1,11 @@
 <script>
 // ============================================================================
-// CLIENT-SIDE RECURRING MODULE - CURRENCY FIX
+// CLIENT-SIDE RECURRING MODULE - SIMPLE FIX
 // ============================================================================
 
 var RecurringManager = (function() {
   // Private variables
   let _initialized = false;
-  let _eventsInitialized = false;
   let _recurringData = [];
   let _categories = [];
   let _currencySymbol = '$';
@@ -64,15 +63,18 @@ var RecurringManager = (function() {
    * @param {Array|null} cachedData - Optional cached data to use instead of loading
    */
   function init(containerId, cachedData) {
-    console.log('RecurringManager: init called with', cachedData ? cachedData.length + ' cached items' : 'no cache');
+    console.log('RecurringManager: init called');
     
-    // Prevent re-initialization if already initialized
-    if (_initialized && !cachedData) {
-      console.log('RecurringManager: Already initialized, skipping');
-      return;
+    // Clear element cache when re-initializing
+    Object.keys(_elements).forEach(key => {
+      delete _elements[key];
+    });
+    
+    // Reset event binding flag
+    const oldContainer = document.getElementById('recurringContent');
+    if (oldContainer) {
+      oldContainer.dataset.eventsbound = 'false';
     }
-    
-    console.log('RecurringManager: Initializing...');
     
     // Load user settings
     loadSettings();
@@ -92,16 +94,26 @@ var RecurringManager = (function() {
     // Load categories
     loadCategories();
     
-    // If cached data provided, use it
-    if (cachedData && Array.isArray(cachedData)) {
+    // Check if we already have data loaded
+    if (_initialized && _recurringData.length > 0 && !cachedData) {
+      console.log('RecurringManager: Using existing loaded data');
+      // Just render with existing data
+      renderRecurringView();
+      bindEvents();
+      
+      // Set active filter as default
+      setTimeout(() => {
+        const activeBtn = document.querySelector('.rec-filter-btn[data-status="active"]');
+        if (activeBtn) {
+          activeBtn.click();
+        }
+      }, 100);
+      
+    } else if (cachedData && Array.isArray(cachedData)) {
       console.log('RecurringManager: Using provided cached data');
       _recurringData = processRecurringData(cachedData);
       renderRecurringView();
-      
-      // Only bind events if not already bound
-      if (!_eventsInitialized) {
-        bindEvents();
-      }
+      bindEvents();
       
       // Set active filter as default
       setTimeout(() => {
@@ -115,8 +127,10 @@ var RecurringManager = (function() {
       setTimeout(() => {
         loadRealRecurringData(true); // true = background refresh
       }, 2000);
-    } else {
-      // No cached data, load fresh
+      
+    } else if (!_initialized || _recurringData.length === 0) {
+      console.log('RecurringManager: Loading fresh data');
+      // No data yet, load fresh
       loadRealRecurringData();
     }
     
@@ -207,9 +221,8 @@ var RecurringManager = (function() {
         nextDate.setFullYear(nextDate.getFullYear() + 1);
       } else if (freq.includes('quarterly')) {
         nextDate.setMonth(nextDate.getMonth() + 3);
-      } else if (freq.includes('weekly')) {
-        nextDate.setDate(nextDate.getDate() + 7);
       } else {
+        // Default to monthly
         nextDate.setMonth(nextDate.getMonth() + 1);
       }
     }
@@ -242,8 +255,6 @@ var RecurringManager = (function() {
         expDate.setFullYear(expDate.getFullYear() + 1);
       } else if (freq.includes('quarterly')) {
         expDate.setMonth(expDate.getMonth() + 3);
-      } else if (freq.includes('weekly')) {
-        expDate.setDate(expDate.getDate() + 7);
       } else {
         expDate.setMonth(expDate.getMonth() + 1);
       }
@@ -383,8 +394,6 @@ var RecurringManager = (function() {
         monthlyTotal += amount / 12;
       } else if (freq.includes('quarterly')) {
         monthlyTotal += amount / 3;
-      } else if (freq.includes('weekly')) {
-        monthlyTotal += amount * 4.33;
       } else {
         monthlyTotal += amount;
       }
@@ -736,7 +745,7 @@ var RecurringManager = (function() {
   function addNewSubscription() {
     console.log('RecurringManager: Adding new subscription');
     
-    // FIX: Always reload settings before creating new item to get current currency
+    // Always reload settings before creating new item to get current currency
     loadSettings();
     
     // Check if there's already a new item being edited
@@ -800,7 +809,7 @@ var RecurringManager = (function() {
   function startEditingRow(row, item) {
     console.log('RecurringManager: Start editing', item.id);
     
-    // FIX: Always reload settings before editing to get current currency
+    // Always reload settings before editing to get current currency
     loadSettings();
     
     row.classList.add('rec-editing');
@@ -848,17 +857,16 @@ var RecurringManager = (function() {
       </select>
     `;
 
-    // Frequency (4)
+    // Frequency (4) - ONLY Monthly, Quarterly, Yearly
     cells[4].innerHTML = `
       <select class="rec-edit-input" data-field="frequency">
         <option value="Monthly" ${item.frequency === 'Monthly' ? 'selected' : ''}>Monthly</option>
-        <option value="Yearly" ${item.frequency === 'Yearly' ? 'selected' : ''}>Yearly</option>
         <option value="Quarterly" ${item.frequency === 'Quarterly' ? 'selected' : ''}>Quarterly</option>
-        <option value="Weekly" ${item.frequency === 'Weekly' ? 'selected' : ''}>Weekly</option>
+        <option value="Yearly" ${item.frequency === 'Yearly' ? 'selected' : ''}>Yearly</option>
       </select>
     `;
 
-    // Amount (5) - FIX: Use current currency symbol
+    // Amount (5) - Use current currency symbol
     cells[5].innerHTML = `
       <div class="rec-amount-wrapper">
         <span class="rec-currency">${_currencySymbol}</span>
@@ -917,7 +925,7 @@ var RecurringManager = (function() {
   }
 
   /**
-   * Save edited row
+   * Save edited row - ONLY saves when save button is clicked
    */
   function saveEditedRow(itemId) {
     console.log('RecurringManager: Saving row', itemId);
@@ -998,8 +1006,11 @@ var RecurringManager = (function() {
     
     item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate);
 
-    // Mark as no longer new
-    delete item.isNew;
+    // For new items, generate a proper ID if still using temporary ID
+    if (item.isNew || item.id.startsWith('new-')) {
+      item.id = `REC-${Date.now()}`;
+      delete item.isNew;
+    }
 
     // Save to server
     saveToServer([item]);
@@ -1080,198 +1091,97 @@ var RecurringManager = (function() {
     }
   }
 
-/**
- * Updated saveToServer function following transaction.js pattern
- * Replace the existing saveToServer function in your recurring module with this
- */
-function saveToServer(items) {
-  console.log('RecurringManager: Saving to server', items.length, 'items');
-  
-  if (!window.API || typeof API.saveBatchRecurring !== 'function') {
-    console.error('RecurringManager: API.saveBatchRecurring not available');
-    return;
-  }
-
-  // Filter out items without required fields before saving
-  const validItems = items.filter(item => 
-    item.name && item.amount > 0 && item.startDate
-  );
-
-  if (validItems.length === 0) {
-    console.log('RecurringManager: No valid items to save');
-    return;
-  }
-
-  // Prepare items for saving - ensure proper date formatting
-  const itemsToSave = validItems.map(item => {
-    const saveItem = {
-      id: item.id,
-      name: item.name,
-      category: item.category,
-      type: item.type,
-      frequency: item.frequency,
-      amount: item.amount,
-      account: item.account,
-      status: item.status,
-      notes: item.notes || ''
-    };
+  /**
+   * Save data to server - UPDATED VERSION
+   */
+  function saveToServer(items) {
+    console.log('RecurringManager: Saving to server', items.length, 'items');
     
-    // Handle dates - convert to ISO strings for transmission
-    if (item.startDate instanceof Date) {
-      saveItem.startDate = item.startDate.toISOString();
-    } else if (item.startDate) {
-      saveItem.startDate = new Date(item.startDate).toISOString();
-    }
-    
-    if (item.endDate instanceof Date) {
-      saveItem.endDate = item.endDate.toISOString();
-    } else if (item.endDate) {
-      saveItem.endDate = new Date(item.endDate).toISOString();
-    }
-    
-    if (item.nextPayment instanceof Date) {
-      saveItem.nextPayment = item.nextPayment.toISOString();
-    } else if (item.nextPayment) {
-      saveItem.nextPayment = new Date(item.nextPayment).toISOString();
-    }
-    
-    return saveItem;
-  });
-
-  if (window.Utils && Utils.showToast) {
-    Utils.showToast('Saving...', 'info');
-  }
-
-  API.saveBatchRecurring(itemsToSave,
-    function(result) {
-      console.log('RecurringManager: Save success', result);
-      
-      if (window.Utils && Utils.showToast) {
-        const message = result.inserted > 0 ? 
-          `Saved successfully (${result.inserted} added, ${result.updated} updated)` :
-          'Updated successfully';
-        Utils.showToast(message, 'success');
-      }
-      
-      // Update cache after successful save
-      if (window._cache && typeof _cache.invalidate === 'function') {
-        _cache.invalidate('recurring');
-      }
-      
-      // Refresh the data to get proper row indices
-      // This ensures new items get their proper IDs from the spreadsheet
-      setTimeout(() => {
-        loadRealRecurringData(true); // true = background refresh
-      }, 500);
-    },
-    function(error) {
-      console.error('RecurringManager: Save error', error);
-      if (window.Utils && Utils.showToast) {
-        Utils.showToast('Error saving: ' + error, 'error');
-      }
-    }
-  );
-}
-
-/**
- * Updated saveEditedRow to ensure proper ID assignment for new items
- * Replace the existing saveEditedRow function with this enhanced version
- */
-function saveEditedRow(itemId) {
-  console.log('RecurringManager: Saving row', itemId);
-  
-  const row = document.querySelector(`tr[data-id="${itemId}"]`);
-  if (!row) return;
-
-  const item = _recurringData.find(r => r.id === itemId);
-  if (!item) return;
-
-  const editedData = {};
-  let hasErrors = false;
-
-  // Validate required fields
-  row.querySelectorAll('.rec-edit-input').forEach(input => {
-    const field = input.getAttribute('data-field');
-    const value = input.value.trim();
-
-    // Check required fields
-    if (field === 'name' && !value) {
-      input.classList.add('rec-input-error');
-      hasErrors = true;
+    if (!window.API || typeof API.saveBatchRecurring !== 'function') {
+      console.error('RecurringManager: API.saveBatchRecurring not available');
       return;
     }
 
-    if (field === 'startDate' && !value) {
-      input.classList.add('rec-input-error');
-      hasErrors = true;
+    // Filter out items without required fields before saving
+    const validItems = items.filter(item => 
+      item.name && item.amount > 0 && item.startDate
+    );
+
+    if (validItems.length === 0) {
+      console.log('RecurringManager: No valid items to save');
       return;
     }
 
-    if (field === 'amount' && (!value || parseFloat(value) <= 0)) {
-      input.classList.add('rec-input-error');
-      hasErrors = true;
-      return;
-    }
+    // Prepare items for saving - ensure proper date formatting
+    const itemsToSave = validItems.map(item => {
+      const saveItem = {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        type: item.type,
+        frequency: item.frequency,
+        amount: item.amount,
+        account: item.account,
+        status: item.status,
+        notes: item.notes || ''
+      };
+      
+      // Handle dates - convert to ISO strings for transmission
+      if (item.startDate instanceof Date) {
+        saveItem.startDate = item.startDate.toISOString();
+      } else if (item.startDate) {
+        saveItem.startDate = new Date(item.startDate).toISOString();
+      }
+      
+      if (item.endDate instanceof Date) {
+        saveItem.endDate = item.endDate.toISOString();
+      } else if (item.endDate) {
+        saveItem.endDate = new Date(item.endDate).toISOString();
+      }
+      
+      if (item.nextPayment instanceof Date) {
+        saveItem.nextPayment = item.nextPayment.toISOString();
+      } else if (item.nextPayment) {
+        saveItem.nextPayment = new Date(item.nextPayment).toISOString();
+      }
+      
+      return saveItem;
+    });
 
-    input.classList.remove('rec-input-error');
-    
-    if (field === 'type') {
-      editedData[field] = value === 'Subscription' ? 'TRUE' : 'FALSE';
-    } else {
-      editedData[field] = value;
-    }
-  });
-
-  if (hasErrors) {
     if (window.Utils && Utils.showToast) {
-      Utils.showToast('Please fill in all required fields (Name, Start Date, Amount)', 'error');
+      Utils.showToast('Saving...', 'info');
     }
-    return;
+
+    API.saveBatchRecurring(itemsToSave,
+      function(result) {
+        console.log('RecurringManager: Save success', result);
+        
+        if (window.Utils && Utils.showToast) {
+          const message = result.inserted > 0 ? 
+            `Saved successfully (${result.inserted} added, ${result.updated} updated)` :
+            'Updated successfully';
+          Utils.showToast(message, 'success');
+        }
+        
+        // Update cache after successful save
+        if (window._cache && typeof _cache.invalidate === 'function') {
+          _cache.invalidate('recurring');
+        }
+        
+        // Refresh the data to get proper row indices
+        // This ensures new items get their proper IDs from the spreadsheet
+        setTimeout(() => {
+          loadRealRecurringData(true); // true = background refresh
+        }, 500);
+      },
+      function(error) {
+        console.error('RecurringManager: Save error', error);
+        if (window.Utils && Utils.showToast) {
+          Utils.showToast('Error saving: ' + error, 'error');
+        }
+      }
+    );
   }
-
-  // Update item with edited data
-  Object.assign(item, editedData);
-  
-  if (editedData.startDate) {
-    item.startDate = new Date(editedData.startDate);
-  }
-  if (editedData.endDate) {
-    item.endDate = new Date(editedData.endDate);
-  }
-  
-  item.amount = parseFloat(editedData.amount) || 0;
-
-  // Recalculate status and dates
-  const now = new Date();
-  if (item.endDate && item.endDate < now) {
-    item.status = 'Ended';
-    item.nextPayment = null;
-  } else if (item.endDate && item.endDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
-    item.status = 'Expires';
-    item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
-  } else {
-    item.status = 'Active';
-    item.nextPayment = calculateNextPayment(item.startDate, item.frequency, item.endDate);
-  }
-  
-  item.expiration = calculateExpirationDate(item.startDate, item.frequency, item.endDate);
-
-  // For new items, generate a proper ID if still using temporary ID
-  if (item.isNew || item.id.startsWith('new-')) {
-    item.id = `REC-${Date.now()}`;
-    delete item.isNew;
-  }
-
-  // Save to server
-  saveToServer([item]);
-
-  // Replace row with updated view
-  const newRow = createRecurringRow(item);
-  row.replaceWith(newRow);
-
-  // Update summary metrics
-  updateSummaryCards();
-}
 
   /**
    * Update summary cards only
@@ -1301,71 +1211,52 @@ function saveEditedRow(itemId) {
   }
 
   /**
-   * Bind event listeners
+   * Bind event listeners - SIMPLE VERSION
    */
   function bindEvents() {
-    if (_eventsInitialized) {
-      console.log('RecurringManager: Events already initialized');
-      return;
-    }
-    
     console.log('RecurringManager: Binding events...');
 
-    // Use event delegation on document level to survive DOM updates
-    
-    // Status filter buttons
-    document.addEventListener('click', function statusFilterHandler(e) {
-      if (!document.getElementById('recurringContent')) {
-        // Remove listener if recurring content is gone
-        document.removeEventListener('click', statusFilterHandler);
-        _eventsInitialized = false;
-        return;
-      }
-      
+    // Use event delegation on the container for all dynamic content
+    const container = getElement('recurringContent');
+    if (!container) return;
+
+    // Check if we already bound events to this container
+    if (container.dataset.eventsbound === 'true') {
+      console.log('RecurringManager: Events already bound to container');
+      return;
+    }
+
+    // Single click handler for everything
+    container.addEventListener('click', function(e) {
+      // Filter buttons
       if (e.target.classList.contains('rec-filter-btn') && e.target.hasAttribute('data-status')) {
         document.querySelectorAll('.rec-filter-btn').forEach(btn => {
           btn.classList.remove('active');
         });
-        
         e.target.classList.add('active');
         _currentFilter = e.target.getAttribute('data-status');
         updateRecurringTable();
+        return;
       }
-    });
 
-    // Category filter
-    const categoryFilter = getElement('categoryFilter');
-    if (categoryFilter) {
-      categoryFilter.addEventListener('change', function() {
-        updateRecurringTable();
-      });
-    }
-
-    // Add subscription button
-    const addBtn = getElement('addSubscriptionBtn');
-    if (addBtn) {
-      addBtn.addEventListener('click', function() {
+      // Add button
+      if (e.target.id === 'addSubscriptionBtn' || e.target.closest('#addSubscriptionBtn')) {
         addNewSubscription();
-      });
-    }
+        return;
+      }
 
-    // Table action buttons and notes click
-    const table = getElement('recurringTable');
-    if (table) {
-      table.addEventListener('click', function(e) {
-        // Handle notes cell click
-        const notesCell = e.target.closest('.rec-notes-cell');
-        if (notesCell && notesCell.dataset.notes) {
-          e.stopPropagation();
-          const rect = notesCell.getBoundingClientRect();
-          showNotesPopup(notesCell.dataset.notes, rect);
-          return;
-        }
-        
-        // Handle action buttons
-        const button = e.target.closest('button');
-        if (!button) return;
+      // Notes cell
+      const notesCell = e.target.closest('.rec-notes-cell');
+      if (notesCell && notesCell.dataset.notes) {
+        e.stopPropagation();
+        const rect = notesCell.getBoundingClientRect();
+        showNotesPopup(notesCell.dataset.notes, rect);
+        return;
+      }
 
+      // Action buttons
+      const button = e.target.closest('button');
+      if (button) {
         const itemId = button.getAttribute('data-id');
         if (!itemId) return;
 
@@ -1378,35 +1269,49 @@ function saveEditedRow(itemId) {
         } else if (button.classList.contains('rec-cancel-btn')) {
           cancelEditingRow(itemId);
         }
-      });
+      }
+    });
 
-      // Enter key to save
-      table.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && e.target.classList.contains('rec-edit-input')) {
-          const row = e.target.closest('tr');
-          if (row) {
-            const saveBtn = row.querySelector('.rec-save-btn');
-            if (saveBtn) saveBtn.click();
-          }
+    // Category filter change
+    container.addEventListener('change', function(e) {
+      if (e.target.id === 'categoryFilter') {
+        updateRecurringTable();
+      }
+    });
+
+    // Enter key to save
+    container.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && e.target.classList.contains('rec-edit-input')) {
+        const row = e.target.closest('tr');
+        if (row) {
+          const saveBtn = row.querySelector('.rec-save-btn');
+          if (saveBtn) saveBtn.click();
         }
-      });
+      }
+    });
+
+    // Currency change listener - only add once
+    if (!window._recurringCurrencyListener) {
+      window._recurringCurrencyListener = function(event) {
+        _currencySymbol = event.detail.symbol;
+        updateSummaryCards();
+        updateRecurringTable();
+      };
+      document.addEventListener('currency-changed', window._recurringCurrencyListener);
     }
 
-    // Currency change listener
-    document.addEventListener('currency-changed', function(event) {
-      _currencySymbol = event.detail.symbol;
-      updateSummaryCards();
-      updateRecurringTable();
-    });
+    // Settings change listener - only add once
+    if (!window._recurringSettingsListener) {
+      window._recurringSettingsListener = function() {
+        loadSettings();
+        updateSummaryCards();
+        updateRecurringTable();
+      };
+      document.addEventListener('settings-changed', window._recurringSettingsListener);
+    }
 
-    // Settings change listener
-    document.addEventListener('settings-changed', function() {
-      loadSettings();
-      updateSummaryCards();
-      updateRecurringTable();
-    });
-
-    _eventsInitialized = true;
+    // Mark container as having events bound
+    container.dataset.eventsbound = 'true';
   }
 
   /**
@@ -1423,10 +1328,10 @@ function saveEditedRow(itemId) {
     // Clear local data
     _recurringData = [];
     
-    // Reset initialization flags
+    // Reset initialization flag
     _initialized = false;
     
-    // Clear element cache but keep events
+    // Clear element cache
     Object.keys(_elements).forEach(key => {
       delete _elements[key];
     });
@@ -1464,6 +1369,8 @@ function saveEditedRow(itemId) {
 // Expose globally
 window.RecurringManager = RecurringManager;
 </script>
+
+
 
 <style>
 /* ==============================================================
