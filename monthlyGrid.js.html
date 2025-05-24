@@ -1779,6 +1779,7 @@ function createTransactionItem(tx) {
 
 /**
  * Setup event handlers for transaction items with modification tracking
+ * MODIFIED: Removed auto-save triggers but kept the save function for modal close
  */
 function setupTransactionItemEvents(item, tx) {
   const deleteBtn = item.querySelector('.transaction-delete');
@@ -1807,6 +1808,7 @@ function setupTransactionItemEvents(item, tx) {
   item.setAttribute('data-modified', 'false');
   
   // This function is called when a transaction is updated or added
+  // KEEP THIS FUNCTION - closeTransactionModal needs it!
   function updateTransactionQueue() {
     // Only queue transactions with valid amounts
     if (parseFloat(amountInput.value) > 0) {
@@ -1867,7 +1869,6 @@ function setupTransactionItemEvents(item, tx) {
       }
       
       // Update cache using CacheManager
-            // Update cache using CacheManager for individual transaction
       if (window.CacheManager) {
         // First update the single expense
         CacheManager.updateExpense({
@@ -1883,7 +1884,6 @@ function setupTransactionItemEvents(item, tx) {
         }, _currentMonth, _currentYear);
         
         // CRITICAL FIX: Also update the entire collection to prevent data loss
-        // Filter only expenses for the current month/year
         const currentMonthExpenses = _transactions.filter(t => 
           t.date && 
           t.date.getMonth() === _currentMonth && 
@@ -1906,6 +1906,7 @@ function setupTransactionItemEvents(item, tx) {
     }
   }
   
+  // CRITICAL: Store the function reference so closeTransactionModal can call it
   item._updateTransactionQueue = updateTransactionQueue;
 
   if (amountInput) {
@@ -1926,12 +1927,7 @@ function setupTransactionItemEvents(item, tx) {
       }
     });
     
-    // Queue for saving when amount is complete (on blur)
-    amountInput.addEventListener('blur', function() {
-      if (parseFloat(this.value) > 0 && descriptionInput.value.trim()) {
-        updateTransactionQueue();
-      }
-    });
+    // REMOVED: Auto-save on blur
   }
   
   if (descriptionInput) {
@@ -1952,12 +1948,7 @@ function setupTransactionItemEvents(item, tx) {
       }
     });
     
-    // Queue for saving when description is complete (on blur)
-    descriptionInput.addEventListener('blur', function() {
-      if (parseFloat(amountInput.value) > 0 && this.value.trim()) {
-        updateTransactionQueue();
-      }
-    });
+    // REMOVED: Auto-save on blur
   }
   
   if (accountSelect) {
@@ -1965,22 +1956,18 @@ function setupTransactionItemEvents(item, tx) {
     accountSelect.addEventListener('change', function() {
       item.setAttribute('data-modified', 'true');
       tx.account = this.value;
-      // Auto-save when account is selected and other fields are filled
-      if (parseFloat(amountInput.value) > 0 && descriptionInput.value.trim()) {
-        updateTransactionQueue();
-      }
+      // REMOVED: Auto-save on change
     });
   }
   
   // Add a listener for the forceSave event (used in addTransactionRow)
+  // KEEP THIS but we'll remove the forceSave dispatch from addTransactionRow
   item.addEventListener('forceSave', function() {
     if (parseFloat(amountInput.value) > 0 && descriptionInput.value.trim()) {
       updateTransactionQueue();
     }
   });
 }
-
-
 
 
 
@@ -2100,23 +2087,7 @@ function addTransactionRow() {
     return;
   }
   
-  // Force save any existing transactions before adding new one
-  // but ONLY if they've been modified and have valid data
-  const existingTransactions = transactionsList.querySelectorAll('.transaction-item');
-  if (existingTransactions.length > 0) {
-    const lastTransaction = existingTransactions[existingTransactions.length - 1];
-    const lastAmountInput = lastTransaction.querySelector('.transaction-amount');
-    const lastDescriptionInput = lastTransaction.querySelector('.transaction-description');
-    const wasModified = lastTransaction.getAttribute('data-modified') === 'true';
-    
-    // Only force save if the transaction was modified and has valid data
-    if (wasModified && lastAmountInput && lastDescriptionInput && 
-        parseFloat(lastAmountInput.value) > 0 && 
-        lastDescriptionInput.value.trim()) {
-      // Dispatch event to force-save the previous transaction
-      lastTransaction.dispatchEvent(new CustomEvent('forceSave'));
-    }
-  }
+  // REMOVED: Force save logic for existing transactions
   
   const day = modal.getAttribute('data-day');
   const categoryId = modal.getAttribute('data-category');
@@ -2144,7 +2115,6 @@ function addTransactionRow() {
   
   updateTransactionTotal();
 }
-
 
 
 
