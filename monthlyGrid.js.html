@@ -236,7 +236,7 @@ function loadCurrencyFromSettings() {
   if (_initialized && !containerId) {
     return;
   }
-  
+   _transactions = [];
   
   // Initialize system month tracking
   _systemCurrentMonth = new Date().getMonth();
@@ -352,11 +352,12 @@ function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   if (_isLoading) {
     return Promise.resolve();
   }
-  
+   _transactions = [];  // Reset transactions to prevent duplicates
   // Check cache first for instant loading
   const monthExpenses = getCachedExpenses(month, year);  
   if (monthExpenses) {
-    
+      console.log('Loading from cache:', monthExpenses.length, 'expenses');
+
     // Load categories first, then process cached data
     return loadActiveCategories()
       .then(categories => {
@@ -806,7 +807,23 @@ function addInactiveCategoriesWithSpending() {
  */
 function processRealExpenseData(expenses) {
   const processedTransactions = [];
+  console.log('processRealExpenseData called with', expenses.length, 'expenses');
+  
+  // Log any transactions with duplicate IDs
+  const idMap = {};
+  expenses.forEach((exp, i) => {
+    const id = exp.transactionId || exp.id;
+    if (idMap[id]) {
+      console.warn('DUPLICATE ID FOUND:', id, 'at positions', idMap[id], 'and', i);
+    } else {
+      idMap[id] = i;
+    }
+  });
 
+
+
+
+  _transactions = []; // Reset transactions array to prevent duplicates
   // Process each expense
   expenses.forEach((expense, index) => {
     // Skip empty rows
@@ -815,6 +832,13 @@ function processRealExpenseData(expenses) {
       return;
     }
     
+ // ADD HERE - Skip expenses without valid IDs
+  if (!expense.transactionId) {
+    console.log('Expense without ID at index', index, '- generating temporary ID');
+    expense.transactionId = `recurring-${_currentMonth}-${_currentYear}-${index}`;
+  }
+    
+
     // Parse date - ENHANCED with robust parsing
     let expenseDate;
     

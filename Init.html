@@ -11,6 +11,7 @@
     let _currentView = "expense";
     let _isRendering = false;
     let _loadingView = null;
+    let _isLoadingExpenseView = false;
 
     // Cache system for data
     // STEP 1: Replace the existing _cache object in Init.html with this enhanced version
@@ -1963,11 +1964,19 @@ renderExpenseView: function(cachedExpenses) {
 },
 
     loadExpenseData: function() {
+  // Prevent multiple simultaneous loads
+  if (_isLoadingExpenseView) {
+    console.log('Already loading expense view, skipping');
+    return;
+  }
   
-    const contentArea = document.getElementById("expenseContent");
+  _isLoadingExpenseView = true;
+  
+  const contentArea = document.getElementById("expenseContent");
   if (!contentArea) {
     console.error("Expense content area not found");
     _loadingView = null;
+    _isLoadingExpenseView = false;
     return;
   }
 
