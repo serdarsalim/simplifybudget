@@ -1071,14 +1071,14 @@ if (refreshRecurringBtn) {
         }
 
         // Set up view-specific buttons
-        const refreshBudgetBtn = document.getElementById("refreshBudget");
-        if (refreshBudgetBtn) {
-          refreshBudgetBtn.addEventListener("click", () => {
-            // Force refresh by invalidating cache
-            _cache.invalidate("budget");
-            this.loadViewData("budget", true);
-          });
-        }
+       const refreshBudgetBtn = document.getElementById("refreshBudget");
+      if (refreshBudgetBtn) {
+        refreshBudgetBtn.addEventListener("click", () => {
+          // ONLY clear the view cache, NOT the data!
+          _cache.invalidate("budget");
+          this.loadViewData("budget", true);
+        });
+      }
 
         const refreshNetWorthBtn = document.getElementById("refreshNetWorth");
         if (refreshNetWorthBtn) {
@@ -1568,9 +1568,9 @@ loadViewData: function(viewName, forceRefresh = false) {
         }
 
         switch (viewName) {
-          case "budget":
-            this.renderBudgetDashboard(cachedData);
-            break;
+    case "budget":
+      this.loadBudgetData(forceRefresh); // MAKE SURE forceRefresh IS PASSED!
+      break;
           case "expense":
             this.renderExpenseView(cachedData);
             break;
@@ -1594,27 +1594,24 @@ loadViewData: function(viewName, forceRefresh = false) {
       /**
        * Load budget data using a single consolidated API call
        */
-     // In Init.html, complete loadBudgetData function
-loadBudgetData: function() {
-  // Make sure we have current month/year
-  if (typeof _currentMonth === 'undefined') {
-    _currentMonth = new Date().getMonth();
-    _currentYear = new Date().getFullYear();
-    console.log('LoadBudgetData: Set default month/year:', _currentMonth, _currentYear);
-  }
-  
-  const contentArea = document.getElementById("budgetContent");
-  
-  // Check cache first
-  const cachedData = window.CacheManager.getDashboardData();
-  if (cachedData) {
-    console.log('LoadBudgetData: Using cached dashboard data');
-    SimBudget.renderBudgetDashboard(cachedData);
-    _cache.set('budget', cachedData);
-    _loadingView = null;
-    return;
-  }
-  
+    loadBudgetData: function(forceRefresh = false) {
+      if (typeof _currentMonth === 'undefined') {
+        _currentMonth = new Date().getMonth();
+        _currentYear = new Date().getFullYear();
+      }
+      
+      const contentArea = document.getElementById("budgetContent");
+      
+      // Check cache ONLY if not forcing refresh
+      if (!forceRefresh) {
+        const cachedData = window.CacheManager.getDashboardData();
+        if (cachedData) {
+          SimBudget.renderBudgetDashboard(cachedData);
+          _cache.set('budget', cachedData);
+          _loadingView = null;
+          return;
+        }
+      }
   // Show loading overlay
   if (contentArea) {
     const existingDashboard = contentArea.querySelector('.dashboard-container');
@@ -1629,6 +1626,14 @@ loadBudgetData: function() {
       contentArea.innerHTML = '<div style="padding:40px;text-align:center;"><div class="loading-spinner"></div><p>Loading budget data...</p></div>';
     }
   }
+
+    // THEN clear caches if forcing refresh
+  if (forceRefresh && window.CacheManager) {
+    CacheManager.invalidate('budgetData');
+    CacheManager.invalidate('dashboardData');
+    CacheManager.clearMonth(_currentMonth, _currentYear);
+  }
+  
   
   // Load all required data
   let expensesLoaded = false;
@@ -1640,6 +1645,18 @@ loadBudgetData: function() {
 
   const checkAndRender = () => {
   
+      if (!window.CacheManager.getCategories()) {
+    const cachedCats = localStorage.getItem('simbudget_categories');
+    if (cachedCats) {
+      try {
+        const cats = JSON.parse(cachedCats);
+        console.log('Loading categories into CacheManager:', cats.length);
+        window.CacheManager.setCategories(cats);
+      } catch (e) {
+        console.error('Failed to load categories from localStorage');
+      }
+    }
+  }
   
   if (expensesLoaded && recurringLoaded && budgetLoaded) {
     
@@ -1682,7 +1699,7 @@ loadBudgetData: function() {
 };
   
   // Load budget data (NEW)
-  API.getBudgetData(
+    API.getBudgetData(
     function(result) {
       budgetData = result.budgetData || {};
       budgetLoaded = true;
@@ -1690,9 +1707,10 @@ loadBudgetData: function() {
     },
     function(error) {
       console.error('LoadBudgetData: Error loading budget data:', error);
-      budgetLoaded = true; // Continue with empty budget
+      budgetLoaded = true;
       checkAndRender();
-    }
+    },
+    forceRefresh  // Now this works!
   );
   
   // Load expenses
