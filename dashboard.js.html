@@ -14,7 +14,6 @@ const SaveQueue = (function() {
   let _isProcessing = false;
   
   // Process the next item in the queue
-  // In SaveQueue.add method, replace the API call with this:
 function processNextItem() {
   if (_queue.length === 0) {
     _isProcessing = false;
@@ -25,16 +24,38 @@ function processNextItem() {
   const nextItem = _queue.shift();
   
   // Get current budget data from cache
-  const budgetData = window.CacheManager.getBudgetData() || {};
-  const monthKey = `${_currentYear}-${String(_currentMonth + 1).padStart(2, '0')}`;
+  let budgetData = window.CacheManager.getBudgetData();
   
-  // Ensure month exists
-  if (!budgetData[monthKey]) {
-    budgetData[monthKey] = {};
+  // Initialize if needed (NEW FORMAT)
+  if (!budgetData || !budgetData.categories) {
+    const allCategories = window.CacheManager.getCategories() || [];
+    budgetData = {
+      categories: allCategories.map(cat => cat.name),
+      budgets: {}
+    };
   }
   
-  // Update the specific category
-  budgetData[monthKey][nextItem.categoryName] = nextItem.value;
+  const monthKey = `${_currentYear}-${String(_currentMonth + 1).padStart(2, '0')}`;
+  
+  // Ensure month exists in budgets object
+  if (!budgetData.budgets[monthKey]) {
+    budgetData.budgets[monthKey] = {};
+  }
+  
+  // Find category index
+  const categoryIndex = budgetData.categories.indexOf(nextItem.categoryName);
+  
+  if (categoryIndex !== -1) {
+    if (nextItem.value > 0) {
+      // Store using index as key
+      budgetData.budgets[monthKey][categoryIndex.toString()] = nextItem.value;
+    } else {
+      // Remove if zero
+      delete budgetData.budgets[monthKey][categoryIndex.toString()];
+    }
+  } else {
+    console.error('Category not found:', nextItem.categoryName);
+  }
   
   // Save the entire budget JSON
   API.saveBudgetData(
@@ -65,6 +86,9 @@ function processNextItem() {
   );
 }
   
+
+
+
   // Public methods
   return {
     /**

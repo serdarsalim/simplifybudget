@@ -256,24 +256,50 @@ setBudgetData(budgetData) {
 // Get budget for specific month/year
 getBudgetForMonth(month = currentMonth, year = currentYear) {
   const budgetData = this.getBudgetData();
-  if (!budgetData) return null;
+  if (!budgetData || !budgetData.categories) return {};
   
-  // Format key as YYYY-MM
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-  return budgetData[monthKey] || {};
+  const monthIndices = budgetData.budgets[monthKey] || {};
+  
+  // Convert sparse indices back to full object
+  const budgetObject = {};
+  Object.keys(monthIndices).forEach(index => {
+    const categoryName = budgetData.categories[parseInt(index)];
+    if (categoryName) {
+      budgetObject[categoryName] = monthIndices[index];
+    }
+  });
+  
+  return budgetObject;
 },
 
 // Update budget for specific month
 updateBudgetForMonth(month, year, categoryBudgets) {
-  const budgetData = this.getBudgetData() || {};
+  let budgetData = this.getBudgetData();
   
-  // Format key as YYYY-MM
+  if (!budgetData || !budgetData.categories) {
+    const allCategories = this.getCategories() || [];
+    budgetData = {
+      categories: allCategories.map(cat => cat.name),
+      budgets: {}
+    };
+  }
+  
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-  budgetData[monthKey] = categoryBudgets;
+  
+  // Convert to sparse indexed format
+  const sparseMonth = {};
+  
+  Object.keys(categoryBudgets).forEach(catName => {
+    const index = budgetData.categories.indexOf(catName);
+    if (index !== -1 && categoryBudgets[catName] > 0) {
+      sparseMonth[index.toString()] = categoryBudgets[catName];
+    }
+  });
+  
+  budgetData.budgets[monthKey] = sparseMonth;
   
   this.setBudgetData(budgetData);
-  
-  // Invalidate dashboard since budget changed
   this.invalidate('dashboardData');
   
   return budgetData;
