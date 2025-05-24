@@ -18,10 +18,11 @@ const CacheManager = (function() {
   
   // Configuration
   const config = {
-    ttl: {
-      shortLived: 2 * 60 * 1000,    // 2 minutes for expenses, dashboard
-      mediumLived: 10 * 60 * 1000,  // 10 minutes for budget data
-      longLived: 30 * 60 * 1000,     // 30 minutes for categories, settings
+  ttl: {
+    shortLived: 2 * 60 * 1000,    // 2 minutes for expenses
+    mediumLived: 10 * 60 * 1000,  // 10 minutes for budget data
+    longLived: 30 * 60 * 1000,    // 30 minutes for categories, settings
+    dashboard: 15 * 60 * 1000,    // ✅ NEW: 15 minutes for dashboard -
     },
     preloadDelay: 1000,              // Wait 1 second before preloading
     preloadInterval: 2000,           // 2 seconds between preloads
@@ -45,7 +46,7 @@ const CacheManager = (function() {
     income: ["budget", "reports", "dashboard"],
     recurring: ["reports", "dashboard"],
     netWorth: ["reports"],
-    categories: ["dashboard"],
+  
   };
 
   /**
@@ -54,33 +55,47 @@ const CacheManager = (function() {
   
   // Set data in cache
   function set(key, data, options = {}) {
-    const ttl = options.ttl || config.ttl.shortLived;
-    
-    cache.data[key] = data;
-    cache.metadata[key] = {
-      timestamp: Date.now(),
-      expires: Date.now() + ttl,
-    };
-    
-    return true;
+  // Handle special view keys
+  if (key === 'budget') {
+    key = `dashboard_${currentYear}-${currentMonth}`;
+  } else if (key === 'expense') {
+    key = `expenses_${currentYear}-${currentMonth}`;
   }
   
+  const ttl = options.ttl || config.ttl.shortLived;
+  
+  cache.data[key] = data;
+  cache.metadata[key] = {
+    timestamp: Date.now(),
+    expires: Date.now() + ttl,
+  };
+  
+  return true;
+}
+  
   // Get data from cache
-  function get(key) {
-    const meta = cache.metadata[key];
-    
-    if (!meta || !cache.data[key]) {
-      return null;
-    }
-    
-    // Check if expired
-    if (Date.now() > meta.expires) {
-      invalidate(key);
-      return null;
-    }
-    
-    return cache.data[key];
+ function get(key) {
+  // Handle special view keys
+  if (key === 'budget') {
+    key = `dashboard_${currentYear}-${currentMonth}`;
+  } else if (key === 'expense') {
+    key = `expenses_${currentYear}-${currentMonth}`;
   }
+  
+  const meta = cache.metadata[key];
+  
+  if (!meta || !cache.data[key]) {
+    return null;
+  }
+  
+  // Check if expired
+  if (Date.now() > meta.expires) {
+    invalidate(key);
+    return null;
+  }
+  
+  return cache.data[key];
+}
   
   // Check if cache is valid
   function isValid(key) {
@@ -147,26 +162,14 @@ const CacheManager = (function() {
   }
   
   // Dashboard
-  function getDashboardData(month = currentMonth, year = currentYear) {
-    // First check if we have cached dashboard
-    const cached = get(`dashboard_${year}-${month}`);
-    if (cached) return cached;
-    
-    // If not, try to calculate from components
-    const expenses = getExpenses(month, year);
-    const recurring = getRecurring();
-    const budgetData = getBudgetData();
-    const categories = getCategories();
-    
-    if (expenses && recurring && budgetData && categories) {
-      const calculated = calculateDashboardData(expenses, recurring, month, year);
-      // Cache the calculated result
-      set(`dashboard_${year}-${month}`, calculated, { ttl: config.ttl.shortLived });
-      return calculated;
-    }
-    
-    return null;
-  }
+// Replace the getDashboardData function in CacheManager (around line 150)
+
+// Dashboard
+function getDashboardData(month = currentMonth, year = currentYear) {
+  // ✅ CLEAN: Just return cached dashboard data or null
+  // Let Init.html handle all the loading and calculation with fresh UserProperties data
+  return get(`dashboard_${year}-${month}`);
+}
   
   // Budget data
   function getBudgetData() {
@@ -183,16 +186,8 @@ const CacheManager = (function() {
     });
   }
   
-  // Categories
-  function getCategories() {
-    return get('categories');
-  }
-  
-  function setCategories(categories) {
-    set('categories', categories, { ttl: config.ttl.longLived });
-    invalidateRelated('categories');
-  }
-  
+
+
   // Recurring
   function getRecurring() {
     return get('recurring');
@@ -217,106 +212,172 @@ const CacheManager = (function() {
     set('settings', settings, { ttl: config.ttl.longLived });
   }
 
-  /**
-   * Calculate dashboard data (from old CacheManager - PRESERVED EXACTLY)
-   */
-  function calculateDashboardData(expenses, recurring, month, year) {
-    // Get budget data for this month
-    const monthlyBudget = getBudgetForMonth(month, year) || {};
+/**
+ * Calculate dashboard data (UPDATED to accept categories parameter)
+ * @param {Array} expenses - Expense data
+ * @param {Array} recurring - Recurring transaction data  
+ * @param {Array} categories - Categories from UserProperties
+ * @param {number} month - Month (0-11)
+ * @param {number} year - Year
+ */
+function calculateDashboardData(expenses, recurring, categories, month, year) {
+  console.log('CacheManager: calculateDashboardData called with:', {
+    expenses: expenses.length,
+    recurring: recurring.length,
+    categories: categories.length,
+    month,
+    year
+  });
+  
+  // Get budget data for this month
+  const monthlyBudget = getBudgetForMonth(month, year) || {};
+  
+  // Initialize summary
+  const summary = {
+    income: 0,
+    spent: 0,
+    leftToSpend: 0
+  };
+  
+  // Initialize categories map
+  const categoriesMap = {};
+  
+  // Get active categories from UserProperties data
+  const activeCategories = categories.filter(cat => cat.active);
+  console.log('CacheManager: Found', activeCategories.length, 'active categories');
+  
+  // Add all active categories with budgeted values
+  activeCategories.forEach(cat => {
+    const categoryDisplayName = cat.fullName || cat.name; // Use fullName (with emoji) for display
+    const categoryKey = cat.name; // Use clean name as key
     
-    // Initialize summary
-    const summary = {
-      income: 0,
-      spent: 0,
-      leftToSpend: 0
+    categoriesMap[categoryKey] = {
+      name: categoryDisplayName, // Display name with emoji
+      budgeted: monthlyBudget[categoryDisplayName] || monthlyBudget[cat.name] || 0,
+      actual: 0,
+      isActive: true
     };
+  });
+  
+  // Process expenses for this month
+  expenses.forEach(expense => {
+    if (!expense.category || !expense.amount) return;
     
-    // Initialize categories map
-    const categoriesMap = {};
+    const expenseCategoryName = expense.category; // Should be clean name from transaction
     
-    // Get active categories from cache
-    const allCategories = getCategories() || [];
-    const activeCategories = allCategories.filter(cat => cat.active);
+    // Try to find matching category
+    let matchedCategoryKey = null;
     
-    // Add all active categories with budgeted values
-    activeCategories.forEach(cat => {
-      const categoryName = cat.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
-      categoriesMap[categoryName] = {
-        name: cat.name,
-        budgeted: monthlyBudget[cat.name] || 0,
-        actual: 0,
-        isActive: true
-      };
-    });
+    // First try exact match with clean names
+    if (categoriesMap[expenseCategoryName]) {
+      matchedCategoryKey = expenseCategoryName;
+    } else {
+      // Try to find by checking all category names/fullNames
+      for (const [key, catData] of Object.entries(categoriesMap)) {
+        if (catData.name === expenseCategoryName || 
+            catData.name.includes(expenseCategoryName) ||
+            key === expenseCategoryName) {
+          matchedCategoryKey = key;
+          break;
+        }
+      }
+    }
     
-    // Process expenses for this month
-    expenses.forEach(expense => {
-      if (!expense.category || !expense.amount) return;
+    if (!matchedCategoryKey) {
+      // Create new category for unknown expenses (inactive categories with spending)
+      console.log('CacheManager: Adding inactive category with spending:', expenseCategoryName);
       
-      const categoryName = expense.category.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+      // Try to find this category in the full categories list
+      const fullCategoryData = categories.find(cat => 
+        cat.name === expenseCategoryName || 
+        cat.fullName === expenseCategoryName
+      );
       
-      if (!categoriesMap[categoryName]) {
-        categoriesMap[categoryName] = {
-          name: expense.category,
+      if (fullCategoryData) {
+        // Found the inactive category data
+        categoriesMap[expenseCategoryName] = {
+          name: fullCategoryData.fullName || fullCategoryData.name,
+          budgeted: 0,
+          actual: 0,
+          isActive: false
+        };
+      } else {
+        // Unknown category
+        categoriesMap[expenseCategoryName] = {
+          name: expenseCategoryName,
           budgeted: 0,
           actual: 0,
           isActive: false
         };
       }
-      
-      categoriesMap[categoryName].actual += expense.amount;
-      summary.spent += expense.amount;
-    });
+      matchedCategoryKey = expenseCategoryName;
+    }
     
-    // Process recurring items that occur in this month
-    const recurringThisMonth = getRecurringForMonth(recurring, month, year);
+    // Add expense amount to category
+    categoriesMap[matchedCategoryKey].actual += expense.amount;
+    summary.spent += expense.amount;
+  });
+  
+  // Process recurring items that occur in this month
+  const recurringThisMonth = getRecurringForMonth(recurring, month, year);
+  
+  // Calculate total income (would need to be loaded separately)
+  // For now, calculate from budget vs actual
+  const totalBudgeted = Object.values(categoriesMap).reduce((sum, cat) => sum + cat.budgeted, 0);
+  summary.income = 0; // This might need to be loaded from elsewhere
+  summary.leftToSpend = summary.income - summary.spent;
+  
+  // Convert categories map to array and sort
+  const categoryOrder = {};
+  categories.forEach((cat, index) => {
+    categoryOrder[cat.name] = cat.order !== undefined ? cat.order : index;
+  });
+  
+  const categoriesArray = Object.entries(categoriesMap).map(([key, catData]) => ({
+    ...catData,
+    sortOrder: categoryOrder[key] !== undefined ? categoryOrder[key] : 999
+  })).sort((a, b) => {
+    // Active categories first
+    if (a.isActive && !b.isActive) return -1;
+    if (!a.isActive && b.isActive) return 1;
     
-    // Convert map to array
-    const categoryOrder = {};
-    allCategories.forEach((cat, index) => {
-      const cleanName = cat.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
-      categoryOrder[cleanName] = index;
-    });
-    
-    const categories = Object.values(categoriesMap)
-      .sort((a, b) => {
-        if (a.isActive && !b.isActive) return -1;
-        if (!a.isActive && b.isActive) return 1;
-        
-        const cleanNameA = a.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
-        const cleanNameB = b.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
-        
-        const orderA = categoryOrder[cleanNameA] ?? 999;
-        const orderB = categoryOrder[cleanNameB] ?? 999;
-        
-        return orderA - orderB;
-      });
-    
-    // Build dashboard data
-    return {
-      summary: summary,
-      categories: categories,
-      header: {
-        month: new Date(year, month).toLocaleDateString('en-US', { month: 'long' }),
-        year: year
-      },
-      netWorth: {
-        total: 0,
-        savings: 0,
-        debts: 0
-      },
-      subscriptions: {
-        count: recurringThisMonth.length,
-        total: recurringThisMonth.reduce((sum, item) => sum + item.amount, 0),
-        items: recurringThisMonth.slice(0, 10).map((item, index) => ({
-          id: index + 1,
-          name: item.name,
-          amount: item.amount,
-          nextDate: getNextPaymentDate(item, month, year)
-        }))
-      }
-    };
-  }
+    // Within same active state, sort by original spreadsheet order
+    return a.sortOrder - b.sortOrder;
+  });
+  
+  // Build final dashboard data
+  const dashboardData = {
+    summary: summary,
+    categories: categoriesArray,
+    header: {
+      month: new Date(year, month).toLocaleDateString('en-US', { month: 'long' }),
+      year: year
+    },
+    netWorth: {
+      total: 0,
+      savings: 0,
+      debts: 0
+    },
+    subscriptions: {
+      count: recurringThisMonth.length,
+      total: recurringThisMonth.reduce((sum, item) => sum + item.amount, 0),
+      items: recurringThisMonth.slice(0, 10).map((item, index) => ({
+        id: index + 1,
+        name: item.name,
+        amount: item.amount,
+        nextDate: getNextPaymentDate(item, month, year)
+      }))
+    }
+  };
+  
+  console.log('CacheManager: Dashboard data calculated:', {
+    categoriesCount: dashboardData.categories.length,
+    totalSpent: dashboardData.summary.spent,
+    subscriptionsCount: dashboardData.subscriptions.count
+  });
+  
+  return dashboardData;
+}
   
   // Helper functions for dashboard calculation
   function getBudgetForMonth(month = currentMonth, year = currentYear) {
@@ -395,6 +456,9 @@ const CacheManager = (function() {
       });
     }
   }
+
+
+  
 
   /**
    * Preloader functionality (from Init)
@@ -543,6 +607,17 @@ const CacheManager = (function() {
     });
   }
 
+// Add this function to CacheManager (around line 230, near other getter functions)
+
+// Categories (from UserProperties)
+function getCategories() {
+  return get('categories');
+}
+
+function setCategories(categories) {
+  set('categories', categories, { ttl: config.ttl.longLived });
+}
+
   /**
    * Get cache statistics
    */
@@ -582,8 +657,7 @@ const CacheManager = (function() {
     getDashboardData,
     getBudgetData,
     setBudgetData,
-    getCategories,
-    setCategories,
+  
     getRecurring,
     setRecurring,
     getSettings,

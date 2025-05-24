@@ -824,6 +824,101 @@ saveBudgetData: function(budgetData, successCallback, errorCallback) {
 
 
 
+/**
+ * Categories UserProperties API Functions
+ * Add these functions to your API.html file
+ */
+
+/**
+ * Get categories from UserProperties
+ * @param {Function} successCallback - Called with { success, categories }
+ * @param {Function} errorCallback - Called on error
+ */
+getCategoriesFromUserProperties: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success !== false) {
+          // Even if no categories found, it's still "success"
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getCategoriesFromUserProperties();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Save categories to UserProperties
+ * @param {Array} categories - Categories array to save
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+saveCategoriestoUserProperties: function(categories, successCallback, errorCallback) {
+  try {
+    if (!Array.isArray(categories)) {
+      _lastError = "Categories must be an array";
+      errorCallback(_lastError);
+      return;
+    }
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error saving categories";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .saveCategoriestoUserProperties(categories);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Clear categories from UserProperties (used for refresh)
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+clearCategoriesFromUserProperties: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error clearing categories";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .clearCategoriesFromUserProperties();
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+
 
 
 

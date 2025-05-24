@@ -1,21 +1,20 @@
+
 <script>
 /**
- * CategoriesManager - Enhanced category management for SimBudget
+ * CategoriesManager - UserProperties Architecture
  * Features:
- * - Uses UserProperties for caching
- * - Writes changes back to spreadsheet
- * - Optimized 3-column grid layout
- * - Syncs with quick-expense dropdown
+ * - Uses UserProperties as single source of truth
+ * - Preserves spreadsheet order
+ * - Only fetches from spreadsheet on first load or manual refresh
+ * - Toggles update UserProperties immediately
  */
 
-// CategoriesManager module - Using IIFE pattern to match existing architecture
 var CategoriesManager = (function() {
   // Private variables
   let _initialized = false;
   let _categories = [];
   let _isLoading = false;
   let _isSaving = false;
-  let _isNavigating = false;
   
   // DOM element cache for performance
   const _elements = {};
@@ -32,205 +31,357 @@ var CategoriesManager = (function() {
     return _elements[id];
   }
   
-  function init(categories, activeCategories) {
-    console.log('Initializing Categories Manager...');
+  /**
+   * Initialize the Categories Manager
+   * Checks UserProperties first, then spreadsheet if needed
+   */
+  function init() {
+    console.log('CategoriesManager: Starting initialization...');
     
-    // Store initialization attempt for debugging
-    window._lastCategoryInitTime = new Date().getTime();
-    
-    // Force reset if explicit data provided
-    if (categories && Array.isArray(categories)) {
-      console.log('Explicit category data provided, resetting initialization state');
-      _initialized = false;
-    }
-    
-    // If already initialized with data, just refresh UI and exit
-    if (_initialized && _categories && _categories.length > 0) {
-      console.log('Categories Manager already initialized with data - refreshing UI');
+    if (_initialized && _categories.length > 0) {
+      console.log('CategoriesManager: Already initialized, just rendering');
       renderCategories();
       return;
     }
     
-    // If categories data is provided directly, use it
-    if (categories && Array.isArray(categories)) {
-      console.log('Using provided categories data:', categories.length, 'items');
-      _categories = processCategories(categories, activeCategories || []);
-      renderCategories();
-      _initialized = true;
-      
-      // Ensure QuickExpenseEntry has latest data - even if modal not open
-      setTimeout(() => {
-        if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
-          QuickExpenseEntry.ensureCategoriesLoaded(_categories);
-        }
-      }, 100);
-     
-     
-    } else {
-      // Check CacheManager first, then fall back to localStorage
-      const cachedData = window.CacheManager ? window.CacheManager.getCategories() : null;
-  
-      if (cachedData && Array.isArray(cachedData) && cachedData.length > 0) {
-        console.log('Using categories from CacheManager');
-        _categories = cachedData;
-        renderCategories();
-        _initialized = true;
-        
-        // Ensure QuickExpenseEntry has latest data - even if modal not open
-        setTimeout(() => {
-          if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
-            QuickExpenseEntry.ensureCategoriesLoaded(_categories);
-          }
-        }, 100);
-        
-
-      } else {
-        // Fall back to localStorage for backward compatibility
-        const cachedCategories = localStorage.getItem('simbudget_categories');
-        const cachedActiveCategories = localStorage.getItem('simbudget_active_categories');
-        
-        if (cachedCategories) {
-          try {
-            console.log('Using categories from localStorage');
-            const parsedCategories = JSON.parse(cachedCategories);
-            let activeList = [];
-            
-            if (cachedActiveCategories) {
-              activeList = JSON.parse(cachedActiveCategories);
-            }
-            
-            _categories = processCategories(parsedCategories, activeList);
-            renderCategories();
-            _initialized = true;
-            
-            setTimeout(() => {
-              if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
-                QuickExpenseEntry.ensureCategoriesLoaded(_categories);
-              }
-            }, 100);
-            
-           
-          } catch (e) {
-            console.error('Error parsing cached categories, falling back to API:', e);
-            loadCategories();
-          }
-        } else {
-          loadCategories();
-        }
-      }
+    // Find container
+    const container = getElement('categories-container');
+    if (!container) {
+      console.error('CategoriesManager: Container not found');
+      return;
     }
+    
+    _elements['categories-container'] = container;
+    
+    // Show loading state
+    showLoadingIndicator();
+    
+    // STEP 1: Check UserProperties first
+    loadCategoriesFromUserProperties();
   }
   
   /**
-   * Load categories from server with caching
-   * @param {boolean} forceRefresh - Whether to bypass cache and get fresh data
+   * Load categories from UserProperties
+   * If not found, fetch from spreadsheet
    */
-  function loadCategories(forceRefresh = false) {
-    console.log('Loading categories from server...');
+  function loadCategoriesFromUserProperties() {
+    console.log('CategoriesManager: Checking UserProperties...');
+    
+    if (!window.API || typeof API.getCategoriesFromUserProperties !== 'function') {
+      console.error('CategoriesManager: API.getCategoriesFromUserProperties not available');
+      showError('API not available');
+      return;
+    }
+    
+    API.getCategoriesFromUserProperties(
+      function(result) {
+        console.log('CategoriesManager: UserProperties result:', result);
+        
+        if (result && result.success && result.categories && result.categories.length > 0) {
+          // Found categories in UserProperties - use them
+          console.log('CategoriesManager: Using categories from UserProperties');
+          _categories = result.categories;
+          renderCategories();
+          _initialized = true;
+          hideLoadingIndicator();
+        } else {
+          // No categories in UserProperties - fetch from spreadsheet
+          console.log('CategoriesManager: No UserProperties found, fetching from spreadsheet');
+          loadCategoriesFromSpreadsheet(true); // true = save to UserProperties after loading
+        }
+      },
+      function(error) {
+        console.error('CategoriesManager: Error checking UserProperties:', error);
+        // Fallback to spreadsheet on error
+        loadCategoriesFromSpreadsheet(true);
+      }
+    );
+  }
+  
+  /**
+   * Load categories from spreadsheet
+   * @param {boolean} saveToUserProperties - Whether to save to UserProperties after loading
+   */
+  function loadCategoriesFromSpreadsheet(saveToUserProperties = false) {
+    console.log('CategoriesManager: Loading from spreadsheet...');
     _isLoading = true;
     
-    // Show loading indicator
-    showLoadingIndicator();
+    if (!window.API || typeof API.getCategories !== 'function') {
+      console.error('CategoriesManager: API.getCategories not available');
+      showError('API not available');
+      return;
+    }
     
-    // Call server to get categories
-    if (window.API && typeof API.getCategories === 'function') {
-      API.getCategories(
-        function(result) {
-          console.log('Categories loaded successfully:', result);
+    API.getCategories(
+      function(result) {
+        console.log('CategoriesManager: Spreadsheet result:', result);
+        
+        if (result && result.success && result.categories) {
+          // Process categories and preserve spreadsheet order
+          _categories = processCategories(result.categories, result.activeCategories || []);
           
-          if (result && result.success && result.categories) {
-            // Process and store categories
-            _categories = processCategories(result.categories, result.activeCategories || []);
-            
-            // Cache categories in local storage
-            localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
-            
-            // Update quick expense dropdown if it exists
-            updateQuickExpenseDropdown();
-            
-            // Render categories
-            renderCategories();
-          } else {
-            // Handle error
-            console.error('Error loading categories:', result ? result.error : 'Unknown error');
-            showError(result ? result.error : 'Failed to load categories');
+          console.log('CategoriesManager: Processed', _categories.length, 'categories');
+          
+          // Save to UserProperties if requested
+          if (saveToUserProperties) {
+            saveCategoriestoUserProperties(_categories);
           }
           
-          // Hide loading indicator
-          hideLoadingIndicator();
-          _isLoading = false;
-        },
-        function(error) {
-          console.error('API error loading categories:', error);
-          showError('Error loading categories: ' + error);
-          hideLoadingIndicator();
-          _isLoading = false;
-        },
-        forceRefresh // Pass forceRefresh to API to bypass cache if needed
-      );
-    } else {
-      // API not available, check for cached categories
-      const cachedCategories = localStorage.getItem('simbudget_categories');
-      if (cachedCategories) {
-        try {
-          _categories = JSON.parse(cachedCategories);
-          console.log('Loaded categories from cache:', _categories);
+          // Render categories
           renderCategories();
-          updateQuickExpenseDropdown();
-        } catch (e) {
-          console.error('Error parsing cached categories:', e);
-          showError('Could not load categories');
+          _initialized = true;
+          
+        } else {
+          console.error('CategoriesManager: Invalid spreadsheet response:', result);
+          showError(result ? result.error : 'Invalid response from spreadsheet');
         }
-      } else {
-        console.error('API.getCategories not available and no cached data');
-        showError('Categories cannot be loaded - API unavailable');
+        
+        hideLoadingIndicator();
+        _isLoading = false;
+      },
+      function(error) {
+        console.error('CategoriesManager: Spreadsheet error:', error);
+        showError('Error loading from spreadsheet: ' + error);
+        hideLoadingIndicator();
+        _isLoading = false;
       }
+    );
+  }
+  
+  /**
+   * Process categories from spreadsheet data
+   * Preserves original order and creates proper structure
+   * @param {Array} categories - Raw category data from spreadsheet
+   * @param {Array} activeCategories - List of active category names
+   * @return {Array} Processed categories with active state
+   */
+  function processCategories(categories, activeCategories) {
+    console.log('CategoriesManager: Processing categories...', { categories, activeCategories });
+    
+    if (!Array.isArray(categories)) {
+      console.error('CategoriesManager: Categories is not an array:', categories);
+      return [];
+    }
+    
+    // Ensure activeCategories is an array
+    const activeList = Array.isArray(activeCategories) ? activeCategories : [];
+    
+    // Process each category and preserve order
+    const processed = categories
+      .filter(cat => typeof cat === 'string' && cat.trim() !== '')
+      .map((categoryString, index) => {
+        const parsed = parseCategoryNameAndEmoji(categoryString);
+        
+        return {
+          id: parsed.name,           // Clean name as ID
+          name: parsed.name,         // Clean name without emoji
+          emoji: parsed.emoji,       // Extracted emoji
+          fullName: categoryString,  // Original string with emoji
+          active: activeList.includes(categoryString), // Check if active
+          order: index              // Preserve spreadsheet order
+        };
+      });
+    
+    console.log('CategoriesManager: Processed categories:', processed);
+    return processed;
+  }
+  
+  /**
+   * Parse category string to extract name and emoji
+   * @param {string} categoryString - Original category string
+   * @return {Object} {name, emoji}
+   */
+  function parseCategoryNameAndEmoji(categoryString) {
+    const parts = categoryString.trim().split(' ');
+    
+    if (parts.length >= 2) {
+      const lastPart = parts[parts.length - 1];
+      const emojiRegex = /[\u{1F600}-\u{1F6FF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
       
-      hideLoadingIndicator();
-      _isLoading = false;
+      if (emojiRegex.test(lastPart)) {
+        const name = parts.slice(0, -1).join(' ');
+        const emoji = lastPart;
+        return { name, emoji };
+      }
+    }
+    
+    return { name: categoryString, emoji: '' };
+  }
+  
+  /**
+   * Save categories to UserProperties
+   * @param {Array} categories - Categories to save
+   */
+  function saveCategoriestoUserProperties(categories) {
+    console.log('CategoriesManager: Saving to UserProperties...', categories.length, 'categories');
+    
+    if (!window.API || typeof API.saveCategoriestoUserProperties !== 'function') {
+      console.error('CategoriesManager: API.saveCategoriestoUserProperties not available');
+      return;
+    }
+    
+    API.saveCategoriestoUserProperties(
+      categories,
+      function(result) {
+        console.log('CategoriesManager: Saved to UserProperties successfully');
+      },
+      function(error) {
+        console.error('CategoriesManager: Error saving to UserProperties:', error);
+      }
+    );
+  }
+  
+  /**
+   * Toggle a category's active status
+   * Updates UserProperties immediately
+   * @param {number} index - Index of the category to toggle
+   * @param {boolean} active - New active status
+   * @param {Function} successCallback - Called on success
+   * @param {Function} errorCallback - Called on error
+   */
+  function toggleCategory(index, active, successCallback, errorCallback) {
+  console.log('CategoriesManager: Toggling category at index', index, 'to', active);
+  
+  if (_isSaving) {
+    console.log('CategoriesManager: Already saving, please wait...');
+    if (errorCallback) errorCallback('Already saving');
+    return;
+  }
+  
+  if (!_categories[index]) {
+    console.error('CategoriesManager: Invalid category index:', index);
+    if (errorCallback) errorCallback('Invalid category index');
+    return;
+  }
+  
+  // Update local data
+  const category = _categories[index];
+  const oldActive = category.active;
+  category.active = active;
+  
+  // Update UI immediately
+  const card = document.querySelector(`.category-card[data-index="${index}"]`);
+  if (card) {
+    if (active) {
+      card.classList.add('active');
+    } else {
+      card.classList.remove('active');
     }
   }
   
- function processCategories(categories, activeCategories) {
-  console.log('Processing categories data:', categories);
-  console.log('Active categories data:', activeCategories);
+  // Set saving flag
+  _isSaving = true;
   
-  let processedCategories;
-  
-  // CRITICAL FIX: Check if data is already in object format vs. string format
-  if (categories.length > 0 && typeof categories[0] === 'object' && 'name' in categories[0]) {
-    console.log('Categories already in object format, using directly');
-    processedCategories = categories;
-  } else {
-    // Original processing for string arrays
-    processedCategories = categories
-      .filter(cat => typeof cat === 'string' && cat.trim() !== '')
-      .map(cat => {
-        return {
-          name: cat,
-          active: Array.isArray(activeCategories) && activeCategories.includes(cat),
-          original: cat
-        };
-      });
+  // Save to UserProperties
+  if (!window.API || typeof API.saveCategoriestoUserProperties !== 'function') {
+    console.error('CategoriesManager: API.saveCategoriestoUserProperties not available');
+    // Revert local change
+    category.active = oldActive;
+    _isSaving = false;
+    if (errorCallback) errorCallback('API not available');
+    return;
   }
   
-  // After processing, cache the result:
-  if (window.CacheManager) {
-    window.CacheManager.setCategories(processedCategories);
-  }
-  
-  return processedCategories;
+  API.saveCategoriestoUserProperties(
+    _categories,
+    function(result) {
+      console.log('CategoriesManager: Category toggle saved to UserProperties');
+      _isSaving = false;
+      
+      // Update QuickExpenseEntry dropdown
+      updateQuickExpenseDropdown();
+      
+      // ✅ IMMEDIATE NOTIFICATION - Don't wait!
+      if (window.notifyMonthlyGridOfCategoryChange) {
+        notifyMonthlyGridOfCategoryChange();
+      }
+      
+      // ✅ BROADCAST TO ALL COMPONENTS
+      document.dispatchEvent(new CustomEvent('categories-changed', {
+        detail: { 
+          changedCategory: category.name,
+          newActiveStatus: active,
+          allCategories: _categories
+        }
+      }));
+      
+      // Success callback
+      if (successCallback) successCallback(result);
+    },
+    function(error) {
+      console.error('CategoriesManager: Error saving toggle to UserProperties:', error);
+      
+      // Revert the change
+      category.active = oldActive;
+      
+      // Revert UI
+      if (card) {
+        if (oldActive) {
+          card.classList.add('active');
+        } else {
+          card.classList.remove('active');
+        }
+      }
+      
+      _isSaving = false;
+      
+      // Error callback
+      if (errorCallback) errorCallback(error);
+    }
+  );
 }
+
+
+
+
+
+
+
+  
+  /**
+   * Refresh categories from spreadsheet
+   * This is the ONLY way to get fresh data from spreadsheet
+   */
+  function refreshCategories() {
+    console.log('CategoriesManager: Manual refresh triggered');
+    
+    if (_isLoading || _isSaving) {
+      console.log('CategoriesManager: Already loading/saving, skipping refresh');
+      return;
+    }
+    
+    // Clear existing data
+    _categories = [];
+    _initialized = false;
+    
+    // Clear UserProperties first
+    if (window.API && typeof API.clearCategoriesFromUserProperties === 'function') {
+      API.clearCategoriesFromUserProperties(
+        function() {
+          console.log('CategoriesManager: UserProperties cleared, loading fresh from spreadsheet');
+          loadCategoriesFromSpreadsheet(true); // true = save to UserProperties after loading
+        },
+        function(error) {
+          console.error('CategoriesManager: Error clearing UserProperties:', error);
+          // Continue with refresh anyway
+          loadCategoriesFromSpreadsheet(true);
+        }
+      );
+    } else {
+      // If API not available, just load from spreadsheet
+      loadCategoriesFromSpreadsheet(true);
+    }
+  }
   
   /**
    * Render categories to the UI
    */
   function renderCategories() {
-    console.log('Rendering categories:', _categories);
+    console.log('CategoriesManager: Rendering categories...', _categories.length);
     
     const container = getElement('categories-container');
     if (!container) {
-      console.error('Categories container not found');
+      console.error('CategoriesManager: Categories container not found');
       return;
     }
     
@@ -247,11 +398,13 @@ var CategoriesManager = (function() {
     const grid = document.createElement('div');
     grid.className = 'categories-grid';
     
-    // Create cards for each category
-    _categories.forEach((category, index) => {
-      const card = createCategoryCard(category, index);
-      grid.appendChild(card);
-    });
+    // Create cards for each category (preserve order)
+    _categories
+      .sort((a, b) => (a.order || 0) - (b.order || 0)) // Sort by original spreadsheet order
+      .forEach((category, index) => {
+        const card = createCategoryCard(category, index);
+        grid.appendChild(card);
+      });
     
     // Add grid to container
     container.appendChild(grid);
@@ -286,7 +439,7 @@ var CategoriesManager = (function() {
     savingIndicator.innerHTML = '<div class="spinner"></div>';
     savingIndicator.style.display = 'none';
     
-    // Add change listener with spreadsheet update
+    // Add change listener
     checkbox.addEventListener('change', function() {
       // Show saving indicator
       savingIndicator.style.display = 'inline-block';
@@ -294,7 +447,6 @@ var CategoriesManager = (function() {
       
       // Toggle the category
       toggleCategory(index, this.checked, function() {
-        
         // On success, hide indicator and re-enable checkbox
         savingIndicator.style.display = 'none';
         checkbox.disabled = false;
@@ -315,10 +467,16 @@ var CategoriesManager = (function() {
     // Create label with category name
     const label = document.createElement('label');
     label.htmlFor = `category-toggle-${index}`;
-     label.className = 'category-name-cat';
-     label.textContent = Utils.translateCategory(category.name);
-   
-
+    label.className = 'category-name-cat';
+    
+    // Display full name with emoji
+    const displayName = category.emoji ? 
+      `${category.emoji} ${category.name}` : 
+      category.name;
+    
+    label.textContent = Utils && Utils.translateCategory ? 
+      Utils.translateCategory(displayName) : 
+      displayName;
     
     // Append elements to card
     card.appendChild(checkbox);
@@ -328,127 +486,23 @@ var CategoriesManager = (function() {
     return card;
   }
   
-
-
-
-  /**
-   * Toggle a category's active status and update spreadsheet
-   * @param {number} index - Index of the category
-   * @param {boolean} active - New active status
-   * @param {Function} successCallback - Called on success
-   * @param {Function} errorCallback - Called on error
-   */
-  function toggleCategory(index, active, successCallback, errorCallback) {
-  console.log(`Toggling category at index ${index} to ${active}`);
-  
-  if (_isSaving) {
-    console.log('Already saving, please wait...');
-    if (errorCallback) errorCallback('Already saving');
-    return;
-  }
-  
-  // Update _categories array
-  if (_categories[index]) {
-    const categoryName = _categories[index].name;
-    _categories[index].active = active;
-    
-    // Update UI
-    const card = document.querySelector(`.category-card[data-index="${index}"]`);
-    if (card) {
-      if (active) {
-        card.classList.add('active');
-      } else {
-        card.classList.remove('active');
-      }
-    }
-    
-    // Set saving flag
-    _isSaving = true;
-    
-    // Save to spreadsheet via API
-    API.updateCategoryStatus(
-      categoryName, 
-      active,
-      function(result) {
-        console.log('Category status updated in spreadsheet:', result);
-        
-        // Store THE WHOLE CATEGORIES ARRAY in the same format it's needed on load
-        if (window.CacheManager) {
-        window.CacheManager.setCategories(_categories);
-        // Invalidate dashboard so it recalculates with new active categories
-        window.CacheManager.invalidate('dashboardData');
-      } else {
-        // Fallback to localStorage for backward compatibility
-        localStorage.setItem('simbudget_categories', JSON.stringify(_categories));
-        
-        // Also keep the active categories list for quick access
-        const activeCategories = _categories
-          .filter(cat => cat.active)
-          .map(cat => cat.name);
-        localStorage.setItem('simbudget_active_categories', JSON.stringify(activeCategories));
-      }
-        
-       // Force update QuickExpenseEntry with fresh data
-        if (window.QuickExpenseEntry) {
-          // Clear any cached categories in QuickExpenseEntry
-          if (QuickExpenseEntry._categories) {
-            QuickExpenseEntry._categories = null;
-          }
-          // Force reload with our current data
-          QuickExpenseEntry.ensureCategoriesLoaded(_categories);
-        }
-
-        // Force update expense grid if it's loaded
-        if (window.MonthlyGrid && MonthlyGrid._categories) {
-          // Update MonthlyGrid's internal categories array
-          MonthlyGrid._categories = _categories.filter(cat => cat.active);
-          // Re-render the grid to reflect changes
-          if (window.SimBudget?.Views?.getCurrent() === 'expense') {
-            MonthlyGrid.renderGrid();
-          }
-        }
-
-        // Update any other dropdowns
-        window.updateAllCategoryDropdowns();
-        
-        // Then use the global function for any other components
-        window.updateAllCategoryDropdowns();
-        
-        // Clear saving flag
-        _isSaving = false;
-        
-        // Call success callback if provided - THIS IS CRITICAL FOR THE SPINNER
-        if (successCallback) successCallback(result);
-      },
-      function(error) {
-        console.error('Error updating category in spreadsheet:', error);
-        
-        // Revert the change in memory
-        _categories[index].active = !active;
-        
-        // Clear saving flag
-        _isSaving = false;
-        
-        // Call error callback if provided
-        if (errorCallback) errorCallback(error);
-      }
-    );
-  }
-}
-  
   /**
    * Update the quick expense dropdown to show only active categories
    */
   function updateQuickExpenseDropdown() {
+    
     // Find the expense category dropdown
     const expenseCategoryDropdown = document.getElementById('expenseCategory');
-    if (!expenseCategoryDropdown) return;
+    if (!expenseCategoryDropdown) {
+      console.log('CategoriesManager: Quick expense dropdown not found');
+      return;
+    }
     
     // Get only active categories
     const activeCategories = _categories
       .filter(cat => cat.active)
-      .map(cat => cat.name)
-      .sort(); // Sort alphabetically
+      .sort((a, b) => (a.order || 0) - (b.order || 0)) // Preserve spreadsheet order
+      .map(cat => cat.fullName); // Use full name with emoji
     
     // Save current selection if any
     const currentSelection = expenseCategoryDropdown.value;
@@ -472,7 +526,7 @@ var CategoriesManager = (function() {
       expenseCategoryDropdown.value = activeCategories[0];
     }
     
-    console.log('Updated quick expense dropdown with active categories:', activeCategories);
+    console.log('CategoriesManager: Updated dropdown with', activeCategories.length, 'active categories');
   }
   
   /**
@@ -506,80 +560,38 @@ var CategoriesManager = (function() {
     }
   }
   
-  /**
-   * Refresh categories from server - bypass cache
-   */
-  function refreshCategories() {
-    if (_isLoading || _isSaving) return;
-    
-    console.log('Refreshing categories with forceRefresh=true');
-    
-    // Set a global flag to force refresh
-    window._forceCategoriesRefresh = true;
-    
-    // Clear initialized flag
-    _initialized = false;
-    
-    // Force a full reload
-    if (window.SimBudget && typeof SimBudget.loadViewData === 'function') {
-      SimBudget.loadViewData('categories', true); // forceRefresh=true
-    } else {
-      // Fallback to direct load if SimBudget not available
-      loadCategories(true);
-    }
-    
-    // Use the global function with setTimeout
-    setTimeout(() => {
-      window.updateAllCategoryDropdowns();
-    }, 500);
-  }
-  
   // Public API
   return {
     init: init,
     refreshCategories: refreshCategories,
-    updateQuickExpenseDropdown: updateQuickExpenseDropdown
+    updateQuickExpenseDropdown: updateQuickExpenseDropdown,
+    
+    // Expose for debugging
+    getCategories: function() { return _categories; },
+    isInitialized: function() { return _initialized; }
   };
 })();
-
-// Initialize when DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-  // We'll let the view system trigger initialization
-  // CategoriesManager.init();
-});
 
 // Expose globally
 window.CategoriesManager = CategoriesManager;
 
-// Single source for updating all dropdown instances
-// Single source for updating all dropdown instances - improved version
+// Global function for updating all category dropdowns
 window.updateAllCategoryDropdowns = function() {
   console.log('Updating all category dropdowns');
   
-  // First update internal dropdowns in CategoriesManager
   if (window.CategoriesManager && typeof CategoriesManager.updateQuickExpenseDropdown === 'function') {
     CategoriesManager.updateQuickExpenseDropdown();
   }
   
-  // Then update QuickExpenseEntry using the new resilient method
-  if (window.QuickExpenseEntry) {
-    if (typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
-      QuickExpenseEntry.ensureCategoriesLoaded();
-      console.log('Used ensureCategoriesLoaded to update QuickExpenseEntry dropdowns');
-    } else if (typeof QuickExpenseEntry.loadCategories === 'function') {
-      // Fallback to old method
-      QuickExpenseEntry.loadCategories();
-      console.log('Used legacy loadCategories to update QuickExpenseEntry dropdowns');
-    }
+  // Update QuickExpenseEntry if available
+  if (window.QuickExpenseEntry && typeof QuickExpenseEntry.ensureCategoriesLoaded === 'function') {
+    const activeCategories = CategoriesManager.getCategories().filter(cat => cat.active);
+    QuickExpenseEntry.ensureCategoriesLoaded(activeCategories);
   }
 };
 
-
 </script>
 
-
-
-<!-- categories.css.html - ENHANCED VERSION WITH SAVING INDICATORS -->
 <style>
 /* ======================================================
    CATEGORIES MANAGEMENT STYLES - ENHANCED VERSION

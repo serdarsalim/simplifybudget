@@ -83,24 +83,31 @@ const Settings = {
   },
 
   // Fetch settings from server in the background
-  _fetchFromServer: function() {
-    API.getUserSettings(
-      function(result) {
-        if (result && result.settings) {
-          // Update cache
-          CacheManager.setSettings(result.settings);
-          
-          // If settings view is active, apply the settings to the form
-          if (SimBudget.Views.getCurrent() === "settings") {
-            SimBudget.applySettings();
+_fetchFromServer: function() {
+  API.getUserSettings(
+    function(result) {
+      if (result && result.settings) {
+        // Update cache
+        CacheManager.setSettings(result.settings);
+        
+        // ALWAYS re-apply settings when they load, regardless of current view
+        SimBudget.applySettings();
+        
+        // Force budget re-render if we're on budget view
+        if (SimBudget.Views.getCurrent() === "budget") {
+          // Re-render budget with correct settings
+          const cachedData = window.CacheManager.getDashboardData();
+          if (cachedData) {
+            SimBudget.renderBudgetDashboard(cachedData);
           }
         }
-      },
-      function(error) {
-        console.error("Error fetching settings from server:", error);
       }
-    );
-  },
+    },
+    function(error) {
+      console.error("Error fetching settings from server:", error);
+    }
+  );
+},
 
   // Convenience methods for common settings
   getCurrencySymbol: function () {
@@ -193,8 +200,10 @@ const Settings = {
 initialize: function() {
   if (_initialized) return;
 
-    sessionStorage.setItem('monthlyGrid_sessionActive', 'true');
+ sessionStorage.setItem('monthlyGrid_sessionActive', 'true');
+  this.loadGlobalCategories();
 
+  this.Settings._fetchFromServer();
   // Set up event listeners
   this.bindEvents();
 
@@ -206,8 +215,6 @@ initialize: function() {
   // Check for existing sheet URL
   this.checkExistingConnection();
 
-  // Apply settings
-  this.applySettings();
 
   // Load user info
   this.loadUserInfo();
@@ -227,6 +234,25 @@ initialize: function() {
   }
 
   _initialized = true;
+},
+
+/**
+ * Load categories globally so all views can use them
+ */
+loadGlobalCategories: function() {
+  API.getCategoriesFromUserProperties(
+    function(result) {
+      if (result && result.success && result.categories) {
+        // Store globally so MonthlyGrid can access them
+        window._globalCategories = result.categories;
+        console.log('Global categories loaded:', result.categories.length);
+      }
+    },
+    function(error) {
+      console.warn('Could not load global categories:', error);
+      window._globalCategories = [];
+    }
+  );
 },
 
 /**
@@ -275,6 +301,18 @@ Views: {
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.remove("active-view");
   });
+
+
+// ✅ CHECK FOR CATEGORY CHANGES WHEN SWITCHING TO EXPENSE VIEW
+if (viewName === 'expense' && window.MonthlyGrid) {
+  // Force category refresh when entering expense view
+  // This catches any changes made while in other views
+  setTimeout(() => {
+    if (window.notifyMonthlyGridOfCategoryChange) {
+      notifyMonthlyGridOfCategoryChange();
+    }
+  }, 100);
+}
 
   // Show the selected view
   const targetView = document.getElementById(viewName + "View");
@@ -522,6 +560,32 @@ if (fromView === 'budget' && toView === 'expense') {
        * Bind all event listeners
        */
       bindEvents: function () {
+
+
+          // Listen for category changes from any component
+          document.addEventListener('categories-changed', function(event) {
+            console.log('SimBudget: Categories changed event received:', event.detail);
+            
+            const currentView = SimBudget.Views.getCurrent();
+            
+            // If we're in expense view, immediately refresh the grid
+            if (currentView === 'expense') {
+              console.log('SimBudget: Currently in expense view, triggering immediate refresh');
+              
+              // Small delay to ensure UserProperties is fully updated
+              setTimeout(() => {
+                if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
+                  MonthlyGrid.refresh();
+                }
+              }, 200);
+            }
+            
+            // Update quick expense dropdown regardless of current view
+            if (window.CategoriesManager && typeof CategoriesManager.updateQuickExpenseDropdown === 'function') {
+              CategoriesManager.updateQuickExpenseDropdown();
+            }
+});
+
 
       // DESKTOP sidebar toggle with reliable event delegation 
       document.addEventListener("click", function(e) {
@@ -1016,12 +1080,11 @@ document.addEventListener("click", function(e) {
 
 /**
  * Load data for a specific view with caching and preloading
- * REPLACE the existing loadViewData function in SimBudget's return object
+ * FIXED: Categories never check cache - always fresh from UserProperties
  * @param {string} viewName - Name of the view to load
  * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
  */
 loadViewData: function(viewName, forceRefresh = false) {
-
   // Skip if already loading the same view
   if (_loadingView === viewName && !forceRefresh) {
     return;
@@ -1029,6 +1092,14 @@ loadViewData: function(viewName, forceRefresh = false) {
 
   // Set loading flag
   _loadingView = viewName;
+
+  // ✅ SPECIAL CASE: Categories NEVER use cache
+  if (viewName === "categories") {
+    console.log('Categories view: Always loading fresh from UserProperties (no cache)');
+    this.loadCategoriesData();
+    _loadingView = null;
+    return;
+  }
 
   // CACHE-FIRST STRATEGY: Check cache first unless force refresh
   if (!forceRefresh && CacheManager.isValid(viewName)) {
@@ -1042,7 +1113,7 @@ loadViewData: function(viewName, forceRefresh = false) {
     return;
   }
 
-  // Load from server
+  // Load from server for all other views
   switch (viewName) {
     case "budget":
       this.loadBudgetData();
@@ -1062,9 +1133,6 @@ loadViewData: function(viewName, forceRefresh = false) {
     case "reports":
       this.loadReportsSheet();
       break;
-    case "categories":
-      this.loadCategoriesData();
-      break;
     case "settings":
       _loadingView = null; 
       break;
@@ -1074,234 +1142,160 @@ loadViewData: function(viewName, forceRefresh = false) {
   }
 },
 
-      // In Init.html - modify the loadCategoriesData function
-      loadCategoriesData: function () {
-        // Get content container
-        const contentArea = document.getElementById("categoriesContent");
-        if (!contentArea) {
-          console.error("Categories content area not found");
-          _loadingView = null;
-          return;
-        }
+/**
+ * Load categories data - FIXED to use UserProperties exclusively
+ * NO MORE localStorage or CacheManager bullshit for categories!
+ */
+loadCategoriesData: function () {
+  console.log('Init: Loading categories data...');
+  
+  // Get content container
+  const contentArea = document.getElementById("categoriesContent");
+  if (!contentArea) {
+    console.error("Categories content area not found");
+    _loadingView = null;
+    return;
+  }
 
-        // Get or create categories container
-        let categoriesContainer = document.getElementById(
-          "categories-container"
-        );
-        if (!categoriesContainer) {
-          categoriesContainer = document.createElement("div");
-          categoriesContainer.id = "categories-container";
-          categoriesContainer.className = "categories-container";
-          contentArea.appendChild(categoriesContainer);
-        }
+  // Get or create categories container
+  let categoriesContainer = document.getElementById("categories-container");
+  if (!categoriesContainer) {
+    categoriesContainer = document.createElement("div");
+    categoriesContainer.id = "categories-container";
+    categoriesContainer.className = "categories-container";
+    contentArea.appendChild(categoriesContainer);
+  }
 
-        // First check if CategoriesManager is initialized and has data
-        if (
-          window.CategoriesManager &&
-          CategoriesManager._initialized &&
-          CategoriesManager._categories &&
-          CategoriesManager._categories.length > 0
-        ) {
-          console.log("CategoriesManager already initialized, skipping load");
-          _loadingView = null;
-          return;
-        }
+  // Check if CategoriesManager is already initialized and has data
+  if (window.CategoriesManager && 
+      typeof CategoriesManager.isInitialized === 'function' && 
+      CategoriesManager.isInitialized()) {
+    console.log("Init: CategoriesManager already initialized, skipping load");
+    _loadingView = null;
+    return;
+  }
 
-        // Then check local cache before showing loading state
-        const cachedCategories = localStorage.getItem("simbudget_categories");
-        const cachedActiveCategories = localStorage.getItem(
-          "simbudget_active_categories"
-        );
+  // Show loading state
+  categoriesContainer.innerHTML = 
+    '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
 
-        if (cachedCategories && !window._forceCategoriesRefresh) {
-          try {
-            // Use cached data
-            console.log("Using cached categories from localStorage");
-            const parsedCategories = JSON.parse(cachedCategories);
-            let activeList = [];
-
-            if (cachedActiveCategories) {
-              activeList = JSON.parse(cachedActiveCategories);
-            }
-
-            // Store in SimBudget cache too
-            CacheManager.set("categories", parsedCategories);
-
-            // Initialize manager with cached data
-            if (
-              window.CategoriesManager &&
-              typeof CategoriesManager.init === "function"
-            ) {
-              CategoriesManager.init(parsedCategories, activeList);
-            }
-
-            // Clear loading flag
-            _loadingView = null;
-
-            // Optionally refresh in background after a delay
-            setTimeout(() => {
-              if (!window._isViewChanging) {
-                API.getCategories(
-                  function (result) {
-                    // No UI update needed here unless data changed significantly
-                  },
-                  function (error) {
-                    console.log(
-                      "Background refresh error (non-critical):",
-                      error
-                    );
-                  },
-                  false // Don't force refresh, use server cache
-                );
-              }
-            }, 2000);
-
-            return;
-          } catch (e) {
-            console.error("Error parsing cached categories:", e);
-            // Fall through to API call on error
-          }
-        }
-
-        // Show loading state ONLY if we couldn't use cache
-        categoriesContainer.innerHTML =
-          '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
-
-        // Call API to get categories
-        API.getCategories(
-          function (result) {
-            console.log("Categories data loaded successfully", result);
-
-            // Cache the result
-            CacheManager.set("categories", result.categories);
-
-            // Clear loading flag
-            _loadingView = null;
-            window._forceCategoriesRefresh = false;
-
-            // Initialize CategoriesManager with data
-            if (
-              window.CategoriesManager &&
-              typeof CategoriesManager.init === "function"
-            ) {
-              CategoriesManager.init(
-                result.categories,
-                result.activeCategories
-              );
-            } else {
-              categoriesContainer.innerHTML =
-                '<div class="categories-error"><i class="material-icons">error</i><p>CategoriesManager not available</p></div>';
-            }
-          },
-          function (error) {
-            console.error("Error loading categories:", error);
-            _loadingView = null;
-            window._forceCategoriesRefresh = false;
-
-            // Try to use cached data even on error
-            if (cachedCategories) {
-              try {
-                const parsedCategories = JSON.parse(cachedCategories);
-                let activeList = [];
-
-                if (cachedActiveCategories) {
-                  activeList = JSON.parse(cachedActiveCategories);
-                }
-
-                if (
-                  window.CategoriesManager &&
-                  typeof CategoriesManager.init === "function"
-                ) {
-                  CategoriesManager.init(parsedCategories, activeList);
-
-                  // Show a toast about using cached data due to error
-                  if (window.Utils && typeof Utils.showToast === "function") {
-                    Utils.showToast(
-                      "Using cached categories - " + error,
-                      "warning"
-                    );
-                  }
-                  return;
-                }
-              } catch (e) {
-                console.error(
-                  "Error parsing cached categories on error fallback:",
-                  e
-                );
-              }
-            }
-
-            // Show error INSIDE container only if we couldn't use cache
-            categoriesContainer.innerHTML = `<div class="categories-error">
+  // Initialize CategoriesManager - it will handle UserProperties loading internally
+  if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
+    console.log('Init: Initializing CategoriesManager...');
+    
+    try {
+      // CategoriesManager.init() handles:
+      // 1. Check UserProperties first
+      // 2. Load from spreadsheet if UserProperties empty
+      // 3. Save to UserProperties after loading from spreadsheet
+      CategoriesManager.init();
+      
+      console.log('Init: CategoriesManager initialized successfully');
+      _loadingView = null;
+      
+    } catch (error) {
+      console.error('Init: Error initializing CategoriesManager:', error);
+      
+      // Show error in container
+      categoriesContainer.innerHTML = `
+        <div class="categories-error">
+          <i class="material-icons">error</i>
+          <p>Error loading categories: ${error}</p>
+          <button onclick="SimBudget.loadCategoriesData()" class="retry-btn">Retry</button>
+        </div>
+      `;
+      
+      _loadingView = null;
+    }
+    
+  } else {
+    console.error('Init: CategoriesManager not available');
+    
+    categoriesContainer.innerHTML = `
+      <div class="categories-error">
         <i class="material-icons">error</i>
-        <span>Error loading categories: ${error}</span>
-      </div>`;
-          },
-          window._forceCategoriesRefresh || false // Only force refresh if flag is set
-        );
-      },
+        <p>CategoriesManager component not found</p>
+      </div>
+    `;
+    
+    _loadingView = null;
+  }
+},
 
-      /**
-       * Render view using cached data
-       * @param {string} viewName - Name of the view to render
-       */
-      renderViewFromCache: function (viewName) {
-        console.log(`Rendering ${viewName} view from cache`);
-        const cachedData = CacheManager.get(viewName);
+   /**
+ * Render view using cached data
+ * FIXED: Categories don't use cache - always fresh from UserProperties
+ * @param {string} viewName - Name of the view to render
+ */
+renderViewFromCache: function (viewName) {
+  console.log(`Rendering ${viewName} view from cache`);
+  
+  // ✅ SPECIAL CASE: Categories NEVER use cache - always fresh from UserProperties
+  if (viewName === "categories") {
+    console.log('Categories view: Skipping cache, loading fresh from UserProperties');
+    this.loadCategoriesData();
+    return;
+  }
+  
+  // For all other views, check cache
+  const cachedData = CacheManager.get(viewName);
 
-        if (!cachedData) {
-          console.error(`No cached data found for ${viewName} view`);
-          return;
-        }
+  if (!cachedData) {
+    console.error(`No cached data found for ${viewName} view`);
+    return;
+  }
 
-        switch (viewName) {
-          case "budget":
-            this.loadBudgetData(false); // Don't force refresh - use cache
-            break;
-          case "expense":
-            this.renderExpenseView(cachedData);
-            break;
-          case "income":
-            this.loadIncomeData(); // Just load it - no special render yet
-            break;
-          case "recurring":
-            this.loadRecurringData(); // Load with cache support
-            break;
-          case "categories":
-            this.loadCategoriesData();
-            break;
-          case "netWorth":
-            this.loadNetWorthData(); // Load placeholder
-            break;
-          case "reports":
-            this.loadReportsSheet(); // Load placeholder
-            break;
-          default:
-            console.error(`Unknown view name for cache rendering: ${viewName}`);
-        }
-      },
+  switch (viewName) {
+    case "budget":
+      this.loadBudgetData(false); // Don't force refresh - use cache
+      break;
+    case "expense":
+      this.renderExpenseView(cachedData);
+      break;
+    case "income":
+      this.loadIncomeData(); // Just load it - no special render yet
+      break;
+    case "recurring":
+      this.loadRecurringData(); // Load with cache support
+      break;
+    case "netWorth":
+      this.loadNetWorthData(); // Load placeholder
+      break;
+    case "reports":
+      this.loadReportsSheet(); // Load placeholder
+      break;
+    default:
+      console.error(`Unknown view name for cache rendering: ${viewName}`);
+  }
+},
 
-      /**
-       * Load budget data using a single consolidated API call
-       */
-    loadBudgetData: function(forceRefresh = false) {
-      if (typeof _currentMonth === 'undefined') {
-        _currentMonth = new Date().getMonth();
-        _currentYear = new Date().getFullYear();
-      }
-      
-      const contentArea = document.getElementById("budgetContent");
-      
-      // Check cache ONLY if not forcing refresh
-      if (!forceRefresh) {
-        const cachedData = window.CacheManager.getDashboardData();
-        if (cachedData) {
-          SimBudget.renderBudgetDashboard(cachedData);
-          CacheManager.set('budget', cachedData);
-          _loadingView = null;
-          return;
-        }
-      }
+  
+
+/**
+ * Load budget data - SETTINGS FIRST to avoid quota issues
+ */
+/**
+ * Load budget data - CLEAN VERSION (settings loaded at startup)
+ */
+loadBudgetData: function(forceRefresh = false) {
+  if (typeof _currentMonth === 'undefined') {
+    _currentMonth = new Date().getMonth();
+    _currentYear = new Date().getFullYear();
+  }
+  
+  const contentArea = document.getElementById("budgetContent");
+  
+  // Check cache ONLY if not forcing refresh
+  if (!forceRefresh) {
+    const cachedData = window.CacheManager.getDashboardData();
+    if (cachedData) {
+      SimBudget.renderBudgetDashboard(cachedData);
+      CacheManager.set('budget', cachedData);
+      _loadingView = null;
+      return;
+    }
+  }
+
   // Show loading overlay
   if (contentArea) {
     const existingDashboard = contentArea.querySelector('.dashboard-container');
@@ -1317,119 +1311,128 @@ loadViewData: function(viewName, forceRefresh = false) {
     }
   }
 
-    // THEN clear caches if forcing refresh
+  // Clear caches if forcing refresh
   if (forceRefresh && window.CacheManager) {
     CacheManager.invalidate('budgetData');
     CacheManager.invalidate('dashboardData');
     CacheManager.clearMonth(_currentMonth, _currentYear);
   }
   
-  
   // Load all required data
   let expensesLoaded = false;
   let recurringLoaded = false;
   let budgetLoaded = false;
+  let categoriesLoaded = false;
   let expensesData = null;
   let recurringData = null;
   let budgetData = null;
+  let categoriesData = null;
 
   const checkAndRender = () => {
-  
-      if (!window.CacheManager.getCategories()) {
-    const cachedCats = localStorage.getItem('simbudget_categories');
-    if (cachedCats) {
+    if (expensesLoaded && recurringLoaded && budgetLoaded && categoriesLoaded) {
+      
       try {
-        const cats = JSON.parse(cachedCats);
-        console.log('Loading categories into CacheManager:', cats.length);
-        window.CacheManager.setCategories(cats);
-      } catch (e) {
-        console.error('Failed to load categories from localStorage');
-      }
-    }
-  }
-  
-  if (expensesLoaded && recurringLoaded && budgetLoaded) {
-    
-    try {
-      // Store in cache
-      if (expensesData) {
-        window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
-      }
-      if (recurringData) {
-        window.CacheManager.setRecurring(recurringData);
-      }
-      if (budgetData) {
-        window.CacheManager.setBudgetData(budgetData);
-      }
-      
-      // Calculate and render
-      const dashboardData = window.CacheManager.getDashboardData(_currentMonth, _currentYear);
-      
-      if (dashboardData) {
-        SimBudget.renderBudgetDashboard(dashboardData);
-        CacheManager.set('budget', dashboardData);
-      } else {
-        console.error('FAILED to calculate dashboard data');
-        // REMOVE OVERLAY EVEN ON ERROR
+        // Store in cache
+        if (expensesData) {
+          window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
+        }
+        if (recurringData) {
+          window.CacheManager.setRecurring(recurringData);
+        }
+        if (budgetData) {
+          window.CacheManager.setBudgetData(budgetData);
+        }
+        
+        const dashboardData = window.CacheManager.calculateDashboardData(
+          expensesData || [], 
+          recurringData || [], 
+          categoriesData || [],
+          _currentMonth, 
+          _currentYear
+        );
+        
+        if (dashboardData) {
+          SimBudget.renderBudgetDashboard(dashboardData);
+          CacheManager.set('budget', dashboardData);
+        } else {
+          console.error('FAILED to calculate dashboard data');
+          const contentArea = document.getElementById("budgetContent");
+          const overlay = contentArea?.querySelector('.loading-overlay');
+          if (overlay) overlay.remove();
+        }
+        
+      } catch (error) {
+        console.error('ERROR in checkAndRender:', error);
         const contentArea = document.getElementById("budgetContent");
         const overlay = contentArea?.querySelector('.loading-overlay');
         if (overlay) overlay.remove();
       }
       
-    } catch (error) {
-      console.error('ERROR in checkAndRender:', error);
-      // REMOVE OVERLAY ON ERROR
-      const contentArea = document.getElementById("budgetContent");
-      const overlay = contentArea?.querySelector('.loading-overlay');
-      if (overlay) overlay.remove();
+      _loadingView = null;
     }
-    
-    _loadingView = null;
-  }
-};
+  };
   
-  // Load budget data (NEW)
+  // Load categories immediately (from UserProperties - fast)
+  API.getCategoriesFromUserProperties(
+    function(result) {
+      categoriesData = (result && result.categories) ? result.categories : [];
+      categoriesLoaded = true;
+      checkAndRender();
+    },
+    function(error) {
+      console.error('Categories error:', error);
+      categoriesData = [];
+      categoriesLoaded = true;
+      checkAndRender();
+    }
+  );
+  
+  // Stagger the server calls
+  setTimeout(() => {
     API.getBudgetData(
-    function(result) {
-      budgetData = result.budgetData || {};
-      budgetLoaded = true;
-      checkAndRender();
-    },
-    function(error) {
-      console.error('LoadBudgetData: Error loading budget data:', error);
-      budgetLoaded = true;
-      checkAndRender();
-    },
-    forceRefresh  // Now this works!
-  );
+      function(result) {
+        budgetData = result.budgetData || {};
+        budgetLoaded = true;
+        checkAndRender();
+      },
+      function(error) {
+        console.error('Budget error:', error);
+        budgetLoaded = true;
+        checkAndRender();
+      },
+      forceRefresh
+    );
+  }, 400);
   
-  // Load expenses
-  API.getExpenseData(_currentMonth, _currentYear,
-    function(result) {
-      expensesData = result.expenses || [];
-      expensesLoaded = true;
-      checkAndRender();
-    },
-    function(error) {
-      console.error('LoadBudgetData: Error loading expenses:', error);
-      expensesLoaded = true;
-      checkAndRender();
-    }
-  );
+  setTimeout(() => {
+    API.getExpenseData(_currentMonth, _currentYear,
+      function(result) {
+        expensesData = result.expenses || [];
+        expensesLoaded = true;
+        checkAndRender();
+      },
+      function(error) {
+        console.error('Expenses error:', error);
+        expensesLoaded = true;
+        checkAndRender();
+      }
+    );
+  }, 800);
   
-  // Load recurring
-  API.getRecurringData(
-    function(result) {
-      recurringData = result.recurring || [];
-      recurringLoaded = true;
-      checkAndRender();
-    },
-    function(error) {
-      console.error('LoadBudgetData: Error loading recurring:', error);
-      recurringLoaded = true;
-      checkAndRender();
-    }
-  );
+  setTimeout(() => {
+    API.getRecurringData(
+      function(result) {
+        recurringData = result.recurring || [];
+        recurringLoaded = true;
+        checkAndRender();
+      },
+      function(error) {
+        console.error('Recurring error:', error);
+        recurringLoaded = true;
+        checkAndRender();
+      }
+    );
+  }, 1200);
 },
 
 
@@ -1530,6 +1533,7 @@ loadViewData: function(viewName, forceRefresh = false) {
 
         if (window.MonthlyGrid) {
           MonthlyGrid.init(containerId);
+          
 
             // Check for pending month sync
             if (window._pendingMonthSync) {
