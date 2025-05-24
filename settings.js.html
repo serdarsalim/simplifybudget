@@ -262,96 +262,106 @@ function buildCurrencyOptions() {
   currencySelect.value = defaultCurrency;
 }
 
-  /**
-   * Load saved settings from localStorage
-   */
- /**
- * Load saved settings from server-side storage
+
+/**
+ * Load saved settings from CacheManager first, then server
  */
 function loadSavedSettings() {
+  // Try cache first
+  const cached = CacheManager.getSettings();
+  if (cached) {
+    applySettingsToForm(cached);
+    return;
+  }
+  
+  // If not cached, load from server
   API.getUserSettings(
     function(result) {
-      // Success handler
       if (result && result.settings) {
-        const settings = result.settings;
-        
-        // Apply settings to form elements
-        const currencySelect = document.getElementById('currencySelector');
-        if (currencySelect && settings.currencySymbol) {
-          // First attempt to find the matching option
-          let found = false;
-          
-          // Check all existing options first
-          Array.from(currencySelect.options).forEach(option => {
-            if (option.value === settings.currencySymbol) {
-              found = true;
-              currencySelect.value = settings.currencySymbol;
-            }
-          });
-          
-          // If not found, add it as a new option
-          if (!found) {
-            const option = document.createElement('option');
-            option.value = settings.currencySymbol;
-            option.textContent = `${settings.currencySymbol} - Custom`;
-            currencySelect.appendChild(option);
-            currencySelect.value = settings.currencySymbol;
-          }
-        }
-        
-        // Set all other form elements
-        const dateFormatSelect = document.getElementById('dateFormat');
-        if (dateFormatSelect) {
-          dateFormatSelect.value = settings.dateFormat || 'MM/DD/YYYY';
-        }
-        
-        const darkModeCheckbox = document.getElementById('darkMode');
-        if (darkModeCheckbox) {
-          darkModeCheckbox.checked = settings.darkMode || false;
-          // Apply dark mode to body if enabled
-          document.body.classList.toggle('dark-mode', settings.darkMode);
-        }
-        
-        const showRemainingCheckbox = document.getElementById('showRemaining');
-        if (showRemainingCheckbox) {
-          showRemainingCheckbox.checked = settings.showRemaining !== undefined ? 
-            settings.showRemaining : true;
-        }
-        
-        const enableAlertsCheckbox = document.getElementById('enableAlerts');
-        if (enableAlertsCheckbox) {
-          enableAlertsCheckbox.checked = settings.enableAlerts !== undefined ? 
-            settings.enableAlerts : true;
-        }
-        
-        const showDecimalsCheckbox = document.getElementById('showDecimals');
-        if (showDecimalsCheckbox) {
-          showDecimalsCheckbox.checked = settings.showDecimals !== undefined ? 
-            settings.showDecimals : true;
-        }
-        
-        const languageSelector = document.getElementById('languageSelector');
-        if (languageSelector) {
-          languageSelector.value = settings.language || 'en';
-        }
+        // Cache the settings
+        CacheManager.setSettings(result.settings);
+        // Apply to form
+        applySettingsToForm(result.settings);
       }
     },
     function(error) {
-      // Error handler
       console.error('Failed to load settings from server:', error);
       showStatus('Error loading settings. Using defaults.', true);
       
       // Apply defaults as fallback
       if (window.SimBudget && SimBudget.Settings && SimBudget.Settings.defaults) {
-        const defaults = SimBudget.Settings.defaults;
-        
-        // Apply defaults to form elements
-        // (Similar code as above but using defaults)
+        applySettingsToForm(SimBudget.Settings.defaults);
       }
     }
   );
 }
+
+/**
+ * Apply settings object to form elements
+ */
+function applySettingsToForm(settings) {
+  // Apply settings to form elements
+  const currencySelect = document.getElementById('currencySelector');
+  if (currencySelect && settings.currencySymbol) {
+    // First attempt to find the matching option
+    let found = false;
+    
+    // Check all existing options first
+    Array.from(currencySelect.options).forEach(option => {
+      if (option.value === settings.currencySymbol) {
+        found = true;
+        currencySelect.value = settings.currencySymbol;
+      }
+    });
+    
+    // If not found, add it as a new option
+    if (!found) {
+      const option = document.createElement('option');
+      option.value = settings.currencySymbol;
+      option.textContent = `${settings.currencySymbol} - Custom`;
+      currencySelect.appendChild(option);
+      currencySelect.value = settings.currencySymbol;
+    }
+  }
   
+  // Set all other form elements
+  const dateFormatSelect = document.getElementById('dateFormat');
+  if (dateFormatSelect) {
+    dateFormatSelect.value = settings.dateFormat || 'MM/DD/YYYY';
+  }
+  
+  const darkModeCheckbox = document.getElementById('darkMode');
+  if (darkModeCheckbox) {
+    darkModeCheckbox.checked = settings.darkMode || false;
+    // Apply dark mode to body if enabled
+    document.body.classList.toggle('dark-mode', settings.darkMode);
+  }
+  
+  const showRemainingCheckbox = document.getElementById('showRemaining');
+  if (showRemainingCheckbox) {
+    showRemainingCheckbox.checked = settings.showRemaining !== undefined ? 
+      settings.showRemaining : true;
+  }
+  
+  const enableAlertsCheckbox = document.getElementById('enableAlerts');
+  if (enableAlertsCheckbox) {
+    enableAlertsCheckbox.checked = settings.enableAlerts !== undefined ? 
+      settings.enableAlerts : true;
+  }
+  
+  const showDecimalsCheckbox = document.getElementById('showDecimals');
+  if (showDecimalsCheckbox) {
+    showDecimalsCheckbox.checked = settings.showDecimals !== undefined ? 
+      settings.showDecimals : true;
+  }
+  
+  const languageSelector = document.getElementById('languageSelector');
+  if (languageSelector) {
+    languageSelector.value = settings.language || 'en';
+  }
+}
+
+
 
     /**
  * Save settings to server-side storage
@@ -376,7 +386,7 @@ function saveSettings(silent = false) {
   API.setUserSettings(settings, 
     function(result) {
       // Success handler
-      
+       CacheManager.setSettings(settings);
       // If we have a sheet URL, save that too
       if (sheetUrl) {
         API.setBudgetSheetUrl(sheetUrl, 

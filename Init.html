@@ -13,384 +13,112 @@
     let _loadingView = null;
     let _isLoadingExpenseView = false;
 
-    // Cache system for data
-    // STEP 1: Replace the existing _cache object in Init.html with this enhanced version
-
-const _cache = {
-  // Cache storage with data and metadata
-  data: {
-    budget: { content: null, timestamp: null },
-    expense: { content: null, timestamp: null },
-    income: { content: null, timestamp: null },
-    recurring: { content: null, timestamp: null },
-    netWorth: { content: null, timestamp: null },
-    reports: { content: null, timestamp: null },
-  },
-
-  // Cache configuration
-  config: {
-    // Default cache expiry time in milliseconds (5 minutes)
-    expiryTime: 24 * 60 * 60 * 1000, 
-    // Flags to determine if certain actions should invalidate cache
-    invalidateOnMonthYearChange: true,
-    // Preloader settings
-    preloadDelay: 1000, // Wait 1 second before preloading
-    preloadInterval: 2000, // 2 seconds between preloads
-  },
-
-  // Store data in cache
-  set: function (key, data) {
-    if (!this.data[key]) return false;
-
-    this.data[key].content = data;
-    this.data[key].timestamp = new Date().getTime();
-    return true;
-  },
-
-  // Get data from cache if valid
-  get: function (key) {
-    const cacheEntry = this.data[key];
-    if (!cacheEntry || !cacheEntry.content) return null;
-
-  const now = new Date().getTime();
-  if (now - cacheEntry.timestamp > this.config.expiryTime) {
-    return null;
-   }
-
-
-    return cacheEntry.content;
-  },
-
-  // Check if cache for key is valid
-  isValid: function (key) {
-    return this.get(key) !== null;
-  },
-
-  // Invalidate specific cache entries
-  invalidate: function (key) {
-    if (_isRendering) {
-      return;
-    }
-
-    if (key && this.data[key]) {
-      this.data[key].content = null;
-      this.data[key].timestamp = null;
-    }
-  },
-
-  // Invalidate all cache entries
-  invalidateAll: function () {
-    if (_isRendering) {
-      return;
-    }
-
-    Object.keys(this.data).forEach((key) => {
-      this.invalidate(key);
-    });
-  },
-
-  // Invalidate related caches when a type of data is modified
-  invalidateRelated: function (key) {
-    if (_isRendering) {
-      return;
-    }
-
-    // Define relationships between data types
-    const relationships = {
-      budget: ["reports"],
-      expense: ["budget", "reports"],
-      income: ["budget", "reports"],
-      recurring: ["reports"],
-      netWorth: ["reports"],
-    };
-
-    // Invalidate the primary key
-    this.invalidate(key);
-
-    // Invalidate related keys
-    if (relationships[key]) {
-      relationships[key].forEach((relatedKey) => {
-        this.invalidate(relatedKey);
-      });
-    }
-  },
-
-  // NEW: Check if all priority views are loaded
-  areAllPriorityViewsLoaded: function() {
-    const priorityViews = ['budget', 'expense', 'income', 'recurring', 'netWorth'];
-    return priorityViews.every(view => this.isValid(view));
-  },
-
-  // NEW: Get cache statistics
-  getStats: function() {
-    const stats = {};
-    Object.keys(this.data).forEach(key => {
-      stats[key] = {
-        loaded: !!this.data[key].content,
-        timestamp: this.data[key].timestamp,
-        age: this.data[key].timestamp ? Date.now() - this.data[key].timestamp : null
-      };
-    });
-    return stats;
-  }
-};
-
-// STEP 2: Add this new _preloader object after the _cache object in Init.html
-
-const _preloader = {
-  queue: ['budget', 'expense', 'income', 'recurring', 'netWorth'],
-  isRunning: false,
-  currentIndex: 0,
-  retryCount: {},
-  hasRunInSession: false, // NEW: Track if preloader ran in this session
-
-  start: function(excludeView) {
-    // CRITICAL: Only allow one preload attempt per session
-    if (this.hasRunInSession) {
-      return;
-    }
-
-    if (this.isRunning) {
-      return;
-    }
-
-    // Mark that we've attempted preloading in this session
-    this.hasRunInSession = true;
-
-    // Remove the current view from preload queue
-    this.queue = this.queue.filter(view => view !== excludeView);
-    console.log(`Preloader: Starting background load (SESSION START), excluded ${excludeView}`, this.queue);
-
-    this.isRunning = true;
-    this.currentIndex = 0;
-    
-    // Start after delay to let initial view fully load
-    setTimeout(() => {
-      this.processNext();
-    }, _cache.config.preloadDelay);
-  },
-
-   processNext: function() {
-    if (this.currentIndex >= this.queue.length) {
-      console.log('Preloader: Completed all background loads - SESSION COMPLETE');
-      this.isRunning = false;
-      console.log('Cache Stats:', _cache.getStats());
-      return;
-    }
-
-    const viewName = this.queue[this.currentIndex];
-    
-    // Skip if already cached
-    if (_cache.isValid(viewName)) {
-      this.currentIndex++;
-      setTimeout(() => this.processNext(), 200);
-      return;
-    }
-
-    console.log(`Preloader: Loading ${viewName} in background`);
-    this.loadView(viewName);
-  },
-
-  loadView: function(viewName) {
-    switch (viewName) {
-      case 'budget':
-        this.loadBudgetData(viewName);
-        break;
-      case 'expense':
-        this.loadExpenseData(viewName);
-        break;
-      case 'income':
-        this.loadIncomeData(viewName);
-        break;
-      case 'recurring':
-        this.loadRecurringData(viewName);
-        break;
-      case 'netWorth':
-        this.loadNetWorthData(viewName);
-        break;
-      default:
-        console.log(`Preloader: Unknown view ${viewName}`);
-        this.onComplete(viewName, false);
-    }
-  },
-
- loadBudgetData: function(viewName) {
-    API.getDashboardData(
-      (result) => {
-        _cache.set('budget', result.dashboardData);
-        this.onComplete(viewName, true);
-      },
-      (error) => {
-        console.warn(`Preloader: Failed to load ${viewName}:`, error);
-        this.onComplete(viewName, false);
-      }
-    );
-  },
-
- loadExpenseData: function(viewName) {
-    API.getExpenseData(
-      (result) => {
-        _cache.set('expense', result.expenses || []);
-        this.onComplete(viewName, true);
-      },
-      (error) => {
-        console.warn(`Preloader: Failed to load ${viewName}:`, error);
-        this.onComplete(viewName, false);
-      }
-    );
-  },
-
-
-
-  loadIncomeData: function(viewName) {
-    // TODO: Implement when income API is ready
-    this.onComplete(viewName, false);
-  },
-
-  loadRecurringData: function(viewName) {
-    // TODO: Implement when recurring API is ready
-    this.onComplete(viewName, false);
-  },
-
-  loadNetWorthData: function(viewName) {
-    // TODO: Implement when net worth API is ready
-    this.onComplete(viewName, false);
-  },
-
-  onComplete: function(viewName, success) {
-    if (success) {
-      console.log(`Preloader: Successfully cached ${viewName}`);
-    } else {
-      // Track retry count
-      this.retryCount[viewName] = (this.retryCount[viewName] || 0) + 1;
-      
-      // Retry if less than 3 attempts
-      if (this.retryCount[viewName] < 3) {
-        // Re-add to end of queue for retry
-        this.queue.push(viewName);
-      }
-    }
-
-    // Move to next item
-    this.currentIndex++;
-    setTimeout(() => this.processNext(), _cache.config.preloadInterval);
-  },
-
-  stop: function() {
-    console.log('Preloader: Stopping background load');
-    this.isRunning = false;
-  }
-};
-
+  
  
 
         // Settings module
-      const Settings = {
-        // Default settings
-        defaults: {
-          currencySymbol: "$",
-          dateFormat: "MM/DD/YYYY",
-          darkMode: false,
-          showRemaining: true,
-          enableAlerts: true,
-          startingDay: "1",
-          language: "en",
-          showDecimals: true,
-        },
+      // Settings module - Updated to use CacheManager
+const Settings = {
+  // Default settings
+  defaults: {
+    currencySymbol: "$",
+    dateFormat: "MM/DD/YYYY",
+    darkMode: false,
+    showRemaining: true,
+    enableAlerts: true,
+    startingDay: "1",
+    language: "en",
+    showDecimals: true,
+  },
 
-     
-          // Get a setting with fallback to default
-          getSetting: function (key) {
-            // From cached settings or default
-            const settings = this.getAll();
-            return settings[key] !== undefined ? settings[key] : this.defaults[key];
-          },
+  // Get a setting with fallback to default
+  getSetting: function (key) {
+    const settings = this.getAll();
+    return settings[key] !== undefined ? settings[key] : this.defaults[key];
+  },
 
-          // Set a single setting
-          setSetting: function (key, value) {
-            const settings = this.getAll();
-            settings[key] = value;
-            return this.saveAll(settings);
-          },
+  // Set a single setting
+  setSetting: function (key, value) {
+    const settings = this.getAll();
+    settings[key] = value;
+    return this.saveAll(settings);
+  },
 
-          // Save all settings to server
-        saveAll: function (settings) {
-          // After successful save to server
-          API.setUserSettings(settings, 
-            function() {
-              // Success - apply changes immediately
-              Settings._cachedSettings = settings;
-              
-              // Update all grid views with new currency
-              if (window.MonthlyGrid) MonthlyGrid.updateCurrency();
-              
-              // NEW: Broadcast currency change to other components
-              if (settings.currencySymbol) {
-                // Dispatch a custom event that other components can listen for
-                document.dispatchEvent(new CustomEvent('currency-changed', {
-                  detail: { symbol: settings.currencySymbol }
-                }));
-              }
-            },
-            function(error) {
-              console.error("Error saving settings to server:", error);
-            }
-          );
-          return true;
-        },
-
-          // Get all settings (from memory cache or defaults)
-          getAll: function () {
-            // If we have cached settings, use them
-            if (this._cachedSettings) {
-              return this._cachedSettings;
-            }
-            
-            // Otherwise use defaults and trigger server fetch for next time
-            this._fetchFromServer();
-            return { ...this.defaults };
-          },
-
-        // Fetch settings from server in the background
-        _fetchFromServer: function() {
-          API.getUserSettings(
-            function(result) {
-              if (result && result.settings) {
-                // Cache the server settings
-                Settings._cachedSettings = result.settings;
-                
-                // If settings view is active, apply the settings to the form
-                if (SimBudget.Views.getCurrent() === "settings") {
-                  SimBudget.applySettings();
-                }
-              }
-            },
-            function(error) {
-              console.error("Error fetching settings from server:", error);
-            }
-          );
-        },
-
-      // Cache for settings
-        _cachedSettings: null,
-
-      // Convenience methods for common settings
-      getCurrencySymbol: function () {
-        return this.getSetting("currencySymbol");
+  // Save all settings to server
+  saveAll: function (settings) {
+    // Save to server
+    API.setUserSettings(settings, 
+      function() {
+        // Success - update cache
+        CacheManager.setSettings(settings);
+        
+        // Update all grid views with new currency
+        if (window.MonthlyGrid) MonthlyGrid.updateCurrency();
+        
+        // Broadcast currency change to other components
+        if (settings.currencySymbol) {
+          document.dispatchEvent(new CustomEvent('currency-changed', {
+            detail: { symbol: settings.currencySymbol }
+          }));
+        }
       },
+      function(error) {
+        console.error("Error saving settings to server:", error);
+      }
+    );
+    return true;
+  },
 
-      getDateFormat: function () {
-        return this.getSetting("dateFormat");
-      },
+  // Get all settings (from cache or defaults)
+  getAll: function () {
+    // Try cache first
+    const cached = CacheManager.getSettings();
+    if (cached) {
+      return cached;
+    }
+    
+    // Otherwise use defaults and trigger server fetch
+    this._fetchFromServer();
+    return { ...this.defaults };
+  },
 
-      isDarkMode: function () {
-        return this.getSetting("darkMode");
+  // Fetch settings from server in the background
+  _fetchFromServer: function() {
+    API.getUserSettings(
+      function(result) {
+        if (result && result.settings) {
+          // Update cache
+          CacheManager.setSettings(result.settings);
+          
+          // If settings view is active, apply the settings to the form
+          if (SimBudget.Views.getCurrent() === "settings") {
+            SimBudget.applySettings();
+          }
+        }
       },
+      function(error) {
+        console.error("Error fetching settings from server:", error);
+      }
+    );
+  },
 
-      showDecimals: function () {
-        return this.getSetting("showDecimals");
-      },
-    };
+  // Convenience methods for common settings
+  getCurrencySymbol: function () {
+    return this.getSetting("currencySymbol");
+  },
+
+  getDateFormat: function () {
+    return this.getSetting("dateFormat");
+  },
+
+  isDarkMode: function () {
+    return this.getSetting("darkMode");
+  },
+
+  showDecimals: function () {
+    return this.getSetting("showDecimals");
+  },
+};
 
     // View management
     const Views = {
@@ -429,7 +157,7 @@ const _preloader = {
           document.dispatchEvent(event);
 
           // Load data for the view
-          if (viewName === 'budget' && window._cache && _cache.isValid('budget')) {
+          if (viewName === 'budget' && window.CacheManager && CacheManager.isValid('budget')) {
         // Budget view with valid cache - use cached data
         console.log('Using cached budget data');
         SimBudget.renderViewFromCache('budget');
@@ -847,7 +575,7 @@ document.addEventListener("change", function(e) {
       console.log("Manual refresh triggered for recurring");
       
       // Clear cache
-      _cache.invalidate("recurring");
+      CacheManager.invalidate("recurring");
       
       // Call RecurringManager's refresh method
       if (window.RecurringManager && typeof RecurringManager.refresh === 'function') {
@@ -882,7 +610,7 @@ document.addEventListener("change", function(e) {
   if (refreshIncomeBtn) {
     refreshIncomeBtn.addEventListener("click", () => {
       // Force refresh by invalidating cache
-      _cache.invalidate("income");
+      CacheManager.invalidate("income");
       this.loadViewData("income", true);
     });
   }
@@ -1034,7 +762,7 @@ document.addEventListener("click", function(e) {
   if (refreshBudgetBtn) {
     refreshBudgetBtn.addEventListener("click", () => {
       // Only clear the view cache, NOT the data!
-      _cache.invalidate("budget");
+      CacheManager.invalidate("budget");
       this.loadViewData("budget", true);
     });
   }
@@ -1043,7 +771,7 @@ document.addEventListener("click", function(e) {
   if (refreshNetWorthBtn) {
     refreshNetWorthBtn.addEventListener("click", () => {
       // Force refresh by invalidating cache
-      _cache.invalidate("netWorth");
+      CacheManager.invalidate("netWorth");
       this.loadViewData("netWorth", true);
     });
   }
@@ -1191,7 +919,7 @@ document.addEventListener("click", function(e) {
                   3000
                 );
                 // Invalidate all caches when sheet URL changes
-                _cache.invalidateAll();
+                CacheManager.invalidateAll();
               },
               function (error) {
                 Utils.showStatus(
@@ -1274,7 +1002,7 @@ document.addEventListener("click", function(e) {
             );
 
             // Invalidate all caches when connection changes
-            _cache.invalidateAll();
+            CacheManager.invalidateAll();
           },
           function (error) {
             Utils.showStatus(
@@ -1303,13 +1031,13 @@ loadViewData: function(viewName, forceRefresh = false) {
   _loadingView = viewName;
 
   // CACHE-FIRST STRATEGY: Check cache first unless force refresh
-  if (!forceRefresh && _cache.isValid(viewName)) {
+  if (!forceRefresh && CacheManager.isValid(viewName)) {
     this.renderViewFromCache(viewName);
     _loadingView = null;
     
     // Start preloader if this is the first view and we're not in refresh mode
-    if (!_preloader.isRunning && !_cache.areAllPriorityViewsLoaded()) {
-      _preloader.start(viewName);
+    if (!_preloader.isRunning && !CacheManager.areAllPriorityViewsLoaded()) {
+      CacheManager.startPreloader(viewName);
     }
     return;
   }
@@ -1397,7 +1125,7 @@ loadViewData: function(viewName, forceRefresh = false) {
             }
 
             // Store in SimBudget cache too
-            _cache.set("categories", parsedCategories);
+            CacheManager.set("categories", parsedCategories);
 
             // Initialize manager with cached data
             if (
@@ -1445,7 +1173,7 @@ loadViewData: function(viewName, forceRefresh = false) {
             console.log("Categories data loaded successfully", result);
 
             // Cache the result
-            _cache.set("categories", result.categories);
+            CacheManager.set("categories", result.categories);
 
             // Clear loading flag
             _loadingView = null;
@@ -1519,7 +1247,7 @@ loadViewData: function(viewName, forceRefresh = false) {
        */
       renderViewFromCache: function (viewName) {
         console.log(`Rendering ${viewName} view from cache`);
-        const cachedData = _cache.get(viewName);
+        const cachedData = CacheManager.get(viewName);
 
         if (!cachedData) {
           console.error(`No cached data found for ${viewName} view`);
@@ -1566,7 +1294,7 @@ loadViewData: function(viewName, forceRefresh = false) {
         const cachedData = window.CacheManager.getDashboardData();
         if (cachedData) {
           SimBudget.renderBudgetDashboard(cachedData);
-          _cache.set('budget', cachedData);
+          CacheManager.set('budget', cachedData);
           _loadingView = null;
           return;
         }
@@ -1636,7 +1364,7 @@ loadViewData: function(viewName, forceRefresh = false) {
       
       if (dashboardData) {
         SimBudget.renderBudgetDashboard(dashboardData);
-        _cache.set('budget', dashboardData);
+        CacheManager.set('budget', dashboardData);
       } else {
         console.error('FAILED to calculate dashboard data');
         // REMOVE OVERLAY EVEN ON ERROR
@@ -1837,7 +1565,7 @@ loadViewData: function(viewName, forceRefresh = false) {
                 }
 
                 // Cache the result
-                _cache.set("expense", result.expenses || []);
+                CacheManager.set("expense", result.expenses || []);
 
                 // Remove loading indicator
                 loadingIndicator.remove();
@@ -1882,7 +1610,7 @@ loadViewData: function(viewName, forceRefresh = false) {
    
     // PRELOADER CONTROLS
   startPreloader: function(excludeView) {
-    _preloader.start(excludeView);
+    CacheManager.startPreloader(excludeView);
   },
 
   stopPreloader: function() {
@@ -1890,12 +1618,12 @@ loadViewData: function(viewName, forceRefresh = false) {
   },
 
   getCacheStats: function() {
-    return _cache.getStats();
+    return CacheManager.getStats();
   },
 
   // CACHE CONTROLS  
   clearCache: function() {
-    _cache.invalidateAll();
+    CacheManager.invalidateAll();
     console.log("Manual cache clear completed");
   },
 
@@ -1905,7 +1633,7 @@ loadViewData: function(viewName, forceRefresh = false) {
     console.log(`Refreshing current view: ${currentView}`);
     
     // Clear cache for current view and related views
-    _cache.invalidateRelated(currentView);
+    CacheManager.invalidateRelated(currentView);
     
     // Stop any running preloader
     _preloader.stop();
@@ -2019,13 +1747,9 @@ loadIncomeData: function() {
   }
   
   _loadingView = null;
-  // SIMPLIFIED: Just try to start preloader - it handles session logic internally
-  _preloader.start('income');
+  CacheManager.startPreloader('income');
 },
 
-// In Init.html, update the loadRecurringData function:
-
-// In Init.html, replace the loadRecurringData function:
 
 /**
  * Enhanced loadRecurringData function for Init.html
@@ -2048,7 +1772,7 @@ loadRecurringData: function() {
     }
 
     // Check cache first
-    const cachedData = _cache.get('recurring');
+    const cachedData = CacheManager.get('recurring');
     
     if (cachedData && Array.isArray(cachedData)) {
       console.log("Using cached recurring data:", cachedData.length, "items");
@@ -2085,7 +1809,7 @@ loadNetWorthData: function() {
   
   _loadingView = null;
   // SIMPLIFIED: Just try to start preloader - it handles session logic internally
-  _preloader.start('netWorth');
+  CacheManager.startPreloader('netWorth');
 },
 
 /**
@@ -2100,7 +1824,7 @@ loadReportsSheet: function() {
   
   _loadingView = null;
   // SIMPLIFIED: Just try to start preloader - it handles session logic internally
-  _preloader.start('reports');
+  CacheManager.startPreloader('reports');
 },
 
 
@@ -2125,8 +1849,8 @@ loadReportsSheet: function() {
      */
     clearCache: function () {
       console.log("Debug: Clearing cache");
-      if (window._cache && typeof window._cache.invalidateAll === "function") {
-        window._cache.invalidateAll();
+      if (window.CacheManager && typeof window.CacheManager.invalidateAll === "function") {
+        window.CacheManager.invalidateAll();
         console.log("Cache cleared");
       } else {
         console.log("Global cache not available");
@@ -2139,8 +1863,8 @@ loadReportsSheet: function() {
     checkData: function () {
       console.log("Current budget data:", SimBudget._currentBudgetData);
 
-      if (window._cache && typeof window._cache.get === "function") {
-        console.log("Cached budget data:", window._cache.get("budget"));
+      if (window.CacheManager && typeof window.CacheManager.get === "function") {
+        console.log("Cached budget data:", window.CacheManager.get("budget"));
       } else {
         console.log("Cache is not accessible");
       }
@@ -2177,9 +1901,9 @@ document.addEventListener('monthlyGrid-cache-cleared', function(event) {
   console.log('Received cache clear event from MonthlyGrid:', event.detail);
   
   // Clear SimBudget's expense cache
-  if (window._cache && typeof _cache.invalidate === 'function') {
+  if (window.CacheManager && typeof CacheManager.invalidate === 'function') {
     console.log('Clearing SimBudget application cache for expenses');
-    _cache.invalidate('expense');
+    CacheManager.invalidate('expense');
     
     // If currently in expense view, reload it
     if (SimBudget.Views.getCurrent() === 'expense') {
@@ -2194,7 +1918,7 @@ document.addEventListener('monthlyGrid-cache-cleared', function(event) {
 
 
   // Expose global cache for debugging
-  window._dataCache = _cache;
+  // removed - using CacheManager
 
   // In Init.html - Add this to your initialization function
   document.addEventListener("language-changed", function () {
