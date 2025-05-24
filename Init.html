@@ -281,44 +281,7 @@ const _preloader = {
   }
 };
 
-    // Event management for month/year selectors
-    const _eventManager = {
-      // Event handler references
-      handlers: {
-        month: null,
-        year: null,
-      },
-
-      // Detach event listeners
-      detach: function () {
-        const monthSelector = document.getElementById("monthSelector");
-        const yearSelector = document.getElementById("yearSelector");
-
-        if (monthSelector && this.handlers.month) {
-          monthSelector.removeEventListener("change", this.handlers.month);
-        }
-
-        if (yearSelector && this.handlers.year) {
-          yearSelector.removeEventListener("change", this.handlers.year);
-        }
-      },
-
-      // Attach event listeners
-      attach: function () {
-        const monthSelector = document.getElementById("monthSelector");
-        const yearSelector = document.getElementById("yearSelector");
-
-        if (monthSelector && this.handlers.month) {
-          monthSelector.addEventListener("change", this.handlers.month);
-          console.log("Month change event attached");
-        }
-
-        if (yearSelector && this.handlers.year) {
-          yearSelector.addEventListener("change", this.handlers.year);
-          console.log("Year change event attached");
-        }
-      },
-    };
+ 
 
         // Settings module
       const Settings = {
@@ -598,7 +561,6 @@ Views: {
     if (fromView === 'budget' && toView === 'expense') {
       // Going from budget to expenses - sync the month
       if (window.MonthlyGrid && typeof _currentMonth !== 'undefined') {
-        console.log('Syncing expense view to budget month:', _currentMonth, _currentYear);
         // This will update MonthlyGrid's month without reloading if data is cached
         setTimeout(() => {
           MonthlyGrid.navigateToMonth(_currentMonth, _currentYear);
@@ -785,10 +747,12 @@ Views: {
       },
 
       updateMonthYear: function (month, year) {
-        if (_isRendering) return;
-        if (_loadingView) return;
 
-        console.log(`Updating month/year to ${month} ${year}`);
+
+
+        if (_isRendering) return;
+        if (_loadingView === true) return;  
+
         
         // Convert month name to month number (0-based)
         const monthNum = new Date(Date.parse(month + " 1, 2000")).getMonth();
@@ -820,275 +784,272 @@ Views: {
         // No need to call API anymore - we're working locally!
       },
 
-      /**
-       * Bind all event listeners
-       */
+
       /**
        * Bind all event listeners
        */
       bindEvents: function () {
-        // Sidebar toggle
-        const toggleBtn = document.getElementById("toggleSidebar");
-        if (toggleBtn) {
-          toggleBtn.addEventListener("click", function () {
-            const sidebar = document.getElementById("sidebar");
-            const contentArea = document.getElementById("contentArea");
+  // Sidebar toggle
+  const toggleBtn = document.getElementById("toggleSidebar");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", function () {
+      const sidebar = document.getElementById("sidebar");
+      const contentArea = document.getElementById("contentArea");
 
-            const expensesBtn = document.getElementById("expenses-btn");
-            if (expensesBtn) {
-              expensesBtn.addEventListener("click", function () {
-                SimBudget.Views.activate("expense");
-              });
-            }
-
-            if (sidebar) {
-              sidebar.classList.toggle("sb-open");
-              sidebar.classList.toggle("sb-collapsed");
-
-              if (contentArea) {
-                contentArea.classList.toggle("sb-expanded");
-              }
-            }
-          });
-        }
-
-       // In Init.html bindEvents function, update the refreshRecurringBtn handler:
-
-const refreshRecurringBtn = document.getElementById("refreshRecurring");
-if (refreshRecurringBtn) {
-  refreshRecurringBtn.addEventListener("click", () => {
-    console.log("Manual refresh triggered for recurring");
-    
-    // Clear cache
-    _cache.invalidate("recurring");
-    
-    // Call RecurringManager's refresh method
-    if (window.RecurringManager && typeof RecurringManager.refresh === 'function') {
-      RecurringManager.refresh();
-    } else {
-      // Fallback: reload the view
-      this.loadViewData("recurring", true);
-    }
-  });
-}
-
-        //refresh categories
-
-        const refreshCategoriesBtn =
-          document.getElementById("refreshCategories");
-        if (refreshCategoriesBtn) {
-          refreshCategoriesBtn.addEventListener("click", () => {
-            // Force refresh by invalidating cache
-            if (
-              window.CategoriesManager &&
-              typeof CategoriesManager.refreshCategories === "function"
-            ) {
-              CategoriesManager.refreshCategories();
-            } else {
-              console.error(
-                "Cannot refresh categories - CategoriesManager not available"
-              );
-              Utils.showToast("Cannot refresh categories", "error");
-            }
-          });
-        }
-
-        const refreshIncomeBtn = document.getElementById("refreshIncome");
-        if (refreshIncomeBtn) {
-          refreshIncomeBtn.addEventListener("click", () => {
-            // Force refresh by invalidating cache
-            _cache.invalidate("income");
-            this.loadViewData("income", true);
-          });
-        }
-
-        // Mobile sidebar toggle
-        const mobileToggle = document.getElementById("mobileSidebarToggle");
-        if (mobileToggle) {
-          mobileToggle.addEventListener("click", function () {
-            const sidebar = document.getElementById("sidebar");
-            const backdrop = document.getElementById("sidebarBackdrop");
-
-            if (sidebar) {
-              sidebar.classList.toggle("sb-open");
-
-              if (backdrop) {
-                backdrop.classList.toggle("sb-visible");
-              }
-
-              // Update toggle icon
-              this.innerHTML = sidebar.classList.contains("sb-open")
-                ? '<i class="material-icons">close</i>'
-                : '<i class="material-icons">menu</i>';
-
-              // Lock/unlock body scroll
-              document.body.style.overflow = sidebar.classList.contains(
-                "sb-open"
-              )
-                ? "hidden"
-                : "";
-            }
-          });
-        }
-
-        // Sidebar navigation - FIXED to use sb-nav-item instead of sidebar-item
-        document
-          .querySelectorAll('.sb-nav-item, [data-view="settings"]')
-          .forEach((item) => {
-            item.addEventListener("click", function (e) {
-              e.preventDefault();
-
-              // Get the view name from data attribute
-              const viewName = this.getAttribute("data-view");
-              if (!viewName) return;
-
-              // Update active state
-              document.querySelectorAll(".sb-nav-item").forEach((navItem) => {
-                navItem.classList.remove("active");
-              });
-              this.classList.add("active");
-
-              // Switch to the view using SimBudget's existing function
-              if (window.SimBudget && SimBudget.Views) {
-                SimBudget.Views.switchTo(viewName);
-              }
-
-              // Close sidebar on mobile
-              if (window.innerWidth < 992) {
-                const sidebar = document.getElementById("sidebar");
-                const backdrop = document.getElementById("sidebarBackdrop");
-                const mobileToggle = document.getElementById(
-                  "mobileSidebarToggle"
-                );
-
-                if (sidebar) sidebar.classList.remove("sb-open");
-                if (backdrop) backdrop.classList.remove("sb-visible");
-                document.body.style.overflow = "";
-                if (mobileToggle)
-                  mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
-              }
-            });
-
-            // Also handle link clicks directly
-            const link = item.querySelector("a");
-            if (link) {
-              link.addEventListener("click", function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                // Trigger click on parent
-                const navItem = this.closest(
-                  '.sb-nav-item, [data-view="settings"]'
-                );
-                if (navItem) navItem.click();
-              });
-            }
-          });
-
-        // Month and year selectors
-        const monthSelector = document.getElementById("monthSelector");
-        const yearSelector = document.getElementById("yearSelector");
-
-        if (monthSelector && yearSelector) {
-          // Create handlers and store references
-          _eventManager.handlers.month = function () {
-            SimBudget.updateMonthYear(this.value, yearSelector.value);
-          };
-
-          _eventManager.handlers.year = function () {
-            SimBudget.updateMonthYear(monthSelector.value, this.value);
-          };
-
-          // Initial attachment
-          monthSelector.addEventListener(
-            "change",
-            _eventManager.handlers.month
-          );
-          yearSelector.addEventListener("change", _eventManager.handlers.year);
-        }
-
-        // Settings panel
-        const saveSettingsBtn = document.getElementById("saveSettingsBtn");
-        if (saveSettingsBtn) {
-          saveSettingsBtn.addEventListener("click", this.saveSettings);
-        }
-
-        const resetSettingsBtn = document.getElementById("resetSettings");
-        if (resetSettingsBtn) {
-          resetSettingsBtn.addEventListener("click", this.resetSettings);
-        }
-
-        const testConnectionBtn = document.getElementById("testConnection");
-        if (testConnectionBtn) {
-          testConnectionBtn.addEventListener("click", this.testConnection);
-        }
-
-        // Responsive design - auto-collapse sidebar on small screens
-        window.addEventListener(
-          "resize",
-          Utils.debounce(function () {
-            const sidebar = document.getElementById("sidebar");
-            if (
-              window.innerWidth < 768 &&
-              sidebar &&
-              sidebar.classList.contains("sb-open")
-            ) {
-              // Close sidebar
-              sidebar.classList.remove("sb-open");
-
-              const backdrop = document.getElementById("sidebarBackdrop");
-              if (backdrop) backdrop.classList.remove("sb-visible");
-
-              document.body.style.overflow = "";
-
-              const mobileToggle = document.getElementById(
-                "mobileSidebarToggle"
-              );
-              if (mobileToggle)
-                mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
-            }
-          }, 250)
-        );
-
-        // Add this to the bindEvents function in your Init.html file
-        // Sidebar backdrop click handler
-        const sidebarBackdrop = document.getElementById("sidebarBackdrop");
-        if (sidebarBackdrop) {
-          sidebarBackdrop.addEventListener("click", function () {
-            const sidebar = document.getElementById("sidebar");
-            if (sidebar) {
-              sidebar.classList.remove("sb-open");
-              this.classList.remove("sb-visible");
-              document.body.style.overflow = "";
-
-              const mobileToggle = document.getElementById(
-                "mobileSidebarToggle"
-              );
-              if (mobileToggle)
-                mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
-            }
-          });
-        }
-
-        // Set up view-specific buttons
-       const refreshBudgetBtn = document.getElementById("refreshBudget");
-      if (refreshBudgetBtn) {
-        refreshBudgetBtn.addEventListener("click", () => {
-          // ONLY clear the view cache, NOT the data!
-          _cache.invalidate("budget");
-          this.loadViewData("budget", true);
+      const expensesBtn = document.getElementById("expenses-btn");
+      if (expensesBtn) {
+        expensesBtn.addEventListener("click", function () {
+          SimBudget.Views.activate("expense");
         });
       }
 
-        const refreshNetWorthBtn = document.getElementById("refreshNetWorth");
-        if (refreshNetWorthBtn) {
-          refreshNetWorthBtn.addEventListener("click", () => {
-            // Force refresh by invalidating cache
-            _cache.invalidate("netWorth");
-            this.loadViewData("netWorth", true);
-          });
+      if (sidebar) {
+        sidebar.classList.toggle("sb-open");
+        sidebar.classList.toggle("sb-collapsed");
+
+        if (contentArea) {
+          contentArea.classList.toggle("sb-expanded");
         }
-      },
+      }
+    });
+  }
+
+   // MONTH/YEAR SELECTORS - ATTACH TO DOCUMENT (NEVER FAILS!)
+document.addEventListener("change", function(e) {
+  // Only process if we're in budget view
+  if (!document.getElementById('budgetView')?.classList.contains('active-view')) {
+    return;
+  }
+  
+  // Month selector
+  if (e.target && e.target.id === "monthSelector") {
+    console.log('Month changed to:', e.target.value);
+    const yearSelector = document.getElementById("yearSelector");
+    if (yearSelector) {
+      SimBudget.updateMonthYear(e.target.value, yearSelector.value);
+    }
+  }
+  
+  // Year selector
+  if (e.target && e.target.id === "yearSelector") {
+    console.log('Year changed to:', e.target.value);
+    const monthSelector = document.getElementById("monthSelector");
+    if (monthSelector) {
+      SimBudget.updateMonthYear(monthSelector.value, e.target.value);
+    }
+  }
+});
+  // Refresh recurring button
+  const refreshRecurringBtn = document.getElementById("refreshRecurring");
+  if (refreshRecurringBtn) {
+    refreshRecurringBtn.addEventListener("click", () => {
+      console.log("Manual refresh triggered for recurring");
+      
+      // Clear cache
+      _cache.invalidate("recurring");
+      
+      // Call RecurringManager's refresh method
+      if (window.RecurringManager && typeof RecurringManager.refresh === 'function') {
+        RecurringManager.refresh();
+      } else {
+        // Fallback: reload the view
+        this.loadViewData("recurring", true);
+      }
+    });
+  }
+
+  // Refresh categories
+  const refreshCategoriesBtn = document.getElementById("refreshCategories");
+  if (refreshCategoriesBtn) {
+    refreshCategoriesBtn.addEventListener("click", () => {
+      // Force refresh by invalidating cache
+      if (
+        window.CategoriesManager &&
+        typeof CategoriesManager.refreshCategories === "function"
+      ) {
+        CategoriesManager.refreshCategories();
+      } else {
+        console.error(
+          "Cannot refresh categories - CategoriesManager not available"
+        );
+        Utils.showToast("Cannot refresh categories", "error");
+      }
+    });
+  }
+
+  const refreshIncomeBtn = document.getElementById("refreshIncome");
+  if (refreshIncomeBtn) {
+    refreshIncomeBtn.addEventListener("click", () => {
+      // Force refresh by invalidating cache
+      _cache.invalidate("income");
+      this.loadViewData("income", true);
+    });
+  }
+
+  // Mobile sidebar toggle
+  const mobileToggle = document.getElementById("mobileSidebarToggle");
+  if (mobileToggle) {
+    mobileToggle.addEventListener("click", function () {
+      const sidebar = document.getElementById("sidebar");
+      const backdrop = document.getElementById("sidebarBackdrop");
+
+      if (sidebar) {
+        sidebar.classList.toggle("sb-open");
+
+        if (backdrop) {
+          backdrop.classList.toggle("sb-visible");
+        }
+
+        // Update toggle icon
+        this.innerHTML = sidebar.classList.contains("sb-open")
+          ? '<i class="material-icons">close</i>'
+          : '<i class="material-icons">menu</i>';
+
+        // Lock/unlock body scroll
+        document.body.style.overflow = sidebar.classList.contains(
+          "sb-open"
+        )
+          ? "hidden"
+          : "";
+      }
+    });
+  }
+
+  // Sidebar navigation - FIXED to use sb-nav-item instead of sidebar-item
+  document
+    .querySelectorAll('.sb-nav-item, [data-view="settings"]')
+    .forEach((item) => {
+      item.addEventListener("click", function (e) {
+        e.preventDefault();
+
+        // Get the view name from data attribute
+        const viewName = this.getAttribute("data-view");
+        if (!viewName) return;
+
+        // Update active state
+        document.querySelectorAll(".sb-nav-item").forEach((navItem) => {
+          navItem.classList.remove("active");
+        });
+        this.classList.add("active");
+
+        // Switch to the view using SimBudget's existing function
+        if (window.SimBudget && SimBudget.Views) {
+          SimBudget.Views.switchTo(viewName);
+        }
+
+        // Close sidebar on mobile
+        if (window.innerWidth < 992) {
+          const sidebar = document.getElementById("sidebar");
+          const backdrop = document.getElementById("sidebarBackdrop");
+          const mobileToggle = document.getElementById(
+            "mobileSidebarToggle"
+          );
+
+          if (sidebar) sidebar.classList.remove("sb-open");
+          if (backdrop) backdrop.classList.remove("sb-visible");
+          document.body.style.overflow = "";
+          if (mobileToggle)
+            mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+        }
+      });
+
+      // Also handle link clicks directly
+      const link = item.querySelector("a");
+      if (link) {
+        link.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Trigger click on parent
+          const navItem = this.closest(
+            '.sb-nav-item, [data-view="settings"]'
+          );
+          if (navItem) navItem.click();
+        });
+      }
+    });
+
+  // Settings panel
+  const saveSettingsBtn = document.getElementById("saveSettingsBtn");
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener("click", this.saveSettings);
+  }
+
+  const resetSettingsBtn = document.getElementById("resetSettings");
+  if (resetSettingsBtn) {
+    resetSettingsBtn.addEventListener("click", this.resetSettings);
+  }
+
+  const testConnectionBtn = document.getElementById("testConnection");
+  if (testConnectionBtn) {
+    testConnectionBtn.addEventListener("click", this.testConnection);
+  }
+
+  // Responsive design - auto-collapse sidebar on small screens
+  window.addEventListener(
+    "resize",
+    Utils.debounce(function () {
+      const sidebar = document.getElementById("sidebar");
+      if (
+        window.innerWidth < 768 &&
+        sidebar &&
+        sidebar.classList.contains("sb-open")
+      ) {
+        // Close sidebar
+        sidebar.classList.remove("sb-open");
+
+        const backdrop = document.getElementById("sidebarBackdrop");
+        if (backdrop) backdrop.classList.remove("sb-visible");
+
+        document.body.style.overflow = "";
+
+        const mobileToggle = document.getElementById(
+          "mobileSidebarToggle"
+        );
+        if (mobileToggle)
+          mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+      }
+    }, 250)
+  );
+
+  // Sidebar backdrop click handler
+  const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener("click", function () {
+      const sidebar = document.getElementById("sidebar");
+      if (sidebar) {
+        sidebar.classList.remove("sb-open");
+        this.classList.remove("sb-visible");
+        document.body.style.overflow = "";
+
+        const mobileToggle = document.getElementById(
+          "mobileSidebarToggle"
+        );
+        if (mobileToggle)
+          mobileToggle.innerHTML = '<i class="material-icons">menu</i>';
+      }
+    });
+  }
+
+  // Set up view-specific buttons
+  const refreshBudgetBtn = document.getElementById("refreshBudget");
+  if (refreshBudgetBtn) {
+    refreshBudgetBtn.addEventListener("click", () => {
+      // Only clear the view cache, NOT the data!
+      _cache.invalidate("budget");
+      this.loadViewData("budget", true);
+    });
+  }
+
+  const refreshNetWorthBtn = document.getElementById("refreshNetWorth");
+  if (refreshNetWorthBtn) {
+    refreshNetWorthBtn.addEventListener("click", () => {
+      // Force refresh by invalidating cache
+      _cache.invalidate("netWorth");
+      this.loadViewData("netWorth", true);
+    });
+  }
+},
 
       /**
        * Check for existing connection and load if available
@@ -2007,7 +1968,6 @@ renderExpenseView: function(cachedExpenses) {
   `;
 
   if (window.MonthlyGrid) {
-    console.log("Initializing MonthlyGrid with container:", containerId);
     MonthlyGrid.init(containerId);
     
     // FORCE MonthlyGrid to use the app's current month/year

@@ -290,7 +290,6 @@ var RecurringManager = (function() {
 
     API.getRecurringData(
       function(result) {
-        console.log('RecurringManager: API response received');
         
         if (result && result.success && Array.isArray(result.recurring)) {
           _recurringData = processRecurringData(result.recurring);

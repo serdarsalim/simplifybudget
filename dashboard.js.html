@@ -344,6 +344,10 @@ setTimeout(function() {
   } catch (error) {
     console.error("Error rendering budget dashboard:", error);
   }
+
+    if (window._eventManager && typeof _eventManager.attach === 'function') {
+    _eventManager.attach();
+  }
 };
 
 

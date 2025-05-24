@@ -703,11 +703,9 @@ clearTransactionRow: function(transactionId, successCallback, errorCallback) {
  */
 getRecurringData: function(successCallback, errorCallback) {
   try {
-    console.log('API: getRecurringData called');
     
     google.script.run
       .withSuccessHandler(function(result) {
-        console.log('API: getRecurringData response received');
         if (result && result.success) {
           successCallback(result);
         } else {

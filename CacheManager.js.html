@@ -370,7 +370,6 @@ getDashboardData(month = currentMonth, year = currentYear) {
   
   try {
     const result = this.calculateDashboardData(expenses, recurring, month, year);
-    console.log('CacheManager: Dashboard calculation COMPLETED');
     return result;
   } catch (error) {
     console.error('ERROR in calculateDashboardData:', error);
@@ -398,7 +397,6 @@ getDashboardData(month = currentMonth, year = currentYear) {
   
   // Get active categories from cache
   const allCategories = this.getCategories() || [];
-  console.log('Categories loaded:', allCategories.length);
   
   const activeCategories = allCategories.filter(cat => cat.active);
   
