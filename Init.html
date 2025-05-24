@@ -1255,23 +1255,26 @@ loadViewData: function(viewName, forceRefresh = false) {
         }
 
         switch (viewName) {
-    case "budget":
-      this.loadBudgetData(forceRefresh); // MAKE SURE forceRefresh IS PASSED!
-      break;
+          case "budget":
+            this.loadBudgetData(false); // Don't force refresh - use cache
+            break;
           case "expense":
             this.renderExpenseView(cachedData);
             break;
           case "income":
-            // TODO: Implement income view rendering
+            this.loadIncomeData(); // Just load it - no special render yet
             break;
           case "recurring":
-            // TODO: Implement recurring view rendering
+            this.loadRecurringData(); // Load with cache support
+            break;
+          case "categories":
+            this.loadCategoriesData();
             break;
           case "netWorth":
-            // TODO: Implement net worth view rendering
+            this.loadNetWorthData(); // Load placeholder
             break;
           case "reports":
-            // TODO: Implement reports view rendering
+            this.loadReportsSheet(); // Load placeholder
             break;
           default:
             console.error(`Unknown view name for cache rendering: ${viewName}`);

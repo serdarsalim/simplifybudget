@@ -114,13 +114,14 @@ var RecurringManager = (function() {
       
     } else if (cachedData && Array.isArray(cachedData)) {
       console.log('RecurringManager: Using provided cached data');
+        loadCategories();
       _recurringData = processRecurringData(cachedData);
       renderRecurringView();
       bindEvents();
       
       // Set active filter as default
       setTimeout(() => {
-        const activeBtn = document.querySelector('.rec-filter-btn[data-status="active"]');
+        const activeBtn = document.querySelector('.rec-filter-btn[data-staftus="active"]');
         if (activeBtn) {
           activeBtn.click();
         }
