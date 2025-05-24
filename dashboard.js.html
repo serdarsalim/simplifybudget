@@ -14,45 +14,56 @@ const SaveQueue = (function() {
   let _isProcessing = false;
   
   // Process the next item in the queue
-  function processNextItem() {
-    if (_queue.length === 0) {
-      _isProcessing = false;
-      return;
-    }
-    
-    _isProcessing = true;
-    const nextItem = _queue.shift();
-    
-    // Call the API to save the value
-    API.updateBudgetValue(
-      nextItem.categoryName, 
-      nextItem.value,
-      (result) => {
-        // Success callback
-        try {
-          // Call the original success callback
-          if (nextItem.onSuccess) {
-            nextItem.onSuccess(result);
-          }
-        } finally {
-          // Process the next item in the queue, even if callback throws an error
-          setTimeout(processNextItem, 50);
-        }
-      },
-      (error) => {
-        // Error callback
-        try {
-          // Call the original error callback
-          if (nextItem.onError) {
-            nextItem.onError(error);
-          }
-        } finally {
-          // Continue processing the queue even if there was an error
-          setTimeout(processNextItem, 50);
-        }
-      }
-    );
+  // In SaveQueue.add method, replace the API call with this:
+function processNextItem() {
+  if (_queue.length === 0) {
+    _isProcessing = false;
+    return;
   }
+  
+  _isProcessing = true;
+  const nextItem = _queue.shift();
+  
+  // Get current budget data from cache
+  const budgetData = window.CacheManager.getBudgetData() || {};
+  const monthKey = `${_currentYear}-${String(_currentMonth + 1).padStart(2, '0')}`;
+  
+  // Ensure month exists
+  if (!budgetData[monthKey]) {
+    budgetData[monthKey] = {};
+  }
+  
+  // Update the specific category
+  budgetData[monthKey][nextItem.categoryName] = nextItem.value;
+  
+  // Save the entire budget JSON
+  API.saveBudgetData(
+    budgetData,
+    (result) => {
+      // Update cache
+      window.CacheManager.setBudgetData(budgetData);
+      
+      // Success callback
+      try {
+        if (nextItem.onSuccess) {
+          nextItem.onSuccess(result);
+        }
+      } finally {
+        setTimeout(processNextItem, 50);
+      }
+    },
+    (error) => {
+      // Error callback
+      try {
+        if (nextItem.onError) {
+          nextItem.onError(error);
+        }
+      } finally {
+        setTimeout(processNextItem, 50);
+      }
+    }
+  );
+}
   
   // Public methods
   return {
@@ -122,14 +133,13 @@ const SaveQueue = (function() {
    * @param {Object} data - Combined dashboard data from all modules
    */
   SimBudget.renderBudgetDashboard = function(data) {
-  
+
   // CRITICAL FIX: Only remove the loading overlay, not the entire content
   const contentArea = document.getElementById('budgetContent');
   if (contentArea) {
     // Just remove the loading overlay
     const overlay = contentArea.querySelector('.loading-overlay');
     if (overlay) {
-      console.log("Removing loading overlay");
       overlay.remove();
     }
     

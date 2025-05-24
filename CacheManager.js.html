@@ -75,8 +75,6 @@ const CacheManager = (function() {
    */
   function invalidate(key, monthYear = null) {
     const cacheKey = monthYear ? `${key}_${monthYear}` : key;
-    console.log('CACHE INVALIDATE CALLED:', key, monthYear);
-  console.trace(); // This will show what called it
     // Remove from memory
     delete cache.data[cacheKey];
     delete cache.metadata[cacheKey];
@@ -241,6 +239,48 @@ const CacheManager = (function() {
     },
 
 
+
+// Add to budgetHelpers object in CacheManager.js.html
+
+// Get budget data from JSON
+getBudgetData() {
+  return get('budgetData');
+},
+
+// Set budget data
+setBudgetData(budgetData) {
+  // Store with longer TTL since budget doesn't change often
+  return set('budgetData', budgetData, { ttl: 7 * 24 * 60 * 60 * 1000 }); // 7 days
+},
+
+// Get budget for specific month/year
+getBudgetForMonth(month = currentMonth, year = currentYear) {
+  const budgetData = this.getBudgetData();
+  if (!budgetData) return null;
+  
+  // Format key as YYYY-MM
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+  return budgetData[monthKey] || {};
+},
+
+// Update budget for specific month
+updateBudgetForMonth(month, year, categoryBudgets) {
+  const budgetData = this.getBudgetData() || {};
+  
+  // Format key as YYYY-MM
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+  budgetData[monthKey] = categoryBudgets;
+  
+  this.setBudgetData(budgetData);
+  
+  // Invalidate dashboard since budget changed
+  this.invalidate('dashboardData');
+  
+  return budgetData;
+},
+
+
+
 // Add to budgetHelpers object in CacheManager.js
 getCategories() {
   return get('categories');
@@ -284,47 +324,69 @@ updateCategoryStatus(categoryName, active) {
     },
     
     // Get dashboard data (calculated from expenses + recurring)
-    getDashboardData(month = currentMonth, year = currentYear) {
-      const expenses = this.getExpenses(month, year);
-      const recurring = this.getRecurring();
-      const categories = this.getCategories();
-      
-      if (!expenses || !recurring || !categories) {
-        console.log('CacheManager: Missing data for dashboard calculation');
-        return null;
-      }
-      
-      return this.calculateDashboardData(expenses, recurring, month, year);
-    },
+    // In CacheManager.js.html, in the budgetHelpers object:
+getDashboardData(month = currentMonth, year = currentYear) {
+  const expenses = this.getExpenses(month, year);
+  const recurring = this.getRecurring();
+  const categories = this.getCategories();
+  
+
+  
+  if (!expenses || !recurring || !categories) {
+    console.log('CacheManager: Missing data for dashboard calculation', {
+      expenses: expenses,
+      recurring: recurring,
+      categories: categories
+    });
+    return null;
+  }
+  
+  
+  try {
+    const result = this.calculateDashboardData(expenses, recurring, month, year);
+    console.log('CacheManager: Dashboard calculation COMPLETED');
+    return result;
+  } catch (error) {
+    console.error('ERROR in calculateDashboardData:', error);
+    console.error('Error stack:', error.stack);
+    return null;
+  }
+},
     
     // Calculate dashboard data from raw expenses and recurring
     calculateDashboardData(expenses, recurring, month, year) {
+
   
-      
-      // Initialize summary
-      const summary = {
-        income: 0, // TODO: Will add income later
-        spent: 0,
-        leftToSpend: 0
-      };
-      
-      // Initialize categories map with ALL active categories first
-const categoriesMap = {};
-
-// Get active categories from cache
-const allCategories = this.getCategories() || [];
-const activeCategories = allCategories.filter(cat => cat.active);
-
-// Add all active categories with 0 values
-activeCategories.forEach(cat => {
-  const categoryName = cat.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
-  categoriesMap[categoryName] = {
-    name: cat.name, // Keep original with emoji
-    budgeted: 0, // TODO: Get from budget sheet
-    actual: 0,
-    isActive: true
+  // Get budget data for this month
+  const monthlyBudget = this.getBudgetForMonth(month, year) || {};
+  
+  // Initialize summary
+  const summary = {
+    income: 0,
+    spent: 0,
+    leftToSpend: 0
   };
-});
+  
+  // Initialize categories map
+  const categoriesMap = {};
+  
+  // Get active categories from cache
+  const allCategories = this.getCategories() || [];
+  console.log('Categories loaded:', allCategories.length);
+  
+  const activeCategories = allCategories.filter(cat => cat.active);
+  
+  // Add all active categories with budgeted values
+  activeCategories.forEach(cat => {
+    const categoryName = cat.name.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim();
+    categoriesMap[categoryName] = {
+      name: cat.name,
+      budgeted: monthlyBudget[cat.name] || 0,
+      actual: 0,
+      isActive: true
+    };
+  });
+  
 
 // Process expenses for this month
 expenses.forEach(expense => {

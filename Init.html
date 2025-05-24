@@ -1594,121 +1594,135 @@ loadViewData: function(viewName, forceRefresh = false) {
       /**
        * Load budget data using a single consolidated API call
        */
-      loadBudgetData: function() {
-     
+     // In Init.html, complete loadBudgetData function
+loadBudgetData: function() {
+  // Make sure we have current month/year
+  if (typeof _currentMonth === 'undefined') {
+    _currentMonth = new Date().getMonth();
+    _currentYear = new Date().getFullYear();
+    console.log('LoadBudgetData: Set default month/year:', _currentMonth, _currentYear);
+  }
+  
+  const contentArea = document.getElementById("budgetContent");
+  
+  // Check cache first
+  const cachedData = window.CacheManager.getDashboardData();
+  if (cachedData) {
+    console.log('LoadBudgetData: Using cached dashboard data');
+    SimBudget.renderBudgetDashboard(cachedData);
+    _cache.set('budget', cachedData);
+    _loadingView = null;
+    return;
+  }
+  
+  // Show loading overlay
+  if (contentArea) {
+    const existingDashboard = contentArea.querySelector('.dashboard-container');
+    if (existingDashboard) {
+      const overlay = document.createElement('div');
+      overlay.className = 'loading-overlay';
+      overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);z-index:100;';
+      overlay.innerHTML = '<div class="loading-spinner"></div>';
+      contentArea.style.position = 'relative';
+      contentArea.appendChild(overlay);
+    } else {
+      contentArea.innerHTML = '<div style="padding:40px;text-align:center;"><div class="loading-spinner"></div><p>Loading budget data...</p></div>';
+    }
+  }
+  
+  // Load all required data
+  let expensesLoaded = false;
+  let recurringLoaded = false;
+  let budgetLoaded = false;
+  let expensesData = null;
+  let recurringData = null;
+  let budgetData = null;
 
-
-        // Make sure we have current month/year
-        if (typeof _currentMonth === 'undefined') {
-          _currentMonth = new Date().getMonth();
-          _currentYear = new Date().getFullYear();
-          console.log('LoadBudgetData: Set default month/year:', _currentMonth, _currentYear);
-        }
-            const contentArea = document.getElementById("budgetContent");
-            
-            // Check cache first
-          const cachedData = window.CacheManager.getDashboardData();
-      if (cachedData) {
-        console.log('LoadBudgetData: Using cached dashboard data');
-        SimBudget.renderBudgetDashboard(cachedData);
-        
-        // ALSO update Init's cache system
-        _cache.set('budget', cachedData);
-        
-        _loadingView = null;
-        return;
+  const checkAndRender = () => {
+  
+  
+  if (expensesLoaded && recurringLoaded && budgetLoaded) {
+    
+    try {
+      // Store in cache
+      if (expensesData) {
+        window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
+      }
+      if (recurringData) {
+        window.CacheManager.setRecurring(recurringData);
+      }
+      if (budgetData) {
+        window.CacheManager.setBudgetData(budgetData);
       }
       
-      // Show simple loading overlay
-      if (contentArea) {
-        const existingDashboard = contentArea.querySelector('.dashboard-container');
-        if (existingDashboard) {
-          // Add loading overlay to existing content
-          const overlay = document.createElement('div');
-          overlay.className = 'loading-overlay';
-          overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);z-index:100;';
-          overlay.innerHTML = '<div class="loading-spinner"></div>';
-          contentArea.style.position = 'relative';
-          contentArea.appendChild(overlay);
-        } else {
-          // First load - simple loading message
-          contentArea.innerHTML = '<div style="padding:40px;text-align:center;"><div class="loading-spinner"></div><p>Loading budget data...</p></div>';
-        }
+      // Calculate and render
+      const dashboardData = window.CacheManager.getDashboardData(_currentMonth, _currentYear);
+      
+      if (dashboardData) {
+        SimBudget.renderBudgetDashboard(dashboardData);
+        _cache.set('budget', dashboardData);
+      } else {
+        console.error('FAILED to calculate dashboard data');
+        // REMOVE OVERLAY EVEN ON ERROR
+        const contentArea = document.getElementById("budgetContent");
+        const overlay = contentArea?.querySelector('.loading-overlay');
+        if (overlay) overlay.remove();
       }
       
-      // Load both expenses and recurring data
-      let expensesLoaded = false;
-      let recurringLoaded = false;
-      let expensesData = null;
-      let recurringData = null;
-      
-            const checkAndRender = () => {
-        if (!window.CacheManager.getCategories()) {
-          // Load categories from localStorage or API
-          const cachedCats = localStorage.getItem('simbudget_categories');
-          if (cachedCats) {
-            try {
-              const cats = JSON.parse(cachedCats);
-              window.CacheManager.setCategories(cats);
-            } catch (e) {
-              console.error('Failed to load categories from localStorage');
-            }
-          }
-        }
-      
-        if (expensesLoaded && recurringLoaded) {
-          // Store in cache
-          if (expensesData) {
-            window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
-          }
-          if (recurringData) {
-            window.CacheManager.setRecurring(recurringData);
-          }
-          
-          // Calculate and render
-          const dashboardData = window.CacheManager.getDashboardData(_currentMonth, _currentYear);
-      
-          if (dashboardData) {
-            SimBudget.renderBudgetDashboard(dashboardData);
-            
-            // ALSO cache in Init's cache system
-            _cache.set('budget', dashboardData);
-          } else {
-            console.error('LoadBudgetData: Failed to calculate dashboard data');
-          }
-          
-          _loadingView = null;
-        }
-      };
-      
-      // Load expenses
-      API.getExpenseData(_currentMonth, _currentYear,
-        function(result) {
-          expensesData = result.expenses || [];
-          expensesLoaded = true;
-          checkAndRender();
-        },
-        function(error) {
-          console.error('LoadBudgetData: Error loading expenses:', error);
-          expensesLoaded = true; // Continue anyway
-          checkAndRender();
-        }
-      );
-      
-      // Load recurring
-      API.getRecurringData(
-        function(result) {
-          recurringData = result.recurring || [];
-          recurringLoaded = true;
-          checkAndRender();
-        },
-        function(error) {
-          console.error('LoadBudgetData: Error loading recurring:', error);
-          recurringLoaded = true; // Continue anyway
-          checkAndRender();
-        }
-      );
+    } catch (error) {
+      console.error('ERROR in checkAndRender:', error);
+      // REMOVE OVERLAY ON ERROR
+      const contentArea = document.getElementById("budgetContent");
+      const overlay = contentArea?.querySelector('.loading-overlay');
+      if (overlay) overlay.remove();
+    }
+    
+    _loadingView = null;
+  }
+};
+  
+  // Load budget data (NEW)
+  API.getBudgetData(
+    function(result) {
+      budgetData = result.budgetData || {};
+      budgetLoaded = true;
+      checkAndRender();
     },
+    function(error) {
+      console.error('LoadBudgetData: Error loading budget data:', error);
+      budgetLoaded = true; // Continue with empty budget
+      checkAndRender();
+    }
+  );
+  
+  // Load expenses
+  API.getExpenseData(_currentMonth, _currentYear,
+    function(result) {
+      expensesData = result.expenses || [];
+      expensesLoaded = true;
+      checkAndRender();
+    },
+    function(error) {
+      console.error('LoadBudgetData: Error loading expenses:', error);
+      expensesLoaded = true;
+      checkAndRender();
+    }
+  );
+  
+  // Load recurring
+  API.getRecurringData(
+    function(result) {
+      recurringData = result.recurring || [];
+      recurringLoaded = true;
+      checkAndRender();
+    },
+    function(error) {
+      console.error('LoadBudgetData: Error loading recurring:', error);
+      recurringLoaded = true;
+      checkAndRender();
+    }
+  );
+},
 
 
       /**

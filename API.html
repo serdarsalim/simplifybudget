@@ -807,6 +807,27 @@ clearRecurringRow: function(transactionId, successCallback, errorCallback) {
 },
 
 
+// to save budgeted amounts for categories in budgetdashboard
+
+getBudgetData: function(successCallback, errorCallback, forceRefresh = false) {
+  google.script.run
+    .withSuccessHandler(successCallback)
+    .withFailureHandler(errorCallback)
+    .getBudgetData(!forceRefresh);
+},
+
+saveBudgetData: function(budgetData, successCallback, errorCallback) {
+  google.script.run
+    .withSuccessHandler(successCallback)
+    .withFailureHandler(errorCallback)
+    .saveBudgetData(budgetData);
+},
+
+
+
+
+
+
 
 
     /**
