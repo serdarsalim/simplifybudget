@@ -17,16 +17,17 @@ const CacheManager = (function() {
   };
   
   // Configuration
-  const config = {
-  ttl: {
-    shortLived: 2 * 60 * 1000,    // 2 minutes for expenses
-    mediumLived: 10 * 60 * 1000,  // 10 minutes for budget data
-    longLived: 30 * 60 * 1000,    // 30 minutes for categories, settings
-    dashboard: 15 * 60 * 1000,    // ✅ NEW: 15 minutes for dashboard -
-    },
-    preloadDelay: 1000,              // Wait 1 second before preloading
-    preloadInterval: 2000,           // 2 seconds between preloads
-  };
+  // Configuration
+const config = {
+ttl: {
+  shortLived: 30 * 24 * 60 * 60 * 1000,    // 30 days for expenses
+  mediumLived: 30 * 24 * 60 * 60 * 1000,   // 30 days for budget data
+  longLived: 30 * 24 * 60 * 60 * 1000,     // 30 days for categories, settings
+  dashboard: 30 * 24 * 60 * 60 * 1000,     // 30 days for dashboard
+  },
+  preloadDelay: 1000,              // Wait 1 second before preloading
+  preloadInterval: 2000,           // 2 seconds between preloads
+};
   
   // Track current month/year
   let currentMonth = new Date().getMonth();

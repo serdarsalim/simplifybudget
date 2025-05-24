@@ -295,7 +295,10 @@ var CategoriesManager = (function() {
       if (window.notifyMonthlyGridOfCategoryChange) {
         notifyMonthlyGridOfCategoryChange();
       }
-      
+      // ✅ ADD THIS - Direct dashboard notification
+if (window.notifyDashboardOfCategoryChange) {
+  notifyDashboardOfCategoryChange();
+}
       // ✅ BROADCAST TO ALL COMPONENTS
       document.dispatchEvent(new CustomEvent('categories-changed', {
         detail: { 

@@ -580,11 +580,14 @@ if (fromView === 'budget' && toView === 'expense') {
               }, 200);
             }
             
+
+
+
             // Update quick expense dropdown regardless of current view
             if (window.CategoriesManager && typeof CategoriesManager.updateQuickExpenseDropdown === 'function') {
               CategoriesManager.updateQuickExpenseDropdown();
             }
-});
+               });
 
 
       // DESKTOP sidebar toggle with reliable event delegation 
@@ -1229,6 +1232,7 @@ loadCategoriesData: function () {
  */
 renderViewFromCache: function (viewName) {
   console.log(`Rendering ${viewName} view from cache`);
+  
   
   // ✅ SPECIAL CASE: Categories NEVER use cache - always fresh from UserProperties
   if (viewName === "categories") {

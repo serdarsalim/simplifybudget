@@ -339,7 +339,7 @@ setTimeout(function() {
   } catch (chartError) {
     console.error("Error rendering expense chart:", chartError);
   }
-}, 200);
+}, 500);
     
   } catch (error) {
     console.error("Error rendering budget dashboard:", error);
@@ -762,10 +762,7 @@ SimBudget.renderExpenseChart = function(categories) {
     mode: 'nearest',
     intersect: true
   },
-  animation: {
-    animateScale: true,
-    animateRotate: true
-  },
+  animation: false,
   // Add this to ensure tooltip is visible
   layout: {
     padding: {
@@ -1017,6 +1014,55 @@ function updateBudgetUI(categoryWithEmoji) {
     if (leftEl) leftEl.textContent = Utils.formatCurrency(SimBudget._currentBudgetData.summary.leftToSpend);
   }
 }
+
+
+
+function notifyDashboardOfCategoryChange() {
+  console.log('Dashboard: Getting fresh categories from UserProperties');
+  
+  if (SimBudget.Views.getCurrent() !== 'budget') {
+    return;
+  }
+  
+  // Get fresh categories from UserProperties (like MonthlyGrid does)
+  API.getCategoriesFromUserProperties(
+    function(result) {
+      if (result && result.success && result.categories) {
+        console.log('Dashboard: Got fresh categories from UserProperties:', result.categories.length);
+        
+        // Get current dashboard data
+        const cachedData = window.CacheManager.getDashboardData();
+        if (cachedData) {
+          // Filter active categories
+          const activeCategories = result.categories.filter(cat => cat.active);
+          
+          // Rebuild dashboard categories
+          const newDashboardCategories = activeCategories.map(activeCat => {
+            const existing = cachedData.categories.find(c => c.name === activeCat.name || c.name === activeCat.fullName);
+            return existing || {
+              name: activeCat.fullName || activeCat.name,
+              budgeted: 0,
+              actual: 0,
+              isActive: true
+            };
+          });
+          
+          // Update and render
+          const updatedData = { ...cachedData, categories: newDashboardCategories };
+          SimBudget.renderBudgetDashboard(updatedData);
+          window.CacheManager.set('budget', updatedData);
+        }
+      }
+    },
+    function(error) {
+      console.error('Dashboard: Error getting fresh categories:', error);
+    }
+  );
+}
+
+window.notifyDashboardOfCategoryChange = notifyDashboardOfCategoryChange;
+
+
 
 
 })();
