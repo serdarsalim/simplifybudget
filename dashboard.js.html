@@ -901,14 +901,28 @@ if (window.TransactionManager) {
 }
 
 // Handle either single transaction or batch from event
+// Handle either single transaction or batch from event
 function handleTransactionUpdate(event) {
   const transactions = event.detail?.transactions;
   if (!transactions || !Array.isArray(transactions) || transactions.length === 0) return;
   
   // Process each transaction
-  transactions.forEach(tx => updateBudgetFromSingleTx(tx));
+  transactions.forEach(tx => {
+    updateBudgetFromSingleTx(tx);
+    
+    // ADD THIS: Update CacheManager
+    if (window.CacheManager && tx.amount > 0) {
+      const month = tx.date ? new Date(tx.date).getMonth() : _currentMonth;
+      const year = tx.date ? new Date(tx.date).getFullYear() : _currentYear;
+      
+      // Update the expense in cache
+      CacheManager.updateExpense(tx, month, year);
+      
+      // Force dashboard recalculation
+      CacheManager.invalidate('dashboardData');
+    }
+  });
 }
-
 // Core function to update budget from a transaction
 function updateBudgetFromSingleTx(tx, immediate = false) {
   if (!tx || tx.amount <= 0 || tx.deleted) return;

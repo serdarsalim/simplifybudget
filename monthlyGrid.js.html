@@ -1874,7 +1874,9 @@ function setupTransactionItemEvents(item, tx) {
       }
       
       // Update cache using CacheManager
+            // Update cache using CacheManager for individual transaction
       if (window.CacheManager) {
+        // First update the single expense
         CacheManager.updateExpense({
           id: tx.id,
           rowIndex: tx.id,
@@ -1886,6 +1888,27 @@ function setupTransactionItemEvents(item, tx) {
           account: transaction.account,
           notes: transaction.notes
         }, _currentMonth, _currentYear);
+        
+        // CRITICAL FIX: Also update the entire collection to prevent data loss
+        // Filter only expenses for the current month/year
+        const currentMonthExpenses = _transactions.filter(t => 
+          t.date && 
+          t.date.getMonth() === _currentMonth && 
+          t.date.getFullYear() === _currentYear
+        ).map(t => ({
+          id: t.id,
+          rowIndex: t.id,
+          date: t.date,
+          category: t.category,
+          amount: t.amount,
+          name: t.description,
+          description: t.description,
+          account: t.account || 'Main Account',
+          notes: t.notes || ''
+        }));
+        
+        // Set the complete collection
+        CacheManager.setExpenses(currentMonthExpenses, _currentMonth, _currentYear);
       }
     }
   }
