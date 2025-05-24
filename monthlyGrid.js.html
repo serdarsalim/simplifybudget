@@ -261,7 +261,6 @@ if (window.CacheManager) {
   if (typeof appMonth !== 'undefined' && typeof appYear !== 'undefined') {
     _currentMonth = appMonth;
     _currentYear = appYear;
-    console.log('MonthlyGrid: Using app month/year:', _currentMonth, _currentYear);
   }
 }
 
@@ -851,14 +850,8 @@ function processRealExpenseData(expenses) {
     const parsed = parseCategoryNameAndEmoji(expense.category.trim());
     const cleanCategory = parsed.name; // Use only the name part for matching
     
-    // IMPORTANT: Use the transaction ID from server if available, otherwise generate one
-    // This ensures transaction IDs are preserved when updating
-    const transactionId = expense.transactionId || expense.rowIndex || `tx-real-${index}`;
-    
-    // Ensure the ID follows the standard format 'tx-timestamp-random'
-    const formattedId = transactionId.toString().startsWith('tx-') 
-      ? transactionId 
-      : `tx-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const formattedId = expense.transactionId || `tx-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
     
     // Create transaction object, now including the label field and preserving transaction ID
     const transaction = {
@@ -870,7 +863,7 @@ function processRealExpenseData(expenses) {
       account: expense.account || 'Main Account',
       notes: expense.notes || '',
       label: expense.label || '', // Store the label field to identify subscriptions/fixed payments
-      originalTransactionId: transactionId // Store original for debugging
+      originalTransactionId: expense.transactionId || formattedId // And here
     };
     
     processedTransactions.push(transaction);
@@ -2160,7 +2153,7 @@ function addTransactionRow() {
  */
 function clearTransactionById(transactionId, skipRender) {
   if (!transactionId) return false;
-  
+
   
   // Find transaction in _transactions array
   const txIndex = _transactions.findIndex(tx => {

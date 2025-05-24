@@ -100,3 +100,47 @@ function saveBudgetData(budgetData) {
     return { success: false, error: error.toString() };
   }
 }
+
+
+
+
+// Add this to your transaction.js to test
+function testFindTransaction(transactionId) {
+  try {
+    const sheet = getBudgetSheet("Expenses");
+    if (!sheet) return "No sheet found";
+    
+    Logger.log("=== TESTING TEXTFINDER ===");
+    Logger.log("Looking for ID: " + transactionId);
+    Logger.log("ID type: " + typeof transactionId);
+    
+    // Let's try multiple search approaches
+    const finder1 = sheet.createTextFinder(transactionId.toString())
+                        .matchEntireCell(true)
+                        .findNext();
+    
+    const finder2 = sheet.createTextFinder(transactionId.toString())
+                        .matchEntireCell(false)  // Partial match
+                        .findNext();
+    
+    // Also check what's actually in column D
+    const columnD = sheet.getRange("D5:D100").getValues();
+    Logger.log("First few IDs in column D:");
+    for (let i = 0; i < Math.min(10, columnD.length); i++) {
+      if (columnD[i][0]) {
+        Logger.log(`Row ${i+5}: "${columnD[i][0]}" (type: ${typeof columnD[i][0]})`);
+      }
+    }
+    
+    Logger.log("Exact match result: " + (finder1 ? "Found at row " + finder1.getRow() : "Not found"));
+    Logger.log("Partial match result: " + (finder2 ? "Found at row " + finder2.getRow() : "Not found"));
+    
+    return {
+      exactMatch: finder1 ? finder1.getRow() : null,
+      partialMatch: finder2 ? finder2.getRow() : null
+    };
+  } catch (e) {
+    Logger.log("Test error: " + e.toString());
+    return "Error: " + e.toString();
+  }
+}
