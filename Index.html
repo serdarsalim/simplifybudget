@@ -1,28 +1,5 @@
 
-<script>
-// MINIMAL CACHE RESET - PRESERVES SETTINGS & CATEGORIES
-(function() {
-  // Clear specific caches only
-  ['expense', 'monthly', 'dashboard', 'budget_data'].forEach(pattern => {
-    for (let i = localStorage.length-1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key && key.includes(pattern) && 
-          !key.includes('setting') && 
-          !key.includes('categories')) {
-        localStorage.removeItem(key);
-      }
-    }
-  });
-  
-  // Reset session tracking
-  sessionStorage.removeItem('monthlyGrid_sessionActive');
-  
-  // Signal fresh data needed
-  window.FORCE_FRESH_DATA = true;
-})();
 
-
-</script>
 
 <!DOCTYPE html>
 <html>
@@ -259,6 +236,8 @@
     });
   }
 });
+
+
 </script>
 
   </body>

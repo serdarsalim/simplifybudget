@@ -356,7 +356,6 @@ function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   // Check cache first for instant loading
   const monthExpenses = getCachedExpenses(month, year);  
   if (monthExpenses) {
-      console.log('Loading from cache:', monthExpenses.length, 'expenses');
 
     // Load categories first, then process cached data
     return loadActiveCategories()
@@ -807,20 +806,7 @@ function addInactiveCategoriesWithSpending() {
  */
 function processRealExpenseData(expenses) {
   const processedTransactions = [];
-  console.log('processRealExpenseData called with', expenses.length, 'expenses');
   
-  // Log any transactions with duplicate IDs
-  const idMap = {};
-  expenses.forEach((exp, i) => {
-    const id = exp.transactionId || exp.id;
-    if (idMap[id]) {
-      console.warn('DUPLICATE ID FOUND:', id, 'at positions', idMap[id], 'and', i);
-    } else {
-      idMap[id] = i;
-    }
-  });
-
-
 
 
   _transactions = []; // Reset transactions array to prevent duplicates
@@ -828,13 +814,11 @@ function processRealExpenseData(expenses) {
   expenses.forEach((expense, index) => {
     // Skip empty rows
     if (!expense.category || !expense.amount) {
-      console.log('Skipping expense', index, '- missing category or amount:', expense);
       return;
     }
     
  // ADD HERE - Skip expenses without valid IDs
   if (!expense.transactionId) {
-    console.log('Expense without ID at index', index, '- generating temporary ID');
     expense.transactionId = `recurring-${_currentMonth}-${_currentYear}-${index}`;
   }
     

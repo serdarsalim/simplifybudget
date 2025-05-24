@@ -395,8 +395,7 @@ const _preloader = {
     // View management
     const Views = {
       // Switch to a view
-      // Switch to a view
-      // Switch to a view
+    
       switchTo: function (viewName) {
         if (!viewName) return;
 
@@ -795,30 +794,26 @@ if (fromView === 'budget' && toView === 'expense') {
        * Bind all event listeners
        */
       bindEvents: function () {
-  // Sidebar toggle
-  const toggleBtn = document.getElementById("toggleSidebar");
-  if (toggleBtn) {
-    toggleBtn.addEventListener("click", function () {
-      const sidebar = document.getElementById("sidebar");
-      const contentArea = document.getElementById("contentArea");
 
-      const expensesBtn = document.getElementById("expenses-btn");
-      if (expensesBtn) {
-        expensesBtn.addEventListener("click", function () {
-          SimBudget.Views.activate("expense");
-        });
-      }
-
-      if (sidebar) {
-        sidebar.classList.toggle("sb-open");
-        sidebar.classList.toggle("sb-collapsed");
-
-        if (contentArea) {
-          contentArea.classList.toggle("sb-expanded");
+      // DESKTOP sidebar toggle with reliable event delegation 
+      document.addEventListener("click", function(e) {
+        // Debug what's actually being clicked
+        const clickTarget = e.target.closest('#toggleSidebar');
+        if (clickTarget) {
+          
+          const sidebar = document.getElementById("sidebar");
+          const contentArea = document.getElementById("contentArea");
+          
+          if (sidebar) {
+            sidebar.classList.toggle("sb-open");
+            sidebar.classList.toggle("sb-collapsed");
+            
+            if (contentArea) {
+              contentArea.classList.toggle("sb-expanded");
+            }
+          }
         }
-      }
-    });
-  }
+      });
 
    // MONTH/YEAR SELECTORS - ATTACH TO DOCUMENT (NEVER FAILS!)
 document.addEventListener("change", function(e) {
@@ -892,35 +887,32 @@ document.addEventListener("change", function(e) {
     });
   }
 
-  // Mobile sidebar toggle
-  const mobileToggle = document.getElementById("mobileSidebarToggle");
-  if (mobileToggle) {
-    mobileToggle.addEventListener("click", function () {
-      const sidebar = document.getElementById("sidebar");
-      const backdrop = document.getElementById("sidebarBackdrop");
+  // Mobile sidebar toggle - Using event delegation for reliability
+document.addEventListener("click", function(e) {
+  if (e.target.closest('#mobileSidebarToggle')) {
+    const mobileToggle = e.target.closest('#mobileSidebarToggle');
+    const sidebar = document.getElementById("sidebar");
+    const backdrop = document.getElementById("sidebarBackdrop");
 
-      if (sidebar) {
-        sidebar.classList.toggle("sb-open");
+    if (sidebar) {
+      sidebar.classList.toggle("sb-open");
 
-        if (backdrop) {
-          backdrop.classList.toggle("sb-visible");
-        }
-
-        // Update toggle icon
-        this.innerHTML = sidebar.classList.contains("sb-open")
-          ? '<i class="material-icons">close</i>'
-          : '<i class="material-icons">menu</i>';
-
-        // Lock/unlock body scroll
-        document.body.style.overflow = sidebar.classList.contains(
-          "sb-open"
-        )
-          ? "hidden"
-          : "";
+      if (backdrop) {
+        backdrop.classList.toggle("sb-visible");
       }
-    });
-  }
 
+      // Update toggle icon
+      mobileToggle.innerHTML = sidebar.classList.contains("sb-open")
+        ? '<i class="material-icons">close</i>'
+        : '<i class="material-icons">menu</i>';
+
+      // Lock/unlock body scroll
+      document.body.style.overflow = sidebar.classList.contains("sb-open")
+        ? "hidden"
+        : "";
+    }
+  }
+});
   // Sidebar navigation - FIXED to use sb-nav-item instead of sidebar-item
   document
     .querySelectorAll('.sb-nav-item, [data-view="settings"]')
@@ -1976,7 +1968,6 @@ renderExpenseView: function(cachedExpenses) {
   if (!contentArea) {
     console.error("Expense content area not found");
     _loadingView = null;
-    _isLoadingExpenseView = false;
     return;
   }
 

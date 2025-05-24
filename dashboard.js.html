@@ -882,6 +882,8 @@ SimBudget.fixMobileDisplay = function() {
 // Keep both the server-save event and add immediate updates
 document.addEventListener('transaction-batch-saved', handleTransactionUpdate);
 
+
+
 // Monkey patch TransactionManager for immediate updates
 if (window.TransactionManager) {
   const originalAdd = TransactionManager.addTransaction;
@@ -900,7 +902,6 @@ if (window.TransactionManager) {
   };
 }
 
-// Handle either single transaction or batch from event
 // Handle either single transaction or batch from event
 function handleTransactionUpdate(event) {
   const transactions = event.detail?.transactions;

@@ -281,9 +281,7 @@ var TransactionManager = (function() {
         persistToStorage();
         
         // Dispatch success event for any components that need to know
-        document.dispatchEvent(new CustomEvent('transaction-batch-saved', {
-          detail: { transactions: batch }
-        }));
+      
       })
       .catch(error => {
         console.error('TransactionManager: Error saving batch:', error);
@@ -376,13 +374,16 @@ var TransactionManager = (function() {
     // Persist to storage
     persistToStorage();
     
-    console.log(`TransactionManager: Added transaction to queue, ID: ${transaction.id}`);
     
     // Trigger processor if not already running
     if (!_processorRunning) {
       startProcessor();
     }
     
+      document.dispatchEvent(new CustomEvent('transaction-added-to-queue', {
+    detail: { transaction: transaction }
+  }));
+
     return transaction.id;
   }
   
@@ -410,7 +411,6 @@ var TransactionManager = (function() {
     // Persist to storage
     persistToStorage();
     
-    console.log(`TransactionManager: Updated transaction in queue, ID: ${transaction.id}`);
     return true;
   }
   
@@ -434,7 +434,6 @@ var TransactionManager = (function() {
     // Persist to storage
     persistToStorage();
     
-    console.log(`TransactionManager: Removed transaction from queue, ID: ${transactionId}`);
     return true;
   }
   
@@ -486,7 +485,6 @@ var TransactionManager = (function() {
    */
   function forceProcessing() {
     if (_isProcessingBatch) {
-      console.log('TransactionManager: Already processing a batch, cannot force processing');
       return;
     }
     
@@ -522,7 +520,6 @@ var TransactionManager = (function() {
       if (!window.API || typeof API.saveBatchExpenses !== 'function') {
         // Fall back to saveExpense if batch function not available
         if (window.API && typeof API.saveExpense === 'function') {
-          console.log('TransactionManager: Using fallback to individual saves (saveBatchExpenses not available)');
           
           // Process transactions one by one
           const promises = transactions.map(tx => {
@@ -538,7 +535,6 @@ var TransactionManager = (function() {
           // Wait for all individual saves to complete
           Promise.all(promises)
             .then(results => {
-              console.log('TransactionManager: All individual saves completed successfully');
               resolve({ success: true, results: results });
             })
             .catch(error => {
