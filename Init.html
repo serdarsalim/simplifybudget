@@ -561,9 +561,14 @@ Views: {
     if (fromView === 'budget' && toView === 'expense') {
       // Going from budget to expenses - sync the month
       if (window.MonthlyGrid && typeof _currentMonth !== 'undefined') {
-        // This will update MonthlyGrid's month without reloading if data is cached
+        console.log('Syncing expense view to budget month:', _currentMonth, _currentYear);
+        
+        // Update MonthlyGrid's internal state
+        MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
+        
+        // Force refresh to load data for new month
         setTimeout(() => {
-          MonthlyGrid.navigateToMonth(_currentMonth, _currentYear);
+          MonthlyGrid.refresh();
         }, 100);
       }
     }
