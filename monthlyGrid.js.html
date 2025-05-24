@@ -106,12 +106,17 @@ function showDayDetailsPopup(day) {
   /**
    * Check if this is a new session (page refresh/new tab) and clear cache if so
    */
- function handleSessionStart() {
-  // Check if this is a new session
+function handleSessionStart() {
+  // Skip if coming from budget view
+  if (window._skipCacheClear) {
+    window._skipCacheClear = false;
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
+    return;
+  }
+  
   const isSessionActive = sessionStorage.getItem(SESSION_STORAGE_KEY);
   
   if (!isSessionActive) {
-    // This is a new session - clear cache
     console.log('New session detected, clearing cache');
     if (window.CacheManager) {
       CacheManager.clear();

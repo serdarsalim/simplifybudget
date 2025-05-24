@@ -465,7 +465,7 @@ const _preloader = {
 initialize: function() {
   if (_initialized) return;
 
-  
+    sessionStorage.setItem('monthlyGrid_sessionActive', 'true');
 
   // Set up event listeners
   this.bindEvents();
@@ -557,21 +557,21 @@ Views: {
     // Update sidebar active state
     this.updateSidebarActiveState(viewName);
     
-    // SYNC MONTH/YEAR when switching between budget and expenses
-    if (fromView === 'budget' && toView === 'expense') {
-      // Going from budget to expenses - sync the month
-      if (window.MonthlyGrid && typeof _currentMonth !== 'undefined') {
-        console.log('Syncing expense view to budget month:', _currentMonth, _currentYear);
-        
-        // Update MonthlyGrid's internal state
-        MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
-        
-        // Force refresh to load data for new month
-        setTimeout(() => {
-          MonthlyGrid.refresh();
-        }, 100);
-      }
-    }
+   // SYNC MONTH/YEAR when switching between budget and expenses
+// SYNC MONTH/YEAR when switching between budget and expenses
+if (fromView === 'budget' && toView === 'expense') {
+  if (window.MonthlyGrid && typeof _currentMonth !== 'undefined') {
+    console.log('Syncing expense view to budget month:', _currentMonth, _currentYear);
+    
+    // Store the month/year for MonthlyGrid to use
+    window._pendingMonthSync = {
+      month: _currentMonth,
+      year: _currentYear
+    };
+    
+    // Let loadExpenseData handle it when container is ready
+  }
+}
     
     // Dispatch event when view is activated
     const event = new CustomEvent("view-activated", {
@@ -1807,6 +1807,12 @@ loadViewData: function(viewName, forceRefresh = false) {
         if (window.MonthlyGrid) {
           MonthlyGrid.init(containerId);
 
+            // Check for pending month sync
+            if (window._pendingMonthSync) {
+              MonthlyGrid.setMonthYear(_pendingMonthSync.month, _pendingMonthSync.year);
+              delete window._pendingMonthSync;
+            }
+
            if (window.CacheManager && typeof _currentMonth !== 'undefined') {
            window.CacheManager.setCurrentMonth(_currentMonth, _currentYear);
              }
@@ -1972,8 +1978,21 @@ renderExpenseView: function(cachedExpenses) {
     </div>
   `;
 
+
+  
   if (window.MonthlyGrid) {
+    // TELL MonthlyGrid not to clear cache when coming from budget
+    if (SimBudget.Views.getCurrent() === 'budget') {
+      window._skipCacheClear = true;
+    }
     MonthlyGrid.init(containerId);
+
+     // CHECK CACHE FIRST - if we have data, use it!
+    const cachedExpenses = CacheManager.getExpenses(_currentMonth, _currentYear);
+    if (cachedExpenses && cachedExpenses.length > 0) {
+      console.log('Using cached expenses from CacheManager');
+      MonthlyGrid.setExpenseData(cachedExpenses);
+    }
     
     // FORCE MonthlyGrid to use the app's current month/year
     if (typeof _currentMonth !== 'undefined' && typeof _currentYear !== 'undefined') {

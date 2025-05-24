@@ -434,26 +434,7 @@ expenses.forEach(expense => {
 
 // Process recurring items that occur in this month
 const recurringThisMonth = this.getRecurringForMonth(recurring, month, year);
-recurringThisMonth.forEach(item => {
-  if (!item.amount) return;
-  
-  const categoryName = item.category ? 
-    item.category.replace(/\s*[\u{1F300}-\u{1F9FF}].*$/u, '').trim() : 
-    'Subscriptions';
-  const categoryDisplay = item.category || 'Subscriptions 🔁';
-  
-  if (!categoriesMap[categoryName]) {
-    categoriesMap[categoryName] = {
-      name: categoryDisplay,
-      budgeted: 0,
-      actual: 0,
-      isActive: false
-    };
-  }
-  
-  categoriesMap[categoryName].actual += item.amount;
- // summary.spent += item.amount;
-});
+
 
 // Convert map to array - active categories first, then inactive with transactions
 // Get the original order from allCategories
