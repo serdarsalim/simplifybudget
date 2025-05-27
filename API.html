@@ -390,37 +390,8 @@ setUserLanguage: function(languageCode, successCallback, errorCallback) {
   },
   
 
-/**
- * Get all dashboard data in a single call
- * @param {Function} successCallback - Called on success
- * @param {Function} errorCallback - Called on error
- */
-getDashboardData: function(successCallback, errorCallback) {
-  try {
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          successCallback(result);
-        } else {
-          _lastError = result && result.error ? result.error : "Unknown error";
-          errorCallback(_lastError);
-        }
-      })
-      .withFailureHandler(function(error) {
-        _lastError = error;
-        errorCallback(error);
-      })
-      .getDashboardData();
-  } catch (e) {
-    _lastError = e.message || String(e);
-    errorCallback(_lastError);
-  }
-},
 
     
-
-
-
 openQuickExpenseModal: function(successCallback, errorCallback) {
   try {
     console.log("API.openQuickExpenseModal called");

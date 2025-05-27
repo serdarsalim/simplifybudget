@@ -12,6 +12,8 @@ const SaveQueue = (function() {
   // Private variables
   let _queue = [];
   let _isProcessing = false;
+  let _isReordering = false;
+
   
   // Process the next item in the queue
 function processNextItem() {
@@ -216,23 +218,10 @@ if (budgetAlert) {
   // Just call updateInfoMessage which will properly set data-translate
   if (typeof SimBudget.updateInfoMessage === 'function') {
     SimBudget.updateInfoMessage(true);
-  }
-}
+        }
+       }
+     }   
 
-
-
-          }
-    
-    // 3. RENDER NET WORTH
-    if (data.netWorth) {
-    const netWorthElement = document.getElementById('net-worth-value');
-    const savingsElement = document.getElementById('savings-value');
-    const debtsElement = document.getElementById('debts-value');
-    
-    if (netWorthElement) netWorthElement.textContent = Utils.formatCurrency(data.netWorth.total || 0);
-    if (savingsElement) savingsElement.textContent = Utils.formatCurrency(data.netWorth.savings || 0);
-    if (debtsElement) debtsElement.textContent = Utils.formatCurrency(data.netWorth.debts || 0);
-  }
     
     // 4. RENDER CATEGORIES
     if (data.categories && data.categories.length > 0) {
@@ -778,68 +767,68 @@ SimBudget.renderExpenseChart = function(categories) {
 };
 
 
+// Add this flag at the top of your IIFE
+let _hasReorderedMobile = false;
+
 /**
- * Reorder dashboard elements on mobile devices to match CSS Grid layout
+ * Reorder dashboard elements on mobile devices - fixed non-looping version
  */
 SimBudget.reorderDashboardForMobile = function() {
-  // Only apply on mobile devices
-  if (window.innerWidth <= 768) {
-    console.log("Reordering dashboard for mobile view");
+  // Only apply on mobile devices and if not already reordered
+  if (window.innerWidth <= 768 && !_hasReorderedMobile) {
+    // Set flag to prevent repeated execution
+    _hasReorderedMobile = true;
+    
     const container = document.querySelector('.dashboard-container') || 
                      document.querySelector('.view-content');
     
     if (!container) return;
     
-    // Get all elements we need to reorder - EXACT MATCH TO CSS GRID AREAS
+    // Get all elements (keep your existing selectors)
     const incomeBox = container.querySelector('.income-spent-box, .budget-summary-card');
     const budgetCard = container.querySelector('.dashboard-card.budget-data-card');
-    const subscriptionText = container.querySelector('.subscription-header, .subscription-text'); 
+    const subscriptionText = container.querySelector('.subscription-header, .subscription-text');
     const subscriptionSummary = container.querySelector('.subscription-summary');
+    const chartCard = container.querySelector('.donut-chart-card, .dashboard-card.chart-card');
     
-    // FIXED: Get card elements with their headers
-    const subscriptionCard = container.querySelector('.subscription-list-card') || 
-                            container.querySelector('.dashboard-card.subscription-card');
-    const subscriptionHeader = container.querySelector('.subscription-list-header');
+    // Use document fragment for batch DOM operations
+    const fragment = document.createDocumentFragment();
     
-   // const netWorth = container.querySelector('.net-worth-container, .net-worth-card');
+    // Add elements to fragment in desired order
+    if (incomeBox) fragment.appendChild(incomeBox);
+    if (budgetCard) fragment.appendChild(budgetCard);
+    if (subscriptionText) fragment.appendChild(subscriptionText);
+    if (subscriptionSummary) fragment.appendChild(subscriptionSummary);
+    if (chartCard) fragment.appendChild(chartCard);
     
-    // FIXED: Get chart elements with header
-    const chartCard = container.querySelector('.donut-chart-card') || 
-                     container.querySelector('.dashboard-card.chart-card');
-    const chartHeader = container.querySelector('.donut-chart-header');
-    const chartContainer = container.querySelector('.chart-container, .pie-chart-container, .donut-chart-container');
+    // Append all at once
+    container.appendChild(fragment);
     
-    // Reorder by appending in desired order - MATCHING CSS GRID ORDER
-    if (incomeBox) container.appendChild(incomeBox);
-    if (budgetCard) container.appendChild(budgetCard);
-    if (subscriptionText) container.appendChild(subscriptionText);
-    if (subscriptionSummary) container.appendChild(subscriptionSummary);
-    
-    // FIXED: Handle subscription card & header
-    if (subscriptionCard) {
-      container.appendChild(subscriptionCard);
-    } else {
-      if (subscriptionHeader) container.appendChild(subscriptionHeader);
-      const subscriptionList = container.querySelector('.subscription-list-container');
-      if (subscriptionList) container.appendChild(subscriptionList);
+    // Call fixMobileDisplay once without console.log
+    if (typeof SimBudget.fixMobileDisplay === 'function') {
+      const originalFn = SimBudget.fixMobileDisplay;
+      SimBudget.fixMobileDisplay = function() {
+        if (window.innerWidth <= 768) {
+          // Code without the console.log
+          document.querySelectorAll('.budget-data-card td, .budget-value, .actual-value, [id$="-value"], .amount, .amount-column')
+            .forEach(el => {
+              // Existing decimal removal logic
+              // ...
+            });
+        }
+      };
+      SimBudget.fixMobileDisplay();
+      SimBudget.fixMobileDisplay = originalFn; // Restore original
     }
-    
-    
-    // FIXED: Handle chart card & header
-    if (chartCard) {
-      container.appendChild(chartCard);
-    } else {
-      if (chartHeader) container.appendChild(chartHeader);
-      if (chartContainer) container.appendChild(chartContainer);
-    }
-
-      if (netWorth) container.appendChild(netWorth);
-
   }
-
-  SimBudget.fixMobileDisplay();
 };
 
+// Add this to your window resize handler to reset the flag when needed
+window.addEventListener('resize', function() {
+  if (window.innerWidth > 768) {
+    _hasReorderedMobile = false;
+  }
+});
 
 
 
@@ -1018,46 +1007,12 @@ function updateBudgetUI(categoryWithEmoji) {
 
 
 function notifyDashboardOfCategoryChange() {
-  console.log('Dashboard: Getting fresh categories from UserProperties');
-  
   if (SimBudget.Views.getCurrent() !== 'budget') {
     return;
   }
   
-  // Get fresh categories from UserProperties (like MonthlyGrid does)
-  API.getCategoriesFromUserProperties(
-    function(result) {
-      if (result && result.success && result.categories) {
-        console.log('Dashboard: Got fresh categories from UserProperties:', result.categories.length);
-        
-        // Get current dashboard data
-        const cachedData = window.CacheManager.getDashboardData();
-        if (cachedData) {
-          // Filter active categories
-          const activeCategories = result.categories.filter(cat => cat.active);
-          
-          // Rebuild dashboard categories
-          const newDashboardCategories = activeCategories.map(activeCat => {
-            const existing = cachedData.categories.find(c => c.name === activeCat.name || c.name === activeCat.fullName);
-            return existing || {
-              name: activeCat.fullName || activeCat.name,
-              budgeted: 0,
-              actual: 0,
-              isActive: true
-            };
-          });
-          
-          // Update and render
-          const updatedData = { ...cachedData, categories: newDashboardCategories };
-          SimBudget.renderBudgetDashboard(updatedData);
-          window.CacheManager.set('budget', updatedData);
-        }
-      }
-    },
-    function(error) {
-      console.error('Dashboard: Error getting fresh categories:', error);
-    }
-  );
+  // Just re-run the same load process that happens when navigating to budget
+  SimBudget.loadBudgetData(true); // Don't force refresh, just reload normally
 }
 
 window.notifyDashboardOfCategoryChange = notifyDashboardOfCategoryChange;

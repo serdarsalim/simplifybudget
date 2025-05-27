@@ -214,7 +214,7 @@ function getDashboardData(month = currentMonth, year = currentYear) {
   }
 
 /**
- * Calculate dashboard data (UPDATED to accept categories parameter)
+ * Calculate dashboard data with optimized performance
  * @param {Array} expenses - Expense data
  * @param {Array} recurring - Recurring transaction data  
  * @param {Array} categories - Categories from UserProperties
@@ -222,131 +222,119 @@ function getDashboardData(month = currentMonth, year = currentYear) {
  * @param {number} year - Year
  */
 function calculateDashboardData(expenses, recurring, categories, month, year) {
-  console.log('CacheManager: calculateDashboardData called with:', {
-    expenses: expenses.length,
-    recurring: recurring.length,
-    categories: categories.length,
-    month,
-    year
-  });
-  
   // Get budget data for this month
   const monthlyBudget = getBudgetForMonth(month, year) || {};
   
-  // Initialize summary
-  const summary = {
-    income: 0,
-    spent: 0,
-    leftToSpend: 0
-  };
+  // Initialize summary with default values
+  const summary = { income: 0, spent: 0, leftToSpend: 0 };
   
-  // Initialize categories map
+  // Create fast lookup maps for categories (major performance boost)
+  const categoryKeyMap = new Map();
+  const categoryDisplayMap = new Map();
+  const categoryOrderMap = new Map();
+  
+  // Single pass through categories to build all maps at once
+  categories.forEach((cat, index) => {
+    const lowerName = cat.name.toLowerCase();
+    categoryKeyMap.set(lowerName, cat.name);
+    categoryDisplayMap.set(cat.name, cat.fullName || cat.name);
+    categoryOrderMap.set(cat.name, cat.order !== undefined ? cat.order : index);
+    
+    if (cat.fullName) {
+      categoryKeyMap.set(cat.fullName.toLowerCase(), cat.name);
+    }
+  });
+  
+  // Initialize categories map with active categories
   const categoriesMap = {};
-  
-  // Get active categories from UserProperties data
   const activeCategories = categories.filter(cat => cat.active);
-  console.log('CacheManager: Found', activeCategories.length, 'active categories');
   
   // Add all active categories with budgeted values
   activeCategories.forEach(cat => {
-    const categoryDisplayName = cat.fullName || cat.name; // Use fullName (with emoji) for display
-    const categoryKey = cat.name; // Use clean name as key
+    const displayName = categoryDisplayMap.get(cat.name);
+    const budgetValue = monthlyBudget[displayName] || monthlyBudget[cat.name] || 0;
     
-    categoriesMap[categoryKey] = {
-      name: categoryDisplayName, // Display name with emoji
-      budgeted: monthlyBudget[categoryDisplayName] || monthlyBudget[cat.name] || 0,
+    categoriesMap[cat.name] = {
+      name: displayName,
+      budgeted: budgetValue,
       actual: 0,
       isActive: true
     };
   });
   
-  // Process expenses for this month
-  expenses.forEach(expense => {
-    if (!expense.category || !expense.amount) return;
-    
-    const expenseCategoryName = expense.category; // Should be clean name from transaction
-    
-    // Try to find matching category
-    let matchedCategoryKey = null;
-    
-    // First try exact match with clean names
-    if (categoriesMap[expenseCategoryName]) {
-      matchedCategoryKey = expenseCategoryName;
-    } else {
-      // Try to find by checking all category names/fullNames
-      for (const [key, catData] of Object.entries(categoriesMap)) {
-        if (catData.name === expenseCategoryName || 
-            catData.name.includes(expenseCategoryName) ||
-            key === expenseCategoryName) {
-          matchedCategoryKey = key;
-          break;
-        }
+  // Single pass through expenses for both income and expense processing
+  if (expenses && expenses.length) {
+    for (let i = 0; i < expenses.length; i++) {
+      const expense = expenses[i];
+      if (!expense.category || !expense.amount) continue;
+      
+      const expenseCategoryName = expense.category;
+      const lowerCaseName = expenseCategoryName.toLowerCase();
+      
+      // Fast path - check if this is income
+      if (lowerCaseName === "income 💵" || 
+          lowerCaseName === "income" || 
+          lowerCaseName.includes("income")) {
+        summary.income += Math.abs(expense.amount);
+        continue; // Skip expense processing
       }
-    }
-    
-    if (!matchedCategoryKey) {
-      // Create new category for unknown expenses (inactive categories with spending)
-      console.log('CacheManager: Adding inactive category with spending:', expenseCategoryName);
       
-      // Try to find this category in the full categories list
-      const fullCategoryData = categories.find(cat => 
-        cat.name === expenseCategoryName || 
-        cat.fullName === expenseCategoryName
-      );
+      // Try to find matching category - fast lookup with Map
+      let matchedCategoryKey = null;
       
-      if (fullCategoryData) {
-        // Found the inactive category data
+      // First try direct lookup from map (fastest)
+      const mappedKey = categoryKeyMap.get(lowerCaseName);
+      if (mappedKey && categoriesMap[mappedKey]) {
+        matchedCategoryKey = mappedKey;
+      } 
+      // Then try direct object lookup
+      else if (categoriesMap[expenseCategoryName]) {
+        matchedCategoryKey = expenseCategoryName;
+      }
+      
+      // If no match found, create inactive category
+      if (!matchedCategoryKey) {
+        // Find in full categories array with O(1) map lookup instead of O(n) find()
+        const categoryKey = categoryKeyMap.get(lowerCaseName);
+        
         categoriesMap[expenseCategoryName] = {
-          name: fullCategoryData.fullName || fullCategoryData.name,
+          name: categoryKey ? categoryDisplayMap.get(categoryKey) : expenseCategoryName,
           budgeted: 0,
           actual: 0,
           isActive: false
         };
-      } else {
-        // Unknown category
-        categoriesMap[expenseCategoryName] = {
-          name: expenseCategoryName,
-          budgeted: 0,
-          actual: 0,
-          isActive: false
-        };
+        
+        matchedCategoryKey = expenseCategoryName;
       }
-      matchedCategoryKey = expenseCategoryName;
+      
+      // Add expense amount to category and summary
+      categoriesMap[matchedCategoryKey].actual += expense.amount;
+      summary.spent += expense.amount;
     }
-    
-    // Add expense amount to category
-    categoriesMap[matchedCategoryKey].actual += expense.amount;
-    summary.spent += expense.amount;
-  });
+  }
   
-  // Process recurring items that occur in this month
+  // Process recurring items (lazy evaluation - only if needed)
   const recurringThisMonth = getRecurringForMonth(recurring, month, year);
   
-  // Calculate total income (would need to be loaded separately)
-  // For now, calculate from budget vs actual
-  const totalBudgeted = Object.values(categoriesMap).reduce((sum, cat) => sum + cat.budgeted, 0);
-  summary.income = 0; // This might need to be loaded from elsewhere
-  summary.leftToSpend = summary.income - summary.spent;
+  // Calculate left to spend (never negative)
+  summary.leftToSpend = Math.max(0, summary.income - summary.spent);
   
-  // Convert categories map to array and sort
-  const categoryOrder = {};
-  categories.forEach((cat, index) => {
-    categoryOrder[cat.name] = cat.order !== undefined ? cat.order : index;
-  });
-  
+  // Convert categories map to array and sort (using pre-computed order)
   const categoriesArray = Object.entries(categoriesMap).map(([key, catData]) => ({
     ...catData,
-    sortOrder: categoryOrder[key] !== undefined ? categoryOrder[key] : 999
-  })).sort((a, b) => {
+    sortOrder: categoryOrderMap.get(key) || 999
+  }));
+  
+  // Sort with typed comparisons for better performance
+  categoriesArray.sort((a, b) => {
     // Active categories first
-    if (a.isActive && !b.isActive) return -1;
-    if (!a.isActive && b.isActive) return 1;
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
     
-    // Within same active state, sort by original spreadsheet order
+    // Within same active state, sort by original order
     return a.sortOrder - b.sortOrder;
   });
   
-  // Build final dashboard data
+  // Build final dashboard data object
   const dashboardData = {
     summary: summary,
     categories: categoriesArray,
@@ -354,14 +342,9 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
       month: new Date(year, month).toLocaleDateString('en-US', { month: 'long' }),
       year: year
     },
-    netWorth: {
-      total: 0,
-      savings: 0,
-      debts: 0
-    },
     subscriptions: {
       count: recurringThisMonth.length,
-      total: recurringThisMonth.reduce((sum, item) => sum + item.amount, 0),
+      total: recurringThisMonth.reduce((sum, item) => sum + (item.amount || 0), 0),
       items: recurringThisMonth.slice(0, 10).map((item, index) => ({
         id: index + 1,
         name: item.name,
@@ -371,14 +354,11 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
     }
   };
   
-  console.log('CacheManager: Dashboard data calculated:', {
-    categoriesCount: dashboardData.categories.length,
-    totalSpent: dashboardData.summary.spent,
-    subscriptionsCount: dashboardData.subscriptions.count
-  });
-  
   return dashboardData;
 }
+
+
+
   
   // Helper functions for dashboard calculation
   function getBudgetForMonth(month = currentMonth, year = currentYear) {
@@ -478,7 +458,6 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
     preloader.queue = ['budget', 'expense', 'income', 'recurring', 'netWorth']
       .filter(view => view !== excludeView);
     
-    console.log(`CacheManager: Starting background preload, excluded ${excludeView}`);
     
     preloader.isRunning = true;
     
@@ -489,7 +468,6 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
   
   function processPreloadNext() {
     if (preloader.queue.length === 0) {
-      console.log('CacheManager: Preload complete');
       preloader.isRunning = false;
       return;
     }
@@ -502,7 +480,7 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
       return;
     }
     
-    console.log(`CacheManager: Preloading ${viewName}`);
+
     preloadView(viewName);
   }
   
@@ -569,14 +547,12 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
   
   function onPreloadComplete(viewName, success) {
     if (success) {
-      console.log(`CacheManager: Successfully preloaded ${viewName}`);
     }
     
     setTimeout(processPreloadNext, config.preloadInterval);
   }
   
   function stopPreloader() {
-    console.log('CacheManager: Stopping preloader');
     preloader.isRunning = false;
     preloader.queue = [];
   }
@@ -601,7 +577,6 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
           resolve();
         },
         (error) => {
-          console.log(`Prefetch failed for ${month}/${year}:`, error);
           resolve();
         }
       );

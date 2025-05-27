@@ -309,13 +309,12 @@ function getExpenseData(month, year) {
       }
       
       // FILTER OUT INCOME TRANSACTIONS
-      const categoryString = categoryValue.toString().toLowerCase();
-      if (categoryString.includes('income')) {
-        incomeSkipped++;
-        skippedCount++;
-        Logger.log("Skipping income transaction: " + categoryValue);
-        continue;
-      }
+     const categoryString = categoryValue.toString().toLowerCase();
+    if (categoryString.includes('income')) {
+      incomeSkipped++; // Still track for logging but don't skip
+      Logger.log("Found income transaction: " + categoryValue);
+      // Don't continue - allow income to be included
+    }
       
       // Parse date
       let expenseDate;

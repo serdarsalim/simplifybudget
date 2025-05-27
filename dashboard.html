@@ -39,24 +39,7 @@
           </div>
         </div>
         
-        <!-- Middle: Net Worth Summary -->
-        <div class="dashboard-card budget-summary-card" style="display:none !important;">
-          <div class="budget-summary-row">
-            <div>
-              <div class="value-label" data-translate="net_worth">Net Worth</div>
-              <div id="net-worth-value" class="value-amount">€0</div>
-            </div>
-            <div>
-              <div class="value-label" data-translate="savings">Savings</div>
-              <div id="savings-value" class="value-amount">€0</div>
-            </div>
-            <div>
-              <div class="value-label" data-translate="debts">Debts</div>
-              <div id="debts-value" class="value-amount">€0</div>
-            </div>
-          </div>
-        </div>
-        
+
         <!-- Bottom: Monthly Expense Donut Chart -->
         <div class="dashboard-card donut-chart-card">
           <h3 class="donut-chart-header" data-translate="expense_breakdown">Monthly Expense Breakdown</h3>
@@ -735,8 +718,8 @@ body.dark-mode .subscription-list-header {
 
   
   /* ---------- GRID LAYOUT ---------- */
- @media (max-width: 768px) {
-  /* Update grid template areas to include net-worth at the bottom */
+@media (max-width: 768px) {
+  /* Update grid template areas - REMOVED net-worth */
   .view-content, 
   .dashboard-container,
   .dashboard-content {
@@ -747,8 +730,7 @@ body.dark-mode .subscription-list-header {
       "subscription-text"
       "subscription-summary"
       "subscription-list"
-      "chart"
-      "net-worth" !important;  /* Added net-worth as the last area */
+      "chart" !important;  /* Removed net-worth */
     grid-gap: 20px !important;
     padding: 10px !important;
   }
@@ -796,17 +778,7 @@ body.dark-mode .subscription-list-header {
     grid-area: chart !important;
   }
   
-/* Add this to your mobile media query section */
-.col-left > .dashboard-card.budget-summary-card:nth-child(2),
-.budget-summary-row:has([data-translate="net_worth"]),
-#net-worth-value,
-#savings-value, 
-#debts-value,
-[class*="net-worth"],
-[class*="net_worth"] {
-  grid-area: net-worth !important;
-  order: 999 !important;
-}
+
 
 
   /* ---------- CARD LAYOUTS ---------- */
