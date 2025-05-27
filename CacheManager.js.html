@@ -222,6 +222,9 @@ function getDashboardData(month = currentMonth, year = currentYear) {
  * @param {number} year - Year
  */
 function calculateDashboardData(expenses, recurring, categories, month, year) {
+
+
+  
   // Get budget data for this month
   const monthlyBudget = getBudgetForMonth(month, year) || {};
   
@@ -314,7 +317,7 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
   }
   
   // Process recurring items (lazy evaluation - only if needed)
-  const recurringThisMonth = getRecurringForMonth(recurring, month, year);
+const recurringThisMonth = getRecurringForMonth(recurring, month, year, expenses);
   
   // Calculate left to spend (never negative)
   summary.leftToSpend = Math.max(0, summary.income - summary.spent);
@@ -379,37 +382,79 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
     return budgetObject;
   }
   
-  function getRecurringForMonth(allRecurring, month, year) {
-    return allRecurring.filter(item => {
-      if (!item.startDate) return false;
+  /**
+ * Get recurring transactions for a specific month, extracting from expenses if needed
+ * @param {Array} allRecurring - Recurring data array (can be empty/null)
+ * @param {number} month - Month index (0-11)
+ * @param {number} year - Year (e.g. 2025)
+ * @param {Array} expenses - Optional expenses to extract subscriptions from if recurring is empty
+ */
+function getRecurringForMonth(allRecurring, month, year, expenses) {
+  // First check if we have recurring data - if not, try to extract from expenses
+  if ((!allRecurring || allRecurring.length === 0) && expenses && expenses.length > 0) {
+    // Extract subscriptions from expenses
+    const subscriptions = expenses.filter(tx => {
+      return tx.label && (
+        tx.label.toLowerCase().includes('subscription') || 
+        tx.label.toLowerCase().includes('fixed payment')
+      );
+    }).map(tx => {
+      // Convert expense to recurring format
+      return {
+        name: tx.description || tx.payee || 'Unnamed Subscription',
+        amount: Math.abs(tx.amount || 0),
+        frequency: 'Monthly', 
+        startDate: tx.date || new Date().toISOString().split('T')[0],
+        category: tx.category || 'Uncategorized',
+        id: tx.transactionId || tx.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+      };
+    });
+    
+    // Cache these for future use
+    if (subscriptions.length > 0) {
+      setRecurring(subscriptions);
+    }
+    
+    // Use the same filtering logic on our extracted subscriptions
+    allRecurring = subscriptions;
+  }
+
+  // Original filtering logic
+  return (allRecurring || []).filter(item => {
+    if (!item.startDate) return false;
+    
+    const start = new Date(item.startDate);
+    const frequency = (item.frequency || 'Monthly').toLowerCase();
+    const currentMonthStart = new Date(year, month, 1);
+    const currentMonthEnd = new Date(year, month + 1, 0);
+    
+    if (start > currentMonthEnd) return false;
+    
+    if (frequency.includes('monthly')) {
+      const paymentDay = start.getDate();
+      let paymentDate = new Date(year, month, paymentDay);
       
-      const start = new Date(item.startDate);
-      const frequency = (item.frequency || 'Monthly').toLowerCase();
-      const currentMonthStart = new Date(year, month, 1);
-      const currentMonthEnd = new Date(year, month + 1, 0);
-      
-      if (start > currentMonthEnd) return false;
-      
-      if (frequency.includes('monthly')) {
-        const paymentDay = start.getDate();
-        let paymentDate = new Date(year, month, paymentDay);
-        
-        if (start > currentMonthStart && start <= currentMonthEnd) {
-          paymentDate = start;
-        }
-        
-        return paymentDate >= start && (!item.endDate || new Date(item.endDate) >= paymentDate);
-      } else if (frequency.includes('yearly') || frequency.includes('annual')) {
-        return start.getMonth() === month;
-      } else if (frequency.includes('quarterly')) {
-        const monthsSinceStart = (year - start.getFullYear()) * 12 + (month - start.getMonth());
-        return monthsSinceStart >= 0 && monthsSinceStart % 3 === 0;
+      if (start > currentMonthStart && start <= currentMonthEnd) {
+        paymentDate = start;
       }
       
-      return true;
-    });
-  }
+      return paymentDate >= start && (!item.endDate || new Date(item.endDate) >= paymentDate);
+    } else if (frequency.includes('yearly') || frequency.includes('annual')) {
+      return start.getMonth() === month;
+    } else if (frequency.includes('quarterly')) {
+      const monthsSinceStart = (year - start.getFullYear()) * 12 + (month - start.getMonth());
+      return monthsSinceStart >= 0 && monthsSinceStart % 3 === 0;
+    }
+    
+    return true;
+  });
+}
   
+
+
+
+
+
   function getNextPaymentDate(item, month, year) {
     if (!item.startDate) return '';
     

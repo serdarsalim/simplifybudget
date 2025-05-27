@@ -343,27 +343,25 @@ function handleCurrencyChange(event) {
 /**
  * ENHANCED: Load real expense data with smart caching and prefetching
  */
-/**
- * ENHANCED: Load real expense data with smart caching and prefetching
- */
 function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   if (_isLoading) {
     return Promise.resolve();
   }
-   _transactions = [];  // Reset transactions to prevent duplicates
+  
+  _transactions = [];  // Reset transactions to prevent duplicates
+  
   // Check cache first for instant loading
   const monthExpenses = getCachedExpenses(month, year);  
   if (monthExpenses) {
-
-    // Load categories first, then process cached data
-    return loadActiveCategories()
-      .then(categories => {
-        processRealExpenseData(monthExpenses);  // ← And here
-        renderGrid();
-        
+    // Process transaction data first
+    processRealExpenseData(monthExpenses);
+    
+    // FIXED: Use loadAndRenderCategories instead of loadActiveCategories
+    // This will load both active and inactive categories with spending
+    return loadAndRenderCategories()
+      .then(() => {
         // PREFETCH HERE - when using cached data
         if (window.CacheManager) {
-          
           // Prefetch adjacent months in background
           const prev = getPreviousMonth(month, year);
           const next = getNextMonth(month, year);
@@ -448,25 +446,27 @@ function checkCurrentMonth() {
   }
   
 
-
 /**
  * Add inactive categories that have spending in the current month
- * FIXED: Preserves exact order - active first, then inactive by order
+ * Excludes income categories
  */
-// REPLACE the entire addInactiveCategoriesWithSpending function with this:
-
 async function addInactiveCategoriesWithSpending() {
-  
   // Get all unique category names used in transactions for current month
   const usedCategories = new Set();
   
   _transactions.forEach(tx => {
     if (tx.date && tx.date.getMonth() === _currentMonth && 
         tx.date.getFullYear() === _currentYear && tx.category) {
+      // Skip income categories completely
+      const lowerCaseCat = tx.category.toLowerCase();
+      if (lowerCaseCat === "income" || 
+          lowerCaseCat === "income 💵" || 
+          lowerCaseCat.includes("income")) {
+        return; // Skip this transaction
+      }
       usedCategories.add(tx.category);
     }
   });
-  
   
   // Build list of active category IDs for quick lookup
   const activeCategoryIds = new Set(_categories.map(c => c.id));
@@ -479,52 +479,50 @@ async function addInactiveCategoriesWithSpending() {
     }
   });
   
-
+  // No inactive categories to add
+  if (inactiveCategoriesWithSpending.length === 0) {
+    return Promise.resolve();
+  }
   
-  // Get ALL categories from UserProperties to find the inactive ones
+  // Get ALL categories from UserProperties
   return new Promise((resolve, reject) => {
     API.getCategoriesFromUserProperties(
       function(result) {
         if (result && result.success && Array.isArray(result.categories)) {
-          
-          // Create a map of category name -> category data for quick lookup
+          // Create map of category name -> category data
           const allCategoriesMap = new Map();
           result.categories.forEach(cat => {
             allCategoriesMap.set(cat.name, cat);
           });
           
-          // Add inactive categories that have spending - preserve their original order
+          // Add inactive categories with spending
           const inactiveToAdd = [];
           
           inactiveCategoriesWithSpending.forEach(categoryId => {
-            // ✅ CHECK IF ALREADY EXISTS TO PREVENT DUPLICATES
+            // Check if already exists to prevent duplicates
             const alreadyExists = _categories.find(existingCat => existingCat.id === categoryId);
-            if (alreadyExists) {
-              console.log('MonthlyGrid: Skipping existing category:', categoryId);
-              return; // Skip this one
-            }
+            if (alreadyExists) return; // Skip existing
             
+            // Get category data if available
             const categoryData = allCategoriesMap.get(categoryId);
             
             if (categoryData) {
-              
               inactiveToAdd.push({
                 id: categoryData.name,
                 name: categoryData.name,
                 emoji: categoryData.emoji || '',
-                active: false,  // Mark as inactive but shown
+                active: false,
                 hasTransactions: true,
                 fullName: categoryData.fullName || categoryData.name,
                 order: categoryData.order || 999,
-                originalIndex: 999 // Put at end
+                originalIndex: 999
               });
             } else {
-              console.warn('MonthlyGrid: Category with spending not found in UserProperties:', categoryId);
-              
+              // Handle unknown categories
               inactiveToAdd.push({
                 id: categoryId,
                 name: categoryId,
-                emoji: '🛸', // Default emoji for unknown categories
+                emoji: '🛸',
                 active: false,
                 hasTransactions: true,
                 fullName: categoryId,
@@ -534,26 +532,22 @@ async function addInactiveCategoriesWithSpending() {
             }
           });
           
-          // ✅ ONLY ADD IF WE HAVE SOMETHING TO ADD
+          // Add to categories if we have any
           if (inactiveToAdd.length > 0) {
-            // Sort inactive categories by their original order
+            // Sort by order
             inactiveToAdd.sort((a, b) => (a.order || 999) - (b.order || 999));
-            
-            // Add inactive categories to the end of active categories
+            // Add to categories array
             _categories = [..._categories, ...inactiveToAdd];
-            
-          } else {
           }
           
           resolve();
-          
         } else {
-          resolve(); // Don't fail, just continue
+          resolve(); // Continue even if categories lookup fails
         }
       },
       function(error) {
-        console.error('MonthlyGrid: Error getting categories from UserProperties for inactive lookup:', error);
-        resolve(); // Don't fail, just continue
+        console.error('Error getting categories for inactive lookup:', error);
+        resolve(); // Continue even if error
       }
     );
   });
@@ -563,57 +557,98 @@ async function addInactiveCategoriesWithSpending() {
  * Update MonthlyGrid when categories are toggled
  */
 function notifyMonthlyGridOfCategoryChange() {
-  
-  // ✅ ALWAYS REFRESH - regardless of current view
-  
-  // Clear existing categories and reload
-  _categories = [];
-  
-  // Reload active categories and re-render
-  loadActiveCategories()
-    .then(() => {
-      // After loading active categories, also check for inactive ones with spending
-      return addInactiveCategoriesWithSpending();
-    })
-    .then(() => {
-      
-      // ✅ RE-RENDER IF EXPENSE VIEW IS CURRENTLY ACTIVE
-      if (window.SimBudget && SimBudget.Views.getCurrent() === 'expense') {
-        renderGrid();
-      } else {
+  API.getCategoriesFromUserProperties(
+    function(result) {
+      if (result && result.success && result.categories) {
+        window._allCategories = result.categories;
+        
+        if (window.SimBudget && SimBudget.Views.getCurrent() === 'expense') {
+          loadAndRenderCategories();
+        }
       }
-    })
-    .catch(error => {
-      console.error('MonthlyGrid: Error refreshing categories:', error);
-    });
+    },
+    function(error) {
+      console.error('Could not refresh categories:', error);
+    }
+  );
 }
 
 /**
- * Fallback: Add inactive categories without emoji data
- * Only used if UserProperties lookup fails
+ * Single unified function to load ALL needed categories at once
+ * - Active categories from UserProperties
+ * - Plus inactive categories with transactions in current month
+ * NO MORE separate loading functions!
  */
-function addBasicInactiveCategories(categoryIds) {
+function loadAndRenderCategories() {
+  // Clear window flag
+  window._addingInactiveCategories = false;
   
-  categoryIds.forEach(categoryId => {
-    // Try to parse emoji from the category name itself
-    const parsed = parseCategoryNameAndEmoji(categoryId);
-    
-    _categories.push({
-      id: parsed.name,
-      name: parsed.name,
-      emoji: parsed.emoji || '🛸', // Default emoji if none found
-      active: false,
-      hasTransactions: true,
-      fullName: categoryId,
-      order: 999
-    });
-  });
-  
-  // Sort categories: active first, then inactive
-  _categories.sort((a, b) => {
-    if (a.active && !b.active) return -1;
-    if (!a.active && b.active) return 1;
-    return (a.order || 999) - (b.order || 999);
+  // 1. Get ALL categories from UserProperties
+  return new Promise((resolve, reject) => {
+    API.getCategoriesFromUserProperties(
+      function(result) {
+        if (result && result.success && Array.isArray(result.categories)) {
+          // Store all categories for reference
+          window._allCategories = result.categories;
+          
+          // 2. Start with active categories
+          _categories = result.categories
+            .filter(cat => cat.active)
+            .map(cat => ({
+              id: cat.name,
+              name: cat.name,
+              emoji: cat.emoji || '',
+              active: true,
+              fullName: cat.fullName || cat.name,
+              order: cat.order || 999,
+              originalIndex: 999
+            }));
+          
+          // 3. Now find inactive categories with spending in current month
+          const categoryIdsWithTransactions = new Set();
+          _transactions.forEach(tx => {
+            if (tx.date && 
+                tx.date.getMonth() === _currentMonth && 
+                tx.date.getFullYear() === _currentYear && 
+                tx.category) {
+              // Skip income categories
+              const lowerCaseCat = tx.category.toLowerCase();
+              if (!lowerCaseCat.includes("income")) {
+                categoryIdsWithTransactions.add(tx.category);
+              }
+            }
+          });
+          
+          // 4. Get all inactive categories with transactions
+          const inactiveWithSpending = result.categories
+            .filter(cat => !cat.active && categoryIdsWithTransactions.has(cat.name))
+            .map(cat => ({
+              id: cat.name,
+              name: cat.name,
+              emoji: cat.emoji || '🛸',
+              active: false,
+              hasTransactions: true,
+              fullName: cat.fullName || cat.name,
+              order: cat.order || 999,
+              originalIndex: 999
+            }));
+          
+          // 5. Combine active and inactive categories
+          _categories = [..._categories, ...inactiveWithSpending];
+          
+          // 6. Render the grid with all needed categories
+          renderGrid();
+          resolve(_categories);
+        } else {
+          console.error('Error loading categories:', result?.error || 'Unknown error');
+          reject(result?.error || 'Failed to load categories');
+        }
+      },
+      function(error) {
+        console.error('API error loading categories:', error);
+        reject(error);
+      }
+    );
   });
 }
 
@@ -934,6 +969,7 @@ async function processRealExpenseData(expenses) {
 /**
  * Fetch fresh expense data from the server
  * FIXED: Properly waits for processRealExpenseData to complete
+ * UPDATED: Uses unified loadAndRenderCategories instead of loadActiveCategories
  */
 function fetchFreshExpenseData(month, year) {
   _isLoading = true;
@@ -949,8 +985,8 @@ function fetchFreshExpenseData(month, year) {
   _transactions = [];
   _categories = [];
   
-  // STEP 1: Load active categories first
-  return loadActiveCategories()
+  // STEP 1: Use loadAndRenderCategories instead of loadActiveCategories
+  return loadAndRenderCategories()
     .then(categories => {
       
       // STEP 2: Load expenses for the specified month
@@ -2369,6 +2405,9 @@ function refresh(forceServerRefresh) {
   }
 }
 
+
+  
+
   // Public methods
   return {
     init: init,
@@ -2380,17 +2419,23 @@ function refresh(forceServerRefresh) {
     unbindEvents: unbindEvents,
     clearCache: clearCache,
     updateCategories: function(categories) {
-    _categories = categories.filter(cat => cat.active);
-    if (SimBudget?.Views?.getCurrent() === 'expense') {
-      renderGrid();
-    }
-  },
+  // Store all categories for later reference
+  window._allCategories = categories;
+  
+  if (SimBudget?.Views?.getCurrent() === 'expense') {
+    loadAndRenderCategories();
+  }
+},
+
+    
    setMonthYear: function(month, year) {
     _currentMonth = month;
     _currentYear = year;
     updateMonthYearDisplay();
     // Don't reload - just update the display
   },
+
+  
    navigateToMonth: function(month, year) {
     
     // Check if we're already showing this month

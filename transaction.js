@@ -182,15 +182,11 @@ function updateCategoryStatus(categoryName, active) {
 
 
 function getExpenseData(month, year) {
-  Logger.log("=== SERVER MONTH DEBUG ===");
-  Logger.log("Received: month=" + month + ", year=" + year);
-  Logger.log("Parameter types: month=" + typeof month + ", year=" + typeof year);
+  
   if (month !== undefined && month !== null) {
     const testDate = new Date(year, month, 1);
     const monthName = testDate.toLocaleString('default', { month: 'long' });
-    Logger.log("Server will filter for: " + monthName + " " + year);
   }
-  Logger.log("========================");
   
   try {
     // Default to current month/year if not provided
@@ -198,17 +194,14 @@ function getExpenseData(month, year) {
       const now = new Date();
       month = now.getMonth();
       year = now.getFullYear();
-      Logger.log("getExpenseData: Using current month/year: " + month + "/" + year);
     }
     
     // Ensure month and year are numbers
     month = parseInt(month);
     year = parseInt(year);
-    Logger.log("getExpenseData: Final parsed values - month:" + month + ", year:" + year);
     
     const monthStart = new Date(year, month, 1);
     const monthEnd = new Date(year, month + 1, 0);
-    Logger.log("getExpenseData: Filtering for dates between " + monthStart.toDateString() + " and " + monthEnd.toDateString());
     
     // Get the Dontedit sheet
     const donteditSheet = getBudgetSheet("Dontedit");
@@ -217,12 +210,10 @@ function getExpenseData(month, year) {
     }
     
     const lastRow = donteditSheet.getLastRow();
-    Logger.log("getExpenseData: Sheet has " + lastRow + " rows");
     
     // Updated header range to include GA4 column (Label)
     const headerRange = "FU4:GB4"; // Adjusted to include the ID column
     const headers = donteditSheet.getRange(headerRange).getValues()[0];
-    Logger.log("Headers found: " + JSON.stringify(headers));
     
     // Map header names to column indices (case-insensitive)
     const columnMap = {};
@@ -253,7 +244,6 @@ function getExpenseData(month, year) {
         if (!found && columnMap[variation] !== undefined) {
           columns[key] = columnMap[variation];
           found = true;
-          Logger.log("Found " + key + " at index " + columns[key] + " (header: " + headers[columns[key]] + ")");
         }
       });
       if (!found) {
@@ -277,11 +267,9 @@ function getExpenseData(month, year) {
     const startRow = 5;
     const endRow = Math.min(lastRow, startRow + 1000);
     const range = "FU" + startRow + ":GB" + endRow;
-    Logger.log("getExpenseData: Reading range " + range + " (starting from row 5)");
     
     const dataRange = donteditSheet.getRange(range);
     const expenseData = dataRange.getValues();
-    Logger.log("getExpenseData: Successfully read " + expenseData.length + " rows");
     
     // Process expenses using dynamic column indices
     const expenses = [];
@@ -308,12 +296,9 @@ function getExpenseData(month, year) {
         continue;
       }
       
-      // FILTER OUT INCOME TRANSACTIONS
      const categoryString = categoryValue.toString().toLowerCase();
     if (categoryString.includes('income')) {
       incomeSkipped++; // Still track for logging but don't skip
-      Logger.log("Found income transaction: " + categoryValue);
-      // Don't continue - allow income to be included
     }
       
       // Parse date
@@ -361,12 +346,7 @@ function getExpenseData(month, year) {
       }
     }
     
-    Logger.log("getExpenseData: SUMMARY for " + month + "/" + year + ":");
-    Logger.log("  - Total rows: " + expenseData.length);
-    Logger.log("  - Income transactions skipped: " + incomeSkipped);
-    Logger.log("  - Month matches: " + monthMatches);
-    Logger.log("  - Final expenses: " + expenses.length);
-    Logger.log("  - Total skipped: " + skippedCount);
+
     
     return {
       success: true,

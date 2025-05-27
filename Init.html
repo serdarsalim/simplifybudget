@@ -1116,6 +1116,8 @@ loadViewData: function(viewName, forceRefresh = false) {
     return;
   }
 
+  
+
   // Load from server for all other views
   switch (viewName) {
     case "budget":
@@ -1274,14 +1276,20 @@ renderViewFromCache: function (viewName) {
 },
 
   
-
 /**
- * Load budget data - SETTINGS FIRST to avoid quota issues
- */
-/**
- * Load budget data - CLEAN VERSION (settings loaded at startup)
+ * Load budget data with expense view synchronization and intelligent data sharing
+ * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
  */
 loadBudgetData: function(forceRefresh = false) {
+  console.log("⏱️ START loadBudgetData", _currentMonth, _currentYear, forceRefresh);
+  
+  if (_loadingView === true) {
+    console.log("⚠️ Already loading a view, skipping");
+    return;
+  }
+  
+  _loadingView = 'budget';
+  
   if (typeof _currentMonth === 'undefined') {
     _currentMonth = new Date().getMonth();
     _currentYear = new Date().getFullYear();
@@ -1289,19 +1297,21 @@ loadBudgetData: function(forceRefresh = false) {
   
   const contentArea = document.getElementById("budgetContent");
   
-  // Check cache ONLY if not forcing refresh
+  // 1. Check if we can use cached dashboard data directly
   if (!forceRefresh) {
-    const cachedData = window.CacheManager.getDashboardData();
+    const cachedData = window.CacheManager.getDashboardData(_currentMonth, _currentYear);
     if (cachedData) {
+      console.log('✅ Using cached dashboard data for', _currentMonth, _currentYear);
       SimBudget.renderBudgetDashboard(cachedData);
-      CacheManager.set('budget', cachedData);
       _loadingView = null;
       return;
     }
+    console.log('❌ No cached dashboard data available');
   }
 
-  // Show loading overlay
+  // 2. Show loading overlay
   if (contentArea) {
+    console.log('🔄 Showing loading overlay');
     const existingDashboard = contentArea.querySelector('.dashboard-container');
     if (existingDashboard) {
       const overlay = document.createElement('div');
@@ -1314,130 +1324,158 @@ loadBudgetData: function(forceRefresh = false) {
       contentArea.innerHTML = '<div style="padding:40px;text-align:center;"><div class="loading-spinner"></div><p>Loading budget data...</p></div>';
     }
   }
-
-  // Clear caches if forcing refresh
-  if (forceRefresh && window.CacheManager) {
-    CacheManager.invalidate('budgetData');
-    CacheManager.invalidate('dashboardData');
-    CacheManager.clearMonth(_currentMonth, _currentYear);
-  }
   
-  // Load all required data
-  let expensesLoaded = false;
-  let recurringLoaded = false;
-  let budgetLoaded = false;
-  let categoriesLoaded = false;
-  let expensesData = null;
-  let recurringData = null;
-  let budgetData = null;
-  let categoriesData = null;
-
-  const checkAndRender = () => {
-    if (expensesLoaded && recurringLoaded && budgetLoaded && categoriesLoaded) {
-      
+  // 3. Use existing data if possible
+  const needsExpenses = forceRefresh || !CacheManager.getExpenses(_currentMonth, _currentYear);
+  const needsCategories = forceRefresh || !CacheManager.getCategories();
+  const needsBudget = forceRefresh || !CacheManager.getBudgetData();
+  
+  console.log('📋 Data needs:', { 
+    needsExpenses, 
+    needsCategories, 
+    needsBudget,
+    month: _currentMonth,
+    year: _currentYear
+  });
+  
+  // 4. Track loading progress
+  let pendingLoads = 0;
+  if (needsExpenses) pendingLoads++;
+  if (needsCategories) pendingLoads++;
+  if (needsBudget) pendingLoads++;
+  
+  console.log(`🔄 Pending loads: ${pendingLoads}`);
+  
+  // 5. Function to check if all data is loaded and render
+  const allDataLoaded = () => {
+    pendingLoads--;
+    console.log("🔄 allDataLoaded called, remaining:", pendingLoads);
+    
+    if (pendingLoads <= 0) {
       try {
-        // Store in cache
-        if (expensesData) {
-          window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
-        }
-        if (recurringData) {
-          window.CacheManager.setRecurring(recurringData);
-        }
-        if (budgetData) {
-          window.CacheManager.setBudgetData(budgetData);
-        }
+        console.log("🔍 Getting data for dashboard");
+        const expenses = CacheManager.getExpenses(_currentMonth, _currentYear) || [];
+        const categories = CacheManager.getCategories() || [];
         
-        const dashboardData = window.CacheManager.calculateDashboardData(
-          expensesData || [], 
-          recurringData || [], 
-          categoriesData || [],
-          _currentMonth, 
-          _currentYear
-        );
+        // Debug data
+        console.log(`📊 Data found: ${expenses.length} expenses, ${categories.length} categories`);
         
-        if (dashboardData) {
+        // Get recurring from expenses
+        try {
+          console.log("🔄 Getting recurring data from expenses");
+          const recurring = CacheManager.getRecurringForMonth(null, _currentMonth, _currentYear, expenses);
+          console.log("✅ Got recurring data:", recurring.length, "items");
+          
+          // Store for future use
+          CacheManager.setRecurring(recurring);
+          
+          console.log("🔄 Calculating dashboard data");
+          const dashboardData = CacheManager.calculateDashboardData(
+            expenses, 
+            recurring, 
+            categories,
+            _currentMonth, 
+            _currentYear
+          );
+          
+          console.log("✅ Dashboard calculated:", !!dashboardData, {
+            summary: dashboardData.summary,
+            categoriesCount: dashboardData.categories.length,
+            subscriptionsCount: dashboardData.subscriptions.count
+          });
+          
+          // Cache and render
+          CacheManager.set(`dashboard_${_currentYear}-${_currentMonth}`, dashboardData);
           SimBudget.renderBudgetDashboard(dashboardData);
-          CacheManager.set('budget', dashboardData);
-        } else {
-          console.error('FAILED to calculate dashboard data');
-          const contentArea = document.getElementById("budgetContent");
-          const overlay = contentArea?.querySelector('.loading-overlay');
-          if (overlay) overlay.remove();
+        } catch (e) {
+          console.error("❌ ERROR in dashboard calculation:", e);
+          // Remove loading overlay even if there's an error
+          if (contentArea) {
+            const overlay = contentArea.querySelector('.loading-overlay');
+            if (overlay) overlay.remove();
+          }
+          _loadingView = null;
         }
-        
       } catch (error) {
-        console.error('ERROR in checkAndRender:', error);
-        const contentArea = document.getElementById("budgetContent");
-        const overlay = contentArea?.querySelector('.loading-overlay');
+        console.error('❌ Error in allDataLoaded:', error);
+        _loadingView = null; // Make sure to clear loading flag
+      }
+      
+      // Remove loading overlay
+      if (contentArea) {
+        const overlay = contentArea.querySelector('.loading-overlay');
         if (overlay) overlay.remove();
       }
       
+      console.log("✅ Budget data loading complete");
       _loadingView = null;
     }
   };
-  
-  // Load categories immediately (from UserProperties - fast)
-  API.getCategoriesFromUserProperties(
-    function(result) {
-      categoriesData = (result && result.categories) ? result.categories : [];
-      categoriesLoaded = true;
-      checkAndRender();
-    },
-    function(error) {
-      console.error('Categories error:', error);
-      categoriesData = [];
-      categoriesLoaded = true;
-      checkAndRender();
-    }
-  );
-  
-  // Stagger the server calls
-  setTimeout(() => {
-    API.getBudgetData(
-      function(result) {
-        budgetData = result.budgetData || {};
-        budgetLoaded = true;
-        checkAndRender();
+
+  // 6. Load expenses if needed
+  if (needsExpenses) {
+    console.log("🔄 Loading expenses");
+    API.getExpenseData(_currentMonth, _currentYear, 
+      (result) => {
+        console.log("✅ Expenses loaded:", result.expenses?.length || 0, "items");
+        if (result.success) {
+          CacheManager.setExpenses(result.expenses || [], _currentMonth, _currentYear);
+        }
+        allDataLoaded();
       },
-      function(error) {
-        console.error('Budget error:', error);
-        budgetLoaded = true;
-        checkAndRender();
+      (error) => {
+        console.error('❌ Error loading expenses:', error);
+        allDataLoaded();
+      }
+    );
+  }
+
+  // 7. Load categories if needed
+  if (needsCategories) {
+    console.log("🔄 Loading categories");
+    API.getCategoriesFromUserProperties(
+      (result) => {
+        console.log("✅ Categories loaded:", result.categories?.length || 0, "items");
+        if (result.success) {
+          CacheManager.setCategories(result.categories || []);
+        }
+        allDataLoaded();
+      },
+      (error) => {
+        console.error('❌ Error loading categories:', error);
+        allDataLoaded();
+      }
+    );
+  }
+  
+  // 8. Load budget JSON data if needed (only budget view needs this)
+  if (needsBudget) {
+    console.log("🔄 Loading budget data");
+    API.getBudgetData(
+      (result) => {
+        console.log("✅ Budget data loaded", result.success);
+        if (result.success) {
+          CacheManager.setBudgetData(result.budgetData || {});
+        }
+        allDataLoaded();
+      },
+      (error) => {
+        console.error('❌ Error loading budget data:', error);
+        allDataLoaded();
       },
       forceRefresh
     );
-  }, 400);
+  }
   
-  setTimeout(() => {
-    API.getExpenseData(_currentMonth, _currentYear,
-      function(result) {
-        expensesData = result.expenses || [];
-        expensesLoaded = true;
-        checkAndRender();
-      },
-      function(error) {
-        console.error('Expenses error:', error);
-        expensesLoaded = true;
-        checkAndRender();
-      }
-    );
-  }, 800);
-  
-  setTimeout(() => {
-    API.getRecurringData(
-      function(result) {
-        recurringData = result.recurring || [];
-        recurringLoaded = true;
-        checkAndRender();
-      },
-      function(error) {
-        console.error('Recurring error:', error);
-        recurringLoaded = true;
-        checkAndRender();
-      }
-    );
-  }, 1200);
+  // If nothing needed loading, render immediately
+  if (pendingLoads === 0) {
+    console.log("✅ No data needs to be loaded, rendering immediately");
+    allDataLoaded();
+  }
 },
+
+
+
 
 
       /**
@@ -1518,104 +1556,60 @@ loadBudgetData: function(forceRefresh = false) {
        * Load expense data with reliable grid rendering
        * Always shows the grid with sample data first, then updates with real data if available
        */
-      loadExpenseData: function () {
+      loadExpenseData: function() {
+      // Prevent multiple simultaneous loads
+      if (_isLoadingExpenseView) {
+        console.log('Already loading expense view, skipping');
+        return;
+      }
+      
+      _isLoadingExpenseView = true;
+      
+      const contentArea = document.getElementById("expenseContent");
+      if (!contentArea) {
+        console.error("Expense content area not found");
+        _loadingView = null;
+        _isLoadingExpenseView = false;
+        return;
+      }
 
-        const contentArea = document.getElementById("expenseContent");
-        if (!contentArea) {
-          console.error("Expense content area not found");
-          _loadingView = null;
-          return;
-        }
-
-        // 1. FIRST create a clean container with unique ID and proper dimensions
-        const containerId = "expense-grid-" + Date.now();
-        contentArea.innerHTML = `
+      const containerId = "expense-grid-" + Date.now();
+      contentArea.innerHTML = `
         <div id="${containerId}" class="monthly-grid-container" 
             style="width:100%; height:100%; position:relative; overflow:auto;">
         </div>
       `;
-
-        if (window.MonthlyGrid) {
-          MonthlyGrid.init(containerId);
+      
+      if (window.MonthlyGrid) {
+        MonthlyGrid.init(containerId);
+        
+        // CHECK CACHE FIRST - if we have data, use it!
+        const cachedExpenses = CacheManager.getExpenses(_currentMonth, _currentYear);
+        if (cachedExpenses && cachedExpenses.length > 0) {
+          console.log('Using cached expenses from CacheManager');
           
-
-            // Check for pending month sync
-            if (window._pendingMonthSync) {
-              MonthlyGrid.setMonthYear(_pendingMonthSync.month, _pendingMonthSync.year);
-              delete window._pendingMonthSync;
-            }
-
-           if (window.CacheManager && typeof _currentMonth !== 'undefined') {
-           window.CacheManager.setCurrentMonth(_currentMonth, _currentYear);
-             }
-
-          // 3. FINALLY (optionally) fetch real data
-          //    Grid is already visible, so this is non-blocking
-          if (window.API && typeof API.getExpenseData === "function") {
-            console.log("Fetching real expense data...");
-
-            // Show subtle loading indicator
-            const loadingIndicator = document.createElement("div");
-            loadingIndicator.style.position = "absolute";
-            loadingIndicator.style.top = "10px";
-            loadingIndicator.style.right = "10px";
-            loadingIndicator.style.background = "rgba(255,255,255,0.8)";
-            loadingIndicator.style.padding = "5px 10px";
-            loadingIndicator.style.borderRadius = "4px";
-            loadingIndicator.style.fontSize = "12px";
-            loadingIndicator.innerHTML = "Loading data...";
-            document.getElementById(containerId).appendChild(loadingIndicator);
-
-            API.getExpenseData(
-              function (result) {
-                console.log("Real expense data loaded successfully");
-
-                // Update grid with real data if available
-                if (result && result.success && result.expenses) {
-                  MonthlyGrid.setExpenseData(result.expenses);
-                }
-
-                // Cache the result
-                CacheManager.set("expense", result.expenses || []);
-
-                // Remove loading indicator
-                loadingIndicator.remove();
-              },
-              function (error) {
-                console.log(
-                  "Using sample data - couldn't load real data:",
-                  error
-                );
-
-                // Update loading indicator to show info message
-                loadingIndicator.style.background = "rgba(255, 248, 225, 0.9)";
-                loadingIndicator.style.border = "1px solid #FFE082";
-                loadingIndicator.innerHTML = "Using sample data";
-
-                // Make indicator disappear after 3 seconds
-                setTimeout(function () {
-                  loadingIndicator.style.opacity = "0";
-                  loadingIndicator.style.transition = "opacity 0.5s";
-
-                  // Remove from DOM after fade out
-                  setTimeout(function () {
-                    loadingIndicator.remove();
-                  }, 500);
-                }, 3000);
-              }
-            );
-          }
-        } else {
-          contentArea.innerHTML =
-            '<div class="error-message">Error: Grid component not available</div>';
-          console.error("MonthlyGrid component not found");
+          // FILTER OUT INCOME before setting to grid
+          const filteredExpenses = cachedExpenses.filter(expense => {
+            if (!expense.category) return true;
+            const lowerCat = expense.category.toLowerCase();
+            return !(lowerCat === "income 💵" || 
+                    lowerCat === "income" || 
+                    lowerCat.includes("income"));
+          });
+          
+          // Set only non-income transactions to the grid
+          MonthlyGrid.setExpenseData(filteredExpenses);
         }
-
-        // Clear loading flag
-        _loadingView = null;
-      },
-   
-   
+        
+        // FORCE MonthlyGrid to use the app's current month/year
+        if (typeof _currentMonth !== 'undefined' && typeof _currentYear !== 'undefined') {
+          MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
+        }
+      }
+      
+      _isLoadingExpenseView = false;
+      _loadingView = null;
+    },
    
    
    
