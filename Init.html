@@ -16,10 +16,10 @@
   
  
 
-        // Settings module
-      // Settings module - Updated to use CacheManager
+
+// Settings module - Updated to work with the new initialization
 const Settings = {
-  // Default settings
+  // Keep existing defaults
   defaults: {
     currencySymbol: "$",
     dateFormat: "MM/DD/YYYY",
@@ -31,10 +31,24 @@ const Settings = {
     showDecimals: true,
   },
 
+  // Internal cache for loaded settings
+  _cachedSettings: null,
+
   // Get a setting with fallback to default
   getSetting: function (key) {
-    const settings = this.getAll();
-    return settings[key] !== undefined ? settings[key] : this.defaults[key];
+    // Use cached settings if available (loaded during init)
+    if (this._cachedSettings) {
+      return this._cachedSettings[key] !== undefined ? this._cachedSettings[key] : this.defaults[key];
+    }
+    
+    // Fallback to CacheManager
+    const cached = CacheManager.getSettings();
+    if (cached) {
+      return cached[key] !== undefined ? cached[key] : this.defaults[key];
+    }
+    
+    // Last resort: defaults
+    return this.defaults[key];
   },
 
   // Set a single setting
@@ -46,6 +60,9 @@ const Settings = {
 
   // Save all settings to server
   saveAll: function (settings) {
+    // Update internal cache immediately
+    this._cachedSettings = { ...settings };
+    
     // Save to server
     API.setUserSettings(settings, 
       function() {
@@ -71,14 +88,19 @@ const Settings = {
 
   // Get all settings (from cache or defaults)
   getAll: function () {
-    // Try cache first
-    const cached = CacheManager.getSettings();
-    if (cached) {
-      return cached;
+    // Use cached settings if available
+    if (this._cachedSettings) {
+      return { ...this._cachedSettings };
     }
     
-    // Otherwise use defaults and trigger server fetch
-    this._fetchFromServer();
+    // Try CacheManager
+    const cached = CacheManager.getSettings();
+    if (cached) {
+      this._cachedSettings = cached; // Cache it
+      return { ...cached };
+    }
+    
+    // Return defaults
     return { ...this.defaults };
   },
 
@@ -90,15 +112,19 @@ _fetchFromServer: function() {
         // Update cache
         CacheManager.setSettings(result.settings);
         
-        // ALWAYS re-apply settings when they load, regardless of current view
-        SimBudget.applySettings();
+        // ONLY re-apply if settings actually changed
+        const currentSettings = SimBudget.Settings.getAll();
+        const hasChanged = JSON.stringify(currentSettings) !== JSON.stringify(result.settings);
         
-        // Force budget re-render if we're on budget view
-        if (SimBudget.Views.getCurrent() === "budget") {
-          // Re-render budget with correct settings
-          const cachedData = window.CacheManager.getDashboardData();
-          if (cachedData) {
-            SimBudget.renderBudgetDashboard(cachedData);
+        if (hasChanged) {
+          SimBudget.applySettingsFromData(result.settings);
+          
+          // Force budget re-render if we're on budget view
+          if (SimBudget.Views.getCurrent() === "budget") {
+            const cachedData = window.CacheManager.getDashboardData();
+            if (cachedData) {
+              SimBudget.renderBudgetDashboard(cachedData);
+            }
           }
         }
       }
@@ -109,7 +135,7 @@ _fetchFromServer: function() {
   );
 },
 
-  // Convenience methods for common settings
+  // Keep convenience methods unchanged
   getCurrencySymbol: function () {
     return this.getSetting("currencySymbol");
   },
@@ -189,37 +215,32 @@ _fetchFromServer: function() {
       // Views module reference
       Views: Views,
 
-      /**
-       * Initialize the application
-       */
-      // Replace these two functions in Init.html
-
-/**
- * Initialize the application - ENHANCED with session persistence
+   /**
+ * Initialize the application - CLEAN VERSION: Settings load silently first
  */
 initialize: function() {
   if (_initialized) return;
 
- sessionStorage.setItem('monthlyGrid_sessionActive', 'true');
+  // STEP 1: Load settings IMMEDIATELY and SILENTLY (no spinner)
+  this.loadSettingsSync();
+
+  // STEP 2: Continue with normal initialization (unchanged)
+  sessionStorage.setItem('monthlyGrid_sessionActive', 'true');
   this.loadGlobalCategories();
 
-  this.Settings._fetchFromServer();
   // Set up event listeners
   this.bindEvents();
 
   // Set up month and year selectors
   this.setupMonthYearSelectors();
 
-
-
   // Check for existing sheet URL
   this.checkExistingConnection();
-
 
   // Load user info
   this.loadUserInfo();
 
-  // Load translations based on saved language preference
+  // Load translations based on loaded language preference
   this.loadTranslations();
 
   // ENHANCED: Check for saved view and switch to it
@@ -235,6 +256,147 @@ initialize: function() {
 
   _initialized = true;
 },
+
+/**
+ * Load settings synchronously and silently (no UI changes)
+ */
+loadSettingsSync: function() {
+  // Try cache first
+  const cached = CacheManager.getSettings();
+  if (cached) {
+    console.log('Using cached settings');
+    this.applySettingsFromData(cached);
+    return;
+  }
+
+  // If no cache, use defaults immediately (prevents flash)
+  console.log('No cached settings, using defaults to prevent flash');
+  this.applySettingsFromData(this.Settings.defaults);
+
+  // Then load real settings in background (no UI blocking)
+  setTimeout(() => {
+    this.Settings._fetchFromServer();
+  }, 100);
+},
+
+/**
+ * Apply settings from data object (keep this from before)
+ */
+applySettingsFromData: function(settingsData) {
+  // Apply dark mode if enabled
+  if (settingsData.darkMode) {
+    document.body.classList.add("dark-mode");
+  } else {
+    document.body.classList.remove("dark-mode");
+  }
+
+  // Set values in settings form if they exist
+  const currencyInput = document.getElementById("currencySymbol");
+  if (currencyInput) {
+    currencyInput.value = settingsData.currencySymbol || '$';
+  }
+
+  const dateFormatSelect = document.getElementById("dateFormat");
+  if (dateFormatSelect) {
+    dateFormatSelect.value = settingsData.dateFormat || 'MM/DD/YYYY';
+  }
+
+  const darkModeCheckbox = document.getElementById("darkMode");
+  if (darkModeCheckbox) {
+    darkModeCheckbox.checked = settingsData.darkMode || false;
+  }
+
+  const languageSelect = document.getElementById("languageSelector");
+  if (languageSelect) {
+    languageSelect.value = settingsData.language || 'en';
+  }
+
+  const showRemainingCheckbox = document.getElementById("showRemaining");
+  if (showRemainingCheckbox) {
+    showRemainingCheckbox.checked = settingsData.showRemaining !== false;
+  }
+
+  const enableAlertsCheckbox = document.getElementById("enableAlerts");
+  if (enableAlertsCheckbox) {
+    enableAlertsCheckbox.checked = settingsData.enableAlerts !== false;
+  }
+
+  const startingDaySelect = document.getElementById("startingDay");
+  if (startingDaySelect) {
+    startingDaySelect.value = settingsData.startingDay || "1";
+  }
+
+  const showDecimalsCheckbox = document.getElementById("showDecimals");
+  if (showDecimalsCheckbox) {
+    showDecimalsCheckbox.checked = settingsData.showDecimals !== false;
+  }
+},
+
+
+
+
+
+
+
+/**
+ * Apply settings from data object (not from Settings module)
+ */
+applySettingsFromData: function(settingsData) {
+  console.log('SimBudget: Applying settings:', settingsData);
+  
+  // Apply dark mode if enabled
+  if (settingsData.darkMode) {
+    document.body.classList.add("dark-mode");
+  } else {
+    document.body.classList.remove("dark-mode");
+  }
+
+  // Set values in settings form if they exist
+  const currencyInput = document.getElementById("currencySymbol");
+  if (currencyInput) {
+    currencyInput.value = settingsData.currencySymbol || '$';
+  }
+
+  const dateFormatSelect = document.getElementById("dateFormat");
+  if (dateFormatSelect) {
+    dateFormatSelect.value = settingsData.dateFormat || 'MM/DD/YYYY';
+  }
+
+  const darkModeCheckbox = document.getElementById("darkMode");
+  if (darkModeCheckbox) {
+    darkModeCheckbox.checked = settingsData.darkMode || false;
+  }
+
+  const languageSelect = document.getElementById("languageSelector");
+  if (languageSelect) {
+    languageSelect.value = settingsData.language || 'en';
+  }
+
+  const showRemainingCheckbox = document.getElementById("showRemaining");
+  if (showRemainingCheckbox) {
+    showRemainingCheckbox.checked = settingsData.showRemaining !== false;
+  }
+
+  const enableAlertsCheckbox = document.getElementById("enableAlerts");
+  if (enableAlertsCheckbox) {
+    enableAlertsCheckbox.checked = settingsData.enableAlerts !== false;
+  }
+
+  const startingDaySelect = document.getElementById("startingDay");
+  if (startingDaySelect) {
+    startingDaySelect.value = settingsData.startingDay || "1";
+  }
+
+  const showDecimalsCheckbox = document.getElementById("showDecimals");
+  if (showDecimalsCheckbox) {
+    showDecimalsCheckbox.checked = settingsData.showDecimals !== false;
+  }
+  
+  console.log('SimBudget: Settings applied successfully');
+},
+
+
+
 
 /**
  * Load categories globally so all views can use them
