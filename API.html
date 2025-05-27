@@ -502,39 +502,81 @@ getCategories: function(successCallback, errorCallback, forceRefresh) {
 },
 
 
-/**
- * Get expense data with income included
- * @param {number} month - Month index (0-11)
- * @param {number} year - Year (e.g. 2025)
- * @param {Function} successCallback - Called with combined data
- * @param {Function} errorCallback - Called on error
- */
-getExpenseData: function(month, year, successCallback, errorCallback) {
-  try {
-    // Ensure proper number conversion (0 = January)
-    if (month !== undefined) month = parseInt(month);
-    if (year !== undefined) year = parseInt(year);
-    
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          // Success - should include both expenses and income transactions
-          successCallback(result);
-        } else {
-          const err = result && result.error || 'Unknown error';
-          errorCallback(err);
-        }
-      })
-      .withFailureHandler(function(error) {
-        errorCallback(error);
-      })
-      .getExpenseData(month, year);
-      
-  } catch (e) {
-    errorCallback(e.toString());
-  }
-},
 
+getExpenseData: function(month, year, successCallback, errorCallback) {
+  
+  // Handle case where month/year are not provided (callbacks as first params)
+  if (typeof month === 'function') {
+    errorCallback = year;
+    successCallback = month;
+    month = undefined;
+    year = undefined;
+  } else {
+    // *** CRITICAL FIX: Properly handle 0 (January) ***
+    // Don't treat month=0 as falsy since 0 = January
+    if (month !== undefined && month !== null) {
+      month = parseInt(month);
+    }
+    if (year !== undefined && year !== null) {
+      year = parseInt(year);
+    }
+  }
+  
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    const error = 'Google Apps Script runtime not available';
+    errorCallback(error);
+    return;
+  }
+  
+  if (typeof successCallback !== 'function') {
+    const error = 'Success callback is not a function';
+    console.error("API.getExpenseData:", error);
+    errorCallback(error);
+    return;
+  }
+  
+  if (typeof errorCallback !== 'function') {
+    console.error("API.getExpenseData: Error callback is not a function");
+    return;
+  }
+  
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      
+      if (result === null || result === undefined) {
+        const error = 'Server returned null/undefined. Check if getExpenseData() function exists in Code.gs';
+        console.error("API.getExpenseData:", error);
+        errorCallback(error);
+        return;
+      }
+      
+      if (typeof result !== 'object') {
+        const error = 'Server returned non-object: ' + typeof result + ' = ' + JSON.stringify(result);
+        console.error("API.getExpenseData:", error);
+        errorCallback(error);
+        return;
+      }
+      
+      if (!result.success) {
+        const error = 'Server returned failure: ' + (result.error || 'No error message');
+        console.error("API.getExpenseData:", error);
+        errorCallback(error);
+        return;
+      }
+      
+      successCallback(result);
+    })
+    .withFailureHandler(function(error) {
+      const errorMsg = 'Server function call failed: ' + (error.message || error.toString());
+      console.error("API.getExpenseData:", errorMsg);
+      console.error("API.getExpenseData: Full error object:", error);
+      errorCallback(errorMsg);
+    })
+        .getExpenseData(month, year); // MODIFIED: Add useCache parameter
+
+  
+},
 
 
 
