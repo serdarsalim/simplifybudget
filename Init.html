@@ -328,7 +328,8 @@ if (viewName === 'expense' && window.MonthlyGrid) {
 if (fromView === 'budget' && toView === 'expense') {
   if (window.MonthlyGrid && typeof _currentMonth !== 'undefined') {
     console.log('Syncing expense view to budget month:', _currentMonth, _currentYear);
-    
+       MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
+    MonthlyGrid.navigateToMonth(_currentMonth, _currentYear);
     // Store the month/year for MonthlyGrid to use
     window._pendingMonthSync = {
       month: _currentMonth,
@@ -517,16 +518,13 @@ if (fromView === 'budget' && toView === 'expense') {
         }
       },
 
-      updateMonthYear: function (month, year) {
-
-
-
+            updateMonthYear: function (month, year) {
         if (_isRendering) return;
         if (_loadingView === true) return;  
-
         
         // Convert month name to month number (0-based)
-        const monthNum = new Date(Date.parse(month + " 1, 2000")).getMonth();
+        const monthNum = typeof month === 'string' ? 
+          new Date(Date.parse(month + " 1, 2000")).getMonth() : month;
         
         // Update local state
         _currentMonth = monthNum;
@@ -537,22 +535,30 @@ if (fromView === 'budget' && toView === 'expense') {
           window.CacheManager.setCurrentMonth(monthNum, parseInt(year));
         }
         
-        // If we're on budget view, refresh it with new month/year
-        if (_currentView === 'budget') {
-          // Invalidate dashboard cache for the old month to force recalculation
-          window.CacheManager.invalidate('dashboardData');
-          
-          // Load budget data for new month/year
-          this.loadBudgetData();
+        // SYNC: Update both budget selectors AND expense display
+        const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        
+        // Update budget selectors
+        const monthSelector = document.getElementById("monthSelector");
+        const yearSelector = document.getElementById("yearSelector");
+        if (monthSelector) monthSelector.value = monthNames[monthNum];
+        if (yearSelector) yearSelector.value = year.toString();
+        
+        // Update expense display
+        const monthYearDisplay = document.getElementById('monthYearDisplay');
+        if (monthYearDisplay) {
+          const monthName = new Date(year, monthNum, 1).toLocaleString('default', { month: 'long' });
+          monthYearDisplay.textContent = `${monthName} ${year}`;
         }
         
-        // If we're on expense view, update MonthlyGrid
-        if (_currentView === 'expense' && window.MonthlyGrid) {
+        // Load data for current view
+        if (_currentView === 'budget') {
+          window.CacheManager.invalidate('dashboardData');
+          this.loadBudgetData();
+        } else if (_currentView === 'expense' && window.MonthlyGrid) {
           MonthlyGrid.setMonthYear(monthNum, parseInt(year));
           MonthlyGrid.refresh();
         }
-        
-        // No need to call API anymore - we're working locally!
       },
 
 

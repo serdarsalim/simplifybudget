@@ -1311,31 +1311,25 @@ function getNextMonth(month, year) {
 }
 
 
-  /**
-   * ENHANCED: Navigate month with smart caching
-   */
-  function navigateMonth(change) {
-  // Prevent navigation while loading
-  if (_isLoading) {
-    console.log('Navigation blocked - already loading data');
-    return;
+ function navigateMonth(change) {
+  if (_isLoading) return;
+  
+  let newMonth = _currentMonth + change;
+  let newYear = _currentYear;
+  
+  if (newMonth > 11) {
+    newMonth = 0;
+    newYear++;
+  } else if (newMonth < 0) {
+    newMonth = 11;
+    newYear--;
   }
   
-  _currentMonth += change;
-  
-  if (_currentMonth > 11) {
-    _currentMonth = 0;
-    _currentYear++;
-  } else if (_currentMonth < 0) {
-    _currentMonth = 11;
-    _currentYear--;
-  }
-  
-  updateMonthYearDisplay();
-  
-  loadRealExpenseData(_currentMonth, _currentYear);
+  // Use SimBudget's sync system
+  SimBudget.updateMonthYear(newMonth, newYear);
 }
-  
+
+
   function updateMonthYearDisplay() {
     const monthYearDisplay = getElement('monthYearDisplay');
     if (monthYearDisplay) {
@@ -2436,23 +2430,12 @@ function refresh(forceServerRefresh) {
   },
 
   
-   navigateToMonth: function(month, year) {
-    
-    // Check if we're already showing this month
-    if (_currentMonth === month && _currentYear === year) {
-      return;
-    }
-    
-    // Update internal state
-    _currentMonth = month;
-    _currentYear = year;
-    
-    // Update the display
-    updateMonthYearDisplay();
-    
-    // Load data for this month (will use cache if available)
-    loadRealExpenseData(_currentMonth, _currentYear);
-  }
+  navigateToMonth: function(month, year) {
+  if (_currentMonth === month && _currentYear === year) return;
+  
+  // Use SimBudget's sync system  
+  SimBudget.updateMonthYear(month, year);
+}
 
 
   };
