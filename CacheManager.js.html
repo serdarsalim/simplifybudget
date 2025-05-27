@@ -177,15 +177,10 @@ function getDashboardData(month = currentMonth, year = currentYear) {
     return get('budgetData');
   }
   
-  function setBudgetData(data) {
-    set('budgetData', data, { ttl: config.ttl.mediumLived });
-    // Invalidate all dashboards when budget changes
-    Object.keys(cache.data).forEach(key => {
-      if (key.startsWith('dashboard_')) {
-        invalidate(key);
-      }
-    });
-  }
+ function setBudgetData(data) {
+  set('budgetData', data, { ttl: config.ttl.mediumLived });
+  // REMOVED: Dashboard invalidation - let dashboard cache itself
+}
   
 
 

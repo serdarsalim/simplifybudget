@@ -553,7 +553,6 @@ if (fromView === 'budget' && toView === 'expense') {
         
         // Load data for current view
         if (_currentView === 'budget') {
-          window.CacheManager.invalidate('dashboardData');
           this.loadBudgetData();
         } else if (_currentView === 'expense' && window.MonthlyGrid) {
           MonthlyGrid.setMonthYear(monthNum, parseInt(year));
@@ -1294,8 +1293,8 @@ loadBudgetData: function(forceRefresh = false) {
   
   // Check cache ONLY if not forcing refresh
   if (!forceRefresh) {
-    const cachedData = window.CacheManager.getDashboardData();
-    if (cachedData) {
+const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_currentMonth}`);
+  if (cachedData) {
       SimBudget.renderBudgetDashboard(cachedData);
       CacheManager.set('budget', cachedData);
       _loadingView = null;
@@ -1355,7 +1354,9 @@ loadBudgetData: function(forceRefresh = false) {
         
         if (dashboardData) {
           SimBudget.renderBudgetDashboard(dashboardData);
-          CacheManager.set('budget', dashboardData);
+          CacheManager.set(`dashboard_${_currentYear}-${_currentMonth}`, dashboardData);
+
+
         } else {
           console.error('FAILED to calculate dashboard data');
           const contentArea = document.getElementById("budgetContent");
