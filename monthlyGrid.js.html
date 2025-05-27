@@ -1432,13 +1432,15 @@ function getNextMonth(month, year) {
   }
   
   function getMonthGrandTotal() {
-    return _transactions
-      .filter(tx => 
-        tx.date.getMonth() === _currentMonth &&
-        tx.date.getFullYear() === _currentYear
-      )
-      .reduce((sum, tx) => sum + tx.amount, 0);
-  }
+  return _transactions
+    .filter(tx => 
+      tx.date.getMonth() === _currentMonth &&
+      tx.date.getFullYear() === _currentYear &&
+      // EXCLUDE INCOME from totals
+      !tx.category.toLowerCase().includes("income")
+    )
+    .reduce((sum, tx) => sum + tx.amount, 0);
+}
 
   function ensureModalExists() {
     let modal = getElement('transaction-modal');
