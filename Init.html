@@ -1276,6 +1276,7 @@ renderViewFromCache: function (viewName) {
   
 /**
  * Load budget data - CLEAN VERSION (settings loaded at startup)
+ * UPDATED: Removed recurring API call - subscriptions extracted from expenses
  */
 loadBudgetData: function(forceRefresh = false) {
   if (typeof _currentMonth === 'undefined') {
@@ -1318,34 +1319,29 @@ loadBudgetData: function(forceRefresh = false) {
     CacheManager.clearMonth(_currentMonth, _currentYear);
   }
   
-  // Load all required data
+  // Load required data (REMOVED RECURRING - now extracted from expenses)
   let expensesLoaded = false;
-  let recurringLoaded = false;
   let budgetLoaded = false;
   let categoriesLoaded = false;
   let expensesData = null;
-  let recurringData = null;
   let budgetData = null;
   let categoriesData = null;
 
   const checkAndRender = () => {
-    if (expensesLoaded && recurringLoaded && budgetLoaded && categoriesLoaded) {
+    if (expensesLoaded && budgetLoaded && categoriesLoaded) {
       
       try {
         // Store in cache
         if (expensesData) {
           window.CacheManager.setExpenses(expensesData, _currentMonth, _currentYear);
         }
-        if (recurringData) {
-          window.CacheManager.setRecurring(recurringData);
-        }
         if (budgetData) {
           window.CacheManager.setBudgetData(budgetData);
         }
         
+        // UPDATED: Pass only expenses and categories (no recurring parameter)
         const dashboardData = window.CacheManager.calculateDashboardData(
           expensesData || [], 
-          recurringData || [], 
           categoriesData || [],
           _currentMonth, 
           _currentYear
@@ -1419,20 +1415,7 @@ loadBudgetData: function(forceRefresh = false) {
     );
   }, 800);
   
-  setTimeout(() => {
-    API.getRecurringData(
-      function(result) {
-        recurringData = result.recurring || [];
-        recurringLoaded = true;
-        checkAndRender();
-      },
-      function(error) {
-        console.error('Recurring error:', error);
-        recurringLoaded = true;
-        checkAndRender();
-      }
-    );
-  }, 1200);
+  // REMOVED: setTimeout for recurring API call - no longer needed!
 },
 
 

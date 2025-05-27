@@ -215,16 +215,13 @@ function getDashboardData(month = currentMonth, year = currentYear) {
 
 /**
  * Calculate dashboard data with optimized performance
+ * UPDATED: Extracts subscriptions directly from expenses (no recurring parameter needed)
  * @param {Array} expenses - Expense data
- * @param {Array} recurring - Recurring transaction data  
  * @param {Array} categories - Categories from UserProperties
  * @param {number} month - Month (0-11)
  * @param {number} year - Year
  */
-function calculateDashboardData(expenses, recurring, categories, month, year) {
-
-
-  
+function calculateDashboardData(expenses, categories, month, year) {
   // Get budget data for this month
   const monthlyBudget = getBudgetForMonth(month, year) || {};
   
@@ -316,8 +313,20 @@ function calculateDashboardData(expenses, recurring, categories, month, year) {
     }
   }
   
-  // Process recurring items (lazy evaluation - only if needed)
-const recurringThisMonth = getRecurringForMonth(recurring, month, year, expenses);
+  // UPDATED: Extract subscriptions directly from expenses (same logic as monthlyGrid)
+  const subscriptionsThisMonth = (expenses || []).filter(tx => {
+    return tx.label && (
+      tx.label.toLowerCase().includes('subscription') || 
+      tx.label.toLowerCase().includes('fixed payment')
+    );
+  }).map(tx => ({
+    name: tx.description || tx.name || 'Unnamed Subscription',
+    amount: Math.abs(tx.amount || 0),
+    frequency: 'Monthly', 
+    startDate: tx.date || new Date().toISOString().split('T')[0],
+    category: tx.category || 'Uncategorized',
+    id: tx.transactionId || tx.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+  }));
   
   // Calculate left to spend (never negative)
   summary.leftToSpend = Math.max(0, summary.income - summary.spent);
@@ -346,9 +355,9 @@ const recurringThisMonth = getRecurringForMonth(recurring, month, year, expenses
       year: year
     },
     subscriptions: {
-      count: recurringThisMonth.length,
-      total: recurringThisMonth.reduce((sum, item) => sum + (item.amount || 0), 0),
-      items: recurringThisMonth.slice(0, 10).map((item, index) => ({
+      count: subscriptionsThisMonth.length,
+      total: subscriptionsThisMonth.reduce((sum, item) => sum + (item.amount || 0), 0),
+      items: subscriptionsThisMonth.slice(0, 10).map((item, index) => ({
         id: index + 1,
         name: item.name,
         amount: item.amount,
@@ -360,7 +369,20 @@ const recurringThisMonth = getRecurringForMonth(recurring, month, year, expenses
   return dashboardData;
 }
 
-
+// Simplified helper function for subscription next payment dates
+function getNextPaymentDate(item, month, year) {
+  if (!item.startDate) return '';
+  
+  const start = new Date(item.startDate);
+  const frequency = (item.frequency || 'Monthly').toLowerCase();
+  
+  if (frequency.includes('monthly')) {
+    const nextDate = new Date(year, month, start.getDate());
+    return nextDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+  }
+  
+  return '';
+}
 
   
   // Helper functions for dashboard calculation
@@ -382,74 +404,7 @@ const recurringThisMonth = getRecurringForMonth(recurring, month, year, expenses
     return budgetObject;
   }
   
-  /**
- * Get recurring transactions for a specific month, extracting from expenses if needed
- * @param {Array} allRecurring - Recurring data array (can be empty/null)
- * @param {number} month - Month index (0-11)
- * @param {number} year - Year (e.g. 2025)
- * @param {Array} expenses - Optional expenses to extract subscriptions from if recurring is empty
- */
-function getRecurringForMonth(allRecurring, month, year, expenses) {
-  // First check if we have recurring data - if not, try to extract from expenses
-  if ((!allRecurring || allRecurring.length === 0) && expenses && expenses.length > 0) {
-    // Extract subscriptions from expenses
-    const subscriptions = expenses.filter(tx => {
-      return tx.label && (
-        tx.label.toLowerCase().includes('subscription') || 
-        tx.label.toLowerCase().includes('fixed payment')
-      );
-    }).map(tx => {
-      // Convert expense to recurring format
-      return {
-        name: tx.description || tx.payee || 'Unnamed Subscription',
-        amount: Math.abs(tx.amount || 0),
-        frequency: 'Monthly', 
-        startDate: tx.date || new Date().toISOString().split('T')[0],
-        category: tx.category || 'Uncategorized',
-        id: tx.transactionId || tx.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-      };
-    });
-    
-    // Cache these for future use
-    if (subscriptions.length > 0) {
-      setRecurring(subscriptions);
-    }
-    
-    // Use the same filtering logic on our extracted subscriptions
-    allRecurring = subscriptions;
-  }
 
-  // Original filtering logic
-  return (allRecurring || []).filter(item => {
-    if (!item.startDate) return false;
-    
-    const start = new Date(item.startDate);
-    const frequency = (item.frequency || 'Monthly').toLowerCase();
-    const currentMonthStart = new Date(year, month, 1);
-    const currentMonthEnd = new Date(year, month + 1, 0);
-    
-    if (start > currentMonthEnd) return false;
-    
-    if (frequency.includes('monthly')) {
-      const paymentDay = start.getDate();
-      let paymentDate = new Date(year, month, paymentDay);
-      
-      if (start > currentMonthStart && start <= currentMonthEnd) {
-        paymentDate = start;
-      }
-      
-      return paymentDate >= start && (!item.endDate || new Date(item.endDate) >= paymentDate);
-    } else if (frequency.includes('yearly') || frequency.includes('annual')) {
-      return start.getMonth() === month;
-    } else if (frequency.includes('quarterly')) {
-      const monthsSinceStart = (year - start.getFullYear()) * 12 + (month - start.getMonth());
-      return monthsSinceStart >= 0 && monthsSinceStart % 3 === 0;
-    }
-    
-    return true;
-  });
-}
-  
 
 
 
