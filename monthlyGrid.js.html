@@ -894,10 +894,10 @@ async function processRealExpenseData(expenses) {
       return;
     }
     
-    // ADD HERE - Skip expenses without valid IDs
-    if (!expense.transactionId) {
-      expense.transactionId = `recurring-${_currentMonth}-${_currentYear}-${index}`;
-    }
+  // Let expenses without IDs through, but don't create fake IDs
+if (!expense.transactionId || expense.transactionId.trim() === '') {
+  expense.transactionId = ''; // Empty string, no fake ID bullshit
+}
     
     // Parse date - ENHANCED with robust parsing
     let expenseDate;
@@ -1962,12 +1962,16 @@ function setupTransactionItemEvents(item, tx) {
     deleteBtn.addEventListener('click', function(e) {
       e.stopPropagation();
       
+      console.log('🔍 Deleting expense with ID:', tx.id);
+      
       // Remove from UI immediately for better UX
       item.remove();
       
-      // Use our clearing function instead of deletion
-      if (tx.id) {
+      // Only try to delete if there's actually a real ID
+      if (tx.id && tx.id.trim() !== '') {
         clearTransactionById(tx.id, true);
+      } else {
+        console.log('No ID to delete - probably recurring expense');
       }
       
       // Update transaction total in modal
