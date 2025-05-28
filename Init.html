@@ -1421,7 +1421,7 @@ renderViewFromCache: function (viewName) {
       this.loadBudgetData(false); // Don't force refresh - use cache
       break;
     case "expense":
-      this.renderExpenseView(cachedData);
+      this.loadExpenseData();
       break;
     case "income":
       this.loadIncomeData(); // Just load it - no special render yet
@@ -1802,45 +1802,6 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
   },
   
 
-// FIX 2: Add missing renderExpenseView function
-// ADD this new function to SimBudget's return object:
-
-/**
- * Render expense view from cached data
- * @param {Array} cachedExpenses - Cached expense data
- */
-renderExpenseView: function(cachedExpenses) {
-  console.log("RenderExpenseView: Rendering from cache with", cachedExpenses.length, "expenses");
-  
-  const contentArea = document.getElementById("expenseContent");
-  if (!contentArea) {
-    console.error("RenderExpenseView: Expense content area not found");
-    return;
-  }
-
-  // Create container for MonthlyGrid
-  const containerId = "expense-grid-cached-" + Date.now();
-  contentArea.innerHTML = `
-    <div id="${containerId}" class="monthly-grid-container" 
-         style="width:100%; height:100%; position:relative; overflow:auto;">
-    </div>
-  `;
-
-  // Initialize MonthlyGrid
-  if (window.MonthlyGrid) {
-    MonthlyGrid.init(containerId);
-    
-    // Set the cached expense data
-    if (cachedExpenses && cachedExpenses.length > 0) {
-      MonthlyGrid.setExpenseData(cachedExpenses);
-    } else {
-      console.log("RenderExpenseView: No cached expense data available, using sample data");
-    }
-  } else {
-    console.error("RenderExpenseView: MonthlyGrid component not found");
-    contentArea.innerHTML = '<div class="error-message">Error: Grid component not available</div>';
-  }
-},
 
     loadExpenseData: function() {
   // Prevent multiple simultaneous loads
