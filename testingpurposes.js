@@ -39,7 +39,7 @@ function getCategoriesWithTimestamp() {
       setupSheet.getRange("I50").setValue(new Date());
     }
     
-    // Get category data from columns F and G (15:44) - REUSE YOUR LOGIC
+    // Get category data from columns F and G (15:44)
     const range = setupSheet.getRange("F15:G44");
     const values = range.getValues();
     
@@ -48,14 +48,27 @@ function getCategoriesWithTimestamp() {
     
     for (let i = 0; i < values.length; i++) {
       const isActive = values[i][0] === true; // Column F is checkbox
-      const categoryName = values[i][1];      // Column G is category name
+      const categoryString = values[i][1];    // Column G is category name
       
-      if (!categoryName || categoryName === "") continue;
+      if (!categoryString || categoryString === "") continue;
       
-      categories.push(categoryName);
+      // Parse category to extract name and emoji
+      const parsed = parseCategoryNameAndEmoji(categoryString);
+      
+      // Create category object (like UserProperties was doing)
+      const categoryObj = {
+        id: parsed.name,
+        name: parsed.name,
+        emoji: parsed.emoji,
+        fullName: categoryString,
+        active: isActive,
+        order: i  // Preserve spreadsheet order
+      };
+      
+      categories.push(categoryObj);
       
       if (isActive) {
-        activeCategories.push(categoryName);
+        activeCategories.push(categoryObj);
       }
     }
     
@@ -64,8 +77,8 @@ function getCategoriesWithTimestamp() {
     
     return {
       success: true,
-      categories: categories,
-      activeCategories: activeCategories,
+      categories: categories,        // Now returns parsed objects
+      activeCategories: activeCategories,  // Now returns parsed objects
       timestamp: timestamp
     };
     
@@ -76,6 +89,26 @@ function getCategoriesWithTimestamp() {
       error: error.toString()
     };
   }
+}
+
+/**
+ * Parse category string to extract name and emoji (add this helper function)
+ */
+function parseCategoryNameAndEmoji(categoryString) {
+  const parts = categoryString.trim().split(' ');
+  
+  if (parts.length >= 2) {
+    const lastPart = parts[parts.length - 1];
+    const emojiRegex = /[\u{1F600}-\u{1F6FF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
+    
+    if (emojiRegex.test(lastPart)) {
+      const name = parts.slice(0, -1).join(' ');
+      const emoji = lastPart;
+      return { name, emoji };
+    }
+  }
+  
+  return { name: categoryString, emoji: '' };
 }
 
 /**
@@ -127,72 +160,3 @@ function updateCategoriesTimestamp() {
 
 
 
-
-
-/**
- * Get categories from UserProperties
- */
-function getCategoriesFromUserProperties() {
-  try {
-    const userProps = PropertiesService.getUserProperties();
-    const categoriesJson = userProps.getProperty('categories');
-    
-    if (categoriesJson) {
-      const categories = JSON.parse(categoriesJson);
-      return {
-        success: true,
-        categories: categories
-      };
-    } else {
-      return {
-        success: true,
-        categories: [] // Empty array = no categories stored yet
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.toString()
-    };
-  }
-}
-
-/**
- * Save categories to UserProperties
- */
-function saveCategoriestoUserProperties(categories) {
-  try {
-    const userProps = PropertiesService.getUserProperties();
-    userProps.setProperty('categories', JSON.stringify(categories));
-    
-    return {
-      success: true,
-      message: 'Categories saved to UserProperties'
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.toString()
-    };
-  }
-}
-
-/**
- * Clear categories from UserProperties
- */
-function clearCategoriesFromUserProperties() {
-  try {
-    const userProps = PropertiesService.getUserProperties();
-    userProps.deleteProperty('categories');
-    
-    return {
-      success: true,
-      message: 'Categories cleared from UserProperties'
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.toString()
-    };
-  }
-}

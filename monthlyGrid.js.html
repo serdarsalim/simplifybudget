@@ -484,80 +484,81 @@ async function addInactiveCategoriesWithSpending() {
     return Promise.resolve();
   }
   
-  // Get ALL categories from UserProperties
-  return new Promise((resolve, reject) => {
-    API.getCategoriesFromUserProperties(
-      function(result) {
-        if (result && result.success && Array.isArray(result.categories)) {
-          // Create map of category name -> category data
-          const allCategoriesMap = new Map();
-          result.categories.forEach(cat => {
-            allCategoriesMap.set(cat.name, cat);
-          });
+  // Get ALL categories from cache
+// Get ALL categories with timestamp system
+return new Promise((resolve, reject) => {
+  API.getCategoriesWithTimestamp(
+    function(result) {
+      if (result && result.success && Array.isArray(result.categories)) {
+        // Create map of category name -> category data
+        const allCategoriesMap = new Map();
+        result.categories.forEach(cat => {
+          allCategoriesMap.set(cat.name, cat);
+        });
+        
+        // Add inactive categories with spending
+        const inactiveToAdd = [];
+        
+        inactiveCategoriesWithSpending.forEach(categoryId => {
+          // Check if already exists to prevent duplicates
+          const alreadyExists = _categories.find(existingCat => existingCat.id === categoryId);
+          if (alreadyExists) return; // Skip existing
           
-          // Add inactive categories with spending
-          const inactiveToAdd = [];
+          // Get category data if available
+          const categoryData = allCategoriesMap.get(categoryId);
           
-          inactiveCategoriesWithSpending.forEach(categoryId => {
-            // Check if already exists to prevent duplicates
-            const alreadyExists = _categories.find(existingCat => existingCat.id === categoryId);
-            if (alreadyExists) return; // Skip existing
-            
-            // Get category data if available
-            const categoryData = allCategoriesMap.get(categoryId);
-            
-            if (categoryData) {
-              inactiveToAdd.push({
-                id: categoryData.name,
-                name: categoryData.name,
-                emoji: categoryData.emoji || '',
-                active: false,
-                hasTransactions: true,
-                fullName: categoryData.fullName || categoryData.name,
-                order: categoryData.order || 999,
-                originalIndex: 999
-              });
-            } else {
-              // Handle unknown categories
-              inactiveToAdd.push({
-                id: categoryId,
-                name: categoryId,
-                emoji: '🛸',
-                active: false,
-                hasTransactions: true,
-                fullName: categoryId,
-                order: 999,
-                originalIndex: 999
-              });
-            }
-          });
-          
-          // Add to categories if we have any
-          if (inactiveToAdd.length > 0) {
-            // Sort by order
-            inactiveToAdd.sort((a, b) => (a.order || 999) - (b.order || 999));
-            // Add to categories array
-            _categories = [..._categories, ...inactiveToAdd];
+          if (categoryData) {
+            inactiveToAdd.push({
+              id: categoryData.name,
+              name: categoryData.name,
+              emoji: categoryData.emoji || '',
+              active: false,
+              hasTransactions: true,
+              fullName: categoryData.fullName || categoryData.name,
+              order: categoryData.order || 999,
+              originalIndex: 999
+            });
+          } else {
+            // Handle unknown categories
+            inactiveToAdd.push({
+              id: categoryId,
+              name: categoryId,
+              emoji: '🛸',
+              active: false,
+              hasTransactions: true,
+              fullName: categoryId,
+              order: 999,
+              originalIndex: 999
+            });
           }
-          
-          resolve();
-        } else {
-          resolve(); // Continue even if categories lookup fails
+        });
+        
+        // Add to categories if we have any
+        if (inactiveToAdd.length > 0) {
+          // Sort by order
+          inactiveToAdd.sort((a, b) => (a.order || 999) - (b.order || 999));
+          // Add to categories array
+          _categories = [..._categories, ...inactiveToAdd];
         }
-      },
-      function(error) {
-        console.error('Error getting categories for inactive lookup:', error);
-        resolve(); // Continue even if error
+        
+        resolve();
+      } else {
+        resolve(); // Continue even if categories lookup fails
       }
-    );
-  });
+    },
+    function(error) {
+      console.error('Error getting categories for inactive lookup:', error);
+      resolve(); // Continue even if error
+    }
+  );
+});
 }
 
 /**
  * Update MonthlyGrid when categories are toggled
  */
 function notifyMonthlyGridOfCategoryChange() {
-  API.getCategoriesFromUserProperties(
+  API.getCategoriesWithTimestamp(
     function(result) {
       if (result && result.success && result.categories) {
         window._allCategories = result.categories;
@@ -575,7 +576,7 @@ function notifyMonthlyGridOfCategoryChange() {
 
 /**
  * Single unified function to load ALL needed categories at once
- * - Active categories from UserProperties
+ * - Active categories from cache
  * - Plus inactive categories with transactions in current month
  * NO MORE separate loading functions!
  */
@@ -583,9 +584,8 @@ function loadAndRenderCategories() {
   // Clear window flag
   window._addingInactiveCategories = false;
   
-  // 1. Get ALL categories from UserProperties
   return new Promise((resolve, reject) => {
-    API.getCategoriesFromUserProperties(
+    API.getCategoriesWithTimestamp(
       function(result) {
         if (result && result.success && Array.isArray(result.categories)) {
           // Store all categories for reference
@@ -685,21 +685,19 @@ function parseCategoryNameAndEmoji(categoryString) {
 
 
 /**
- * Load active categories from UserProperties ONLY
+ * Load active categories from cache ONLY
  * FIXED: Preserves exact spreadsheet order without fucking it up
  */
 function loadActiveCategories() {
   
   return new Promise((resolve, reject) => {
     // Check if API is available
-    if (!window.API || typeof API.getCategoriesFromUserProperties !== 'function') {
-      console.error('MonthlyGrid: API.getCategoriesFromUserProperties not available');
-      reject('UserProperties API not available');
-      return;
-    }
-    
-    // Get categories from UserProperties
-    API.getCategoriesFromUserProperties(
+    if (!window.API || typeof API.getCategoriesWithTimestamp !== 'function') {
+  console.error('MonthlyGrid: API.getCategoriesWithTimestamp not available');
+  reject('Timestamp API not available');
+  return;
+}
+        API.getCategoriesWithTimestamp(
       function(result) {
         
         if (result && result.success && Array.isArray(result.categories)) {
@@ -730,11 +728,11 @@ function loadActiveCategories() {
           resolve(processedCategories);
           
         } else {
-          reject(result?.error || 'No categories found in UserProperties');
+          reject(result?.error || 'No categories found in cache');
         }
       },
       function(error) {
-        console.error('MonthlyGrid: Error getting categories from UserProperties:', error);
+        console.error('MonthlyGrid: Error getting categories from cache:', error);
         reject(error);
       }
     );

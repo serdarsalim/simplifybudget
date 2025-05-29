@@ -402,7 +402,7 @@ applySettingsFromData: function(settingsData) {
  * Load categories globally so all views can use them
  */
 loadGlobalCategories: function() {
-  API.getCategoriesFromUserProperties(
+  API.getCategoriesWithTimestamp(
     function(result) {
       if (result && result.success && result.categories) {
         // Store globally so MonthlyGrid can access them
@@ -730,31 +730,28 @@ if (fromView === 'budget' && toView === 'expense') {
 
 
           // Listen for category changes from any component
-          document.addEventListener('categories-changed', function(event) {
-            console.log('SimBudget: Categories changed event received:', event.detail);
+        document.addEventListener('categories-changed', function(event) {
+          console.log('SimBudget: Categories changed event received:', event.detail);
+          
+          const currentView = SimBudget.Views.getCurrent();
+          
+          // If we're in expense view, immediately refresh the grid
+          if (currentView === 'expense') {
+            console.log('SimBudget: Currently in expense view, triggering immediate refresh');
             
-            const currentView = SimBudget.Views.getCurrent();
-            
-            // If we're in expense view, immediately refresh the grid
-            if (currentView === 'expense') {
-              console.log('SimBudget: Currently in expense view, triggering immediate refresh');
-              
-              // Small delay to ensure UserProperties is fully updated
-              setTimeout(() => {
-                if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
-                  MonthlyGrid.refresh();
-                }
-              }, 200);
-            }
-            
-
-
-
-            // Update quick expense dropdown regardless of current view
-            if (window.CategoriesManager && typeof CategoriesManager.updateQuickExpenseDropdown === 'function') {
-              CategoriesManager.updateQuickExpenseDropdown();
-            }
-               });
+            // Small delay to ensure CacheManager is fully updated
+            setTimeout(() => {
+              if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
+                MonthlyGrid.refresh();
+              }
+            }, 100); // Reduced from 200ms since no UserProperties delay needed
+          }
+          
+          // Update quick expense dropdown regardless of current view
+          if (window.CategoriesManager && typeof CategoriesManager.updateQuickExpenseDropdown === 'function') {
+            CategoriesManager.updateQuickExpenseDropdown();
+          }
+        });
 
 
       // DESKTOP sidebar toggle with reliable event delegation 
@@ -1250,7 +1247,6 @@ document.addEventListener("click", function(e) {
 
 /**
  * Load data for a specific view with caching and preloading
- * FIXED: Categories never check cache - always fresh from UserProperties
  * @param {string} viewName - Name of the view to load
  * @param {boolean} forceRefresh - Whether to bypass cache and force a refresh
  */
@@ -1263,13 +1259,13 @@ loadViewData: function(viewName, forceRefresh = false) {
   // Set loading flag
   _loadingView = viewName;
 
-  // ✅ SPECIAL CASE: Categories NEVER use cache
-  if (viewName === "categories") {
-    console.log('Categories view: Always loading fresh from UserProperties (no cache)');
-    this.loadCategoriesData();
-    _loadingView = null;
-    return;
-  }
+  // Categories now use smart timestamp caching
+if (viewName === "categories") {
+  console.log('Categories view: Using timestamp-based smart caching');
+  this.loadCategoriesData();
+  _loadingView = null;
+  return;
+}
 
   // CACHE-FIRST STRATEGY: Check cache first unless force refresh
   if (!forceRefresh && CacheManager.isValid(viewName)) {
@@ -1312,14 +1308,13 @@ loadViewData: function(viewName, forceRefresh = false) {
   }
 },
 
+
 /**
- * Load categories data - FIXED to use UserProperties exclusively
- * NO MORE localStorage or CacheManager bullshit for categories!
+ * Load categories data - UPDATED to use timestamp system only
  */
 loadCategoriesData: function () {
   console.log('Init: Loading categories data...');
   
-  // Get content container
   const contentArea = document.getElementById("categoriesContent");
   if (!contentArea) {
     console.error("Categories content area not found");
@@ -1327,7 +1322,6 @@ loadCategoriesData: function () {
     return;
   }
 
-  // Get or create categories container
   let categoriesContainer = document.getElementById("categories-container");
   if (!categoriesContainer) {
     categoriesContainer = document.createElement("div");
@@ -1336,7 +1330,7 @@ loadCategoriesData: function () {
     contentArea.appendChild(categoriesContainer);
   }
 
-  // Check if CategoriesManager is already initialized and has data
+  // Check if CategoriesManager is already initialized
   if (window.CategoriesManager && 
       typeof CategoriesManager.isInitialized === 'function' && 
       CategoriesManager.isInitialized()) {
@@ -1349,24 +1343,16 @@ loadCategoriesData: function () {
   categoriesContainer.innerHTML = 
     '<div class="categories-loading"><div class="loading-spinner"></div><p>Loading categories...</p></div>';
 
-  // Initialize CategoriesManager - it will handle UserProperties loading internally
+  // Initialize CategoriesManager with timestamp system
   if (window.CategoriesManager && typeof CategoriesManager.init === 'function') {
-    console.log('Init: Initializing CategoriesManager...');
+    console.log('Init: Initializing CategoriesManager with timestamp system...');
     
     try {
-      // CategoriesManager.init() handles:
-      // 1. Check UserProperties first
-      // 2. Load from spreadsheet if UserProperties empty
-      // 3. Save to UserProperties after loading from spreadsheet
-      CategoriesManager.init();
-      
+      CategoriesManager.init(); // This now uses loadCategoriesWithTimestamp()
       console.log('Init: CategoriesManager initialized successfully');
       _loadingView = null;
-      
     } catch (error) {
       console.error('Init: Error initializing CategoriesManager:', error);
-      
-      // Show error in container
       categoriesContainer.innerHTML = `
         <div class="categories-error">
           <i class="material-icons">error</i>
@@ -1374,36 +1360,31 @@ loadCategoriesData: function () {
           <button onclick="SimBudget.loadCategoriesData()" class="retry-btn">Retry</button>
         </div>
       `;
-      
       _loadingView = null;
     }
-    
   } else {
     console.error('Init: CategoriesManager not available');
-    
     categoriesContainer.innerHTML = `
       <div class="categories-error">
         <i class="material-icons">error</i>
         <p>CategoriesManager component not found</p>
       </div>
     `;
-    
     _loadingView = null;
   }
 },
 
    /**
  * Render view using cached data
- * FIXED: Categories don't use cache - always fresh from UserProperties
  * @param {string} viewName - Name of the view to render
  */
 renderViewFromCache: function (viewName) {
   console.log(`Rendering ${viewName} view from cache`);
   
   
-  // ✅ SPECIAL CASE: Categories NEVER use cache - always fresh from UserProperties
+  // Categories now use timestamp-based caching
   if (viewName === "categories") {
-    console.log('Categories view: Skipping cache, loading fresh from UserProperties');
+    console.log('Categories view: Using timestamp-based cache system');
     this.loadCategoriesData();
     return;
   }
@@ -1538,12 +1519,12 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
   };
   
   // Load categories immediately (from UserProperties - fast)
-  API.getCategoriesFromUserProperties(
-    function(result) {
-      categoriesData = (result && result.categories) ? result.categories : [];
-      categoriesLoaded = true;
-      checkAndRender();
-    },
+  API.getCategoriesWithTimestamp(
+  function(result) {
+    categoriesData = (result && result.categories) ? result.categories : [];
+    categoriesLoaded = true;
+    checkAndRender();
+  },
     function(error) {
       console.error('Categories error:', error);
       categoriesData = [];

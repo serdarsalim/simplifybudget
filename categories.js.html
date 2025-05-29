@@ -3,7 +3,6 @@
 /**
  * CategoriesManager - UserProperties Architecture
  * Features:
- * - Uses UserProperties as single source of truth
  * - Preserves spreadsheet order
  * - Only fetches from spreadsheet on first load or manual refresh
  * - Toggles update UserProperties immediately
@@ -125,8 +124,8 @@ function fetchFreshCategories() {
       if (result && result.success && result.categories) {
         console.log('CategoriesManager: Fresh categories loaded from server');
         
-        // Process categories (reuse existing logic)
-        _categories = processCategories(result.categories, result.activeCategories || []);
+        // Server now returns processed categories - use them directly
+        _categories = result.categories;
         
         // Cache the fresh data
         window.CacheManager.setCategoriesWithTimestamp(_categories, result.timestamp);
