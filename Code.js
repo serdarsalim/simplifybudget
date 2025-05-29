@@ -438,6 +438,8 @@ function saveExpense(expense) {
     if (expense.account) {
       updateAccountBalance(expense.account, -expense.amount);
     }
+
+      updateMasterDataTimestamp();
     
     return {
       success: true,

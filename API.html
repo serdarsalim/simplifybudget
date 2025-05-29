@@ -895,7 +895,29 @@ updateCategoriesTimestamp: function(successCallback, errorCallback) {
 
 
 
-
+/**
+ * Get master data timestamp
+ * @param {Function} successCallback - Called with {success, timestamp}
+ * @param {Function} errorCallback - Called on error
+ */
+getMasterDataTimestamp: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          errorCallback(result?.error || "Unknown error");
+        }
+      })
+      .withFailureHandler(function(error) {
+        errorCallback(error);
+      })
+      .getMasterDataTimestamp();
+  } catch (e) {
+    errorCallback(e.toString());
+  }
+},
 
 
 

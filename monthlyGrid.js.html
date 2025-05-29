@@ -350,39 +350,58 @@ function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   
   _transactions = [];  // Reset transactions to prevent duplicates
   
-  // Check cache first for instant loading
-  const monthExpenses = getCachedExpenses(month, year);  
-  if (monthExpenses) {
-    // Process transaction data first
-    processRealExpenseData(monthExpenses);
-    
-    // FIXED: Use loadAndRenderCategories instead of loadActiveCategories
-    // This will load both active and inactive categories with spending
-    return loadAndRenderCategories()
-      .then(() => {
-        // PREFETCH HERE - when using cached data
-        if (window.CacheManager) {
-          // Prefetch adjacent months in background
-          const prev = getPreviousMonth(month, year);
-          const next = getNextMonth(month, year);
+  // Check if master data is stale
+  return new Promise((resolve, reject) => {
+    CacheManager.isTransactionDataStale(function(isStale) {
+      if (!isStale) {
+        // Cache is fresh, use it
+        const monthExpenses = getCachedExpenses(month, year);  
+        if (monthExpenses) {
+          // Process transaction data first
+          processRealExpenseData(monthExpenses);
           
-          setTimeout(() => {
-            CacheManager.prefetchMonth(prev.month, prev.year);
-            CacheManager.prefetchMonth(next.month, next.year);
-          }, 500);
+          // FIXED: Use loadAndRenderCategories instead of loadActiveCategories
+          loadAndRenderCategories()
+            .then(() => {
+              // PREFETCH HERE - when using cached data
+              if (window.CacheManager) {
+                // Prefetch adjacent months in background
+                const prev = getPreviousMonth(month, year);
+                const next = getNextMonth(month, year);
+                
+                setTimeout(() => {
+                  CacheManager.prefetchMonth(prev.month, prev.year);
+                  CacheManager.prefetchMonth(next.month, next.year);
+                }, 500);
+              }
+              
+              resolve();
+            })
+            .catch(error => {
+              console.error('Error loading categories for cached data:', error);
+              // Fall back to fresh fetch
+              fetchFreshExpenseData(month, year).then(resolve).catch(reject);
+            });
+          
+          return; // Exit early, using cache
         }
+      }
+      
+      // Cache is stale or missing, fetch fresh data
+      fetchFreshExpenseData(month, year).then(() => {
+        // Update master timestamp in cache after fresh fetch
+        API.getMasterDataTimestamp(function(result) {
+          if (result && result.timestamp) {
+            CacheManager.setMasterDataTimestamp(result.timestamp);
+          }
+        }, function(error) {
+          console.error('Error updating master timestamp:', error);
+        });
         
-        return Promise.resolve();
-      })
-      .catch(error => {
-        console.error('Error loading categories for cached data:', error);
-        // Fall back to fresh fetch
-        return fetchFreshExpenseData(month, year);
-      });
-  }
-  
-  // Not in cache, fetch fresh data
-  return fetchFreshExpenseData(month, year);
+        resolve();
+      }).catch(reject);
+    });
+  });
 }
 
 /**

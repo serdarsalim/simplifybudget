@@ -160,3 +160,96 @@ function updateCategoriesTimestamp() {
 
 
 
+/**
+ * Get the master data timestamp from Dontedit!M88
+ * @return {Object} {success: true, timestamp: "ISO_STRING"}
+ */
+function getMasterDataTimestamp() {
+  try {
+    const sheet = getBudgetSheet("Dontedit");
+    if (!sheet) {
+      return { success: false, error: "Dontedit sheet not found" };
+    }
+    
+    const timestampCell = sheet.getRange("M88").getValue();
+    
+    if (!timestampCell) {
+      // First time - set it
+      const now = new Date();
+      sheet.getRange("M88").setValue(now);
+      return { success: true, timestamp: now.toISOString() };
+    }
+    
+    const timestamp = timestampCell instanceof Date ? 
+      timestampCell.toISOString() : 
+      new Date(timestampCell).toISOString();
+    
+    return { success: true, timestamp: timestamp };
+    
+  } catch (error) {
+    Logger.log("Error getting master timestamp: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
+
+/**
+ * Update the master data timestamp to current time
+ */
+function updateMasterDataTimestamp() {
+  try {
+    const sheet = getBudgetSheet("Dontedit");
+    if (!sheet) return;
+    
+    sheet.getRange("M88").setValue(new Date());
+    Logger.log("Updated master data timestamp");
+    
+  } catch (error) {
+    Logger.log("Error updating master timestamp: " + error.toString());
+  }
+}
+
+
+// In saveExpense() - add at the end before return
+function saveExpense(expense) {
+  // ... existing code ...
+  
+  // Update master timestamp
+  updateMasterDataTimestamp();
+  
+  return {
+    success: true,
+    message: "Expense saved successfully"
+  };
+}
+
+// In saveBatchExpenses() - add at the end before return
+function saveBatchExpenses(expenses) {
+  // ... existing code ...
+  
+  // Update master timestamp
+  updateMasterDataTimestamp();
+  
+  return {
+    success: true,
+    updated: toUpdate.length,
+    inserted: toInsert.length,
+    reused: expenses.length - toUpdate.length - toInsert.length
+  };
+}
+
+// In clearTransactionRow() - add at the end before return
+function clearTransactionRow(transactionId) {
+  // ... existing code ...
+  
+  // Update master timestamp
+  updateMasterDataTimestamp();
+  
+  return {
+    success: true,
+    message: "Transaction row cleared successfully",
+    transactionId,
+    rowIndex
+  };
+}
+
+// Same for saveRecurringTransaction() and clearRecurringTransaction()

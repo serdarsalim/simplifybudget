@@ -771,6 +771,45 @@ function saveToPersistentStorage(key, data, metadata) {
       }, { ttl: config.ttl.longLived });
     },
 
+    // Store master timestamp when we fetch data
+setMasterDataTimestamp: function(timestamp) {
+  set('master_data_timestamp', timestamp, { ttl: config.ttl.longLived });
+},
+
+getMasterDataTimestamp: function() {
+  return get('master_data_timestamp');
+},
+
+// Check if transaction data is stale
+isTransactionDataStale: function(callback) {
+  const cachedTimestamp = this.getMasterDataTimestamp();
+  
+  if (!cachedTimestamp) {
+    callback(true); // No timestamp = stale
+    return;
+  }
+  
+  // Check server timestamp
+  API.getMasterDataTimestamp(
+    function(result) {
+      if (result && result.timestamp) {
+        const serverTime = new Date(result.timestamp).getTime();
+        const cachedTime = new Date(cachedTimestamp).getTime();
+        
+        const isStale = serverTime > cachedTime;
+        console.log(`CacheManager: Data ${isStale ? 'is stale' : 'is fresh'}`);
+        callback(isStale);
+      } else {
+        callback(true); // Error = assume stale
+      }
+    },
+    function(error) {
+      console.error('Error checking master timestamp:', error);
+      callback(true); // Error = assume stale
+    }
+  );
+},
+
     // Budget data with timestamp system (complete like categories)
     getBudgetDataWithTimestamp: function() {
       return get('budget_data_with_timestamp');

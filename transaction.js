@@ -558,7 +558,8 @@ function saveBatchExpenses(expenses) {
   toInsert.forEach(i => {
     sh.getRange(i.row, 4, 1, 8).setValues([i.values]);
   });
-
+  // Update master timestamp
+  updateMasterDataTimestamp();
   return {
     success: true,
     updated: toUpdate.length,
@@ -601,7 +602,8 @@ function clearTransactionRow(transactionId) {
     
     // Update any caches
     const { month, year } = getCurrentMonthYear();
-    
+    // Update master timestamp
+  updateMasterDataTimestamp();
     return {
       success: true,
       message: "Transaction row cleared successfully",
@@ -787,6 +789,9 @@ function saveRecurringTransaction(recurring) {
       sheet.getRange(i.row, firstColumn, 1, numColumns).setValues([i.values]);
     });
 
+      // Update master timestamp
+  updateMasterDataTimestamp();
+
     return {
       success: true,
       updated: toUpdate.length,
@@ -839,6 +844,8 @@ function clearRecurringTransaction(transactionId) {
     
     // Clear only columns C through M (11 columns)
     sheet.getRange(rowIndex, 3, 1, 11).clearContent();
+    // Update any caches
+    updateMasterDataTimestamp()
     
     return {
       success: true,
@@ -988,10 +995,8 @@ function getRecurringData() {
       processedCount++;
     }
 
-    console.log("Recurring data processing complete:");
-    console.log("  - Total rows: " + recurringData.length);
-    console.log("  - Processed: " + processedCount);
-    console.log("  - Skipped: " + skippedCount);
+
+
 
     return {
       success: true,
