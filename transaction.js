@@ -374,45 +374,135 @@ function getExpenseData(month, year) {
 
 
 /**
- * Save user settings to server-side storage
+ * Enhanced setUserSettings - saves to sheet with timestamp
  * @param {Object} settings - The settings object to save
- * @return {Object} Result with success/failure status
+ * @return {Object} Result with success status and timestamp
  */
 function setUserSettings(settings) {
   try {
-    const userProperties = PropertiesService.getUserProperties();
-    userProperties.setProperty('simbudget_settings', JSON.stringify(settings));
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
     
-    return {
-      success: true,
-      message: "Settings saved successfully"
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
+    }
+    
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = ss.getSheetByName("Dontedit");
+    
+    if (!sheet) {
+      return { success: false, error: "Dontedit sheet not found" };
+    }
+    
+    // ENHANCED: Add timestamp and version to settings
+    const enhancedSettings = {
+      settings: settings,
+      timestamp: new Date().toISOString(),
+      version: 1
     };
-  } catch (e) {
-    return {
-      success: false,
-      error: e.toString()
+    
+    // Save to L88 (same pattern as budget data in N86)
+    sheet.getRange("L88").setValue(JSON.stringify(enhancedSettings));
+    
+    // Update cache with enhanced data
+    props.setProperty("CACHED_SETTINGS_DATA", JSON.stringify(enhancedSettings));
+    
+    // ENHANCED: Return timestamp so client knows when data was saved
+    return { 
+      success: true, 
+      timestamp: enhancedSettings.timestamp 
     };
+    
+  } catch (error) {
+    Logger.log("Error in setUserSettings: " + error.toString());
+    return { success: false, error: error.toString() };
   }
 }
 
 /**
- * Get user settings from server-side storage
- * @return {Object} Result with success/failure status and settings
+ * Enhanced getUserSettings - reads from sheet with timestamp
+ * @param {boolean} useCache - Whether to use cached data
+ * @return {Object} Settings data with timestamp
  */
-function getUserSettings() {
+function getUserSettings(useCache = true) {
   try {
-    const userProperties = PropertiesService.getUserProperties();
-    const settingsString = userProperties.getProperty('simbudget_settings');
+    const props = PropertiesService.getUserProperties();
+    
+    // Check cache first
+    if (useCache) {
+      const cached = props.getProperty("CACHED_SETTINGS_DATA");
+      if (cached) {
+        const parsedData = JSON.parse(cached);
+        return {
+          success: true,
+          settings: parsedData.settings || parsedData, // Handle both formats
+          timestamp: parsedData.timestamp,
+          fromCache: true
+        };
+      }
+    }
+    
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
+    }
+    
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = ss.getSheetByName("Dontedit");
+    
+    if (!sheet) {
+      return { success: false, error: "Dontedit sheet not found" };
+    }
+    
+    // Get settings JSON from L88
+    const settingsCell = sheet.getRange("L88").getValue();
+    
+    if (!settingsCell) {
+      // Return empty settings with current timestamp if no data yet
+      const emptySettings = {
+        settings: {},
+        timestamp: new Date().toISOString(),
+        version: 1
+      };
+      
+      return { 
+        success: true, 
+        settings: emptySettings.settings,
+        timestamp: emptySettings.timestamp
+      };
+    }
+    
+    let settingsData;
+    try {
+      settingsData = JSON.parse(settingsCell);
+    } catch (e) {
+      return { success: false, error: "Invalid JSON in settings cell: " + e.toString() };
+    }
+    
+    // ENHANCED: If old data without timestamp, add one
+    if (!settingsData.timestamp) {
+      settingsData = {
+        settings: settingsData,
+        timestamp: new Date().toISOString(),
+        version: 1
+      };
+      
+      // Save back to sheet with timestamp
+      sheet.getRange("L88").setValue(JSON.stringify(settingsData));
+    }
+    
+    // Cache for next time
+    props.setProperty("CACHED_SETTINGS_DATA", JSON.stringify(settingsData));
     
     return {
       success: true,
-      settings: settingsString ? JSON.parse(settingsString) : {}
+      settings: settingsData.settings,
+      timestamp: settingsData.timestamp
     };
-  } catch (e) {
-    return {
-      success: false,
-      error: e.toString()
-    };
+    
+  } catch (error) {
+    Logger.log("Error in getUserSettings: " + error.toString());
+    return { success: false, error: error.toString() };
   }
 }
 

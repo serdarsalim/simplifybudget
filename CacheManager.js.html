@@ -52,44 +52,68 @@ const CacheManager = (function() {
     netWorth: ["reports"],
   };
 
-  /**
-   * Persistence Helper Functions
-   */
-  
-  /**
-   * Load cache from localStorage on startup
-   */
-  function loadCacheFromStorage() {
-    try {
-      let foundKeys = [];
-      console.log('CacheManager: Looking for localStorage items...');
+/**
+ * Load cache from localStorage on startup - FIXED PREFIX MATCHING
+ */
+function loadCacheFromStorage() {
+  try {
+    let foundKeys = [];
+    console.log('CacheManager: Looking for localStorage items...');
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i);
+      console.log(`CacheManager: Checking localStorage key ${i}: "${storageKey}"`);
       
-      for (let i = 0; i < localStorage.length; i++) {
-        const storageKey = localStorage.key(i);
-        console.log(`CacheManager: Checking localStorage key ${i}: "${storageKey}"`);
+      // FIXED: Handle both old and new cache key patterns
+      if (storageKey.startsWith(STORAGE_PREFIX)) {
+        // New pattern: simbudget_cache_*
+        const cacheKey = storageKey.replace(STORAGE_PREFIX, '');
+        const data = JSON.parse(localStorage.getItem(storageKey));
+        cache.data[cacheKey] = data;
+        foundKeys.push(cacheKey);
+        console.log(`CacheManager: Loaded data for key "${cacheKey}"`);
+      } else if (storageKey.startsWith(METADATA_PREFIX)) {
+        // New pattern: simbudget_meta_*
+        const cacheKey = storageKey.replace(METADATA_PREFIX, '');
+        const metadata = JSON.parse(localStorage.getItem(storageKey));
+        cache.metadata[cacheKey] = metadata;
+        console.log(`CacheManager: Loaded metadata for key "${cacheKey}"`);
+      } else if (storageKey.startsWith('simbudget_') && 
+                 !storageKey.includes('transaction_queue') && 
+                 !storageKey.includes('lastActiveView') &&
+                 !storageKey.includes('accounts') &&
+                 !storageKey.includes('categories-changed')  &&
+                 !storageKey.includes('cache_')) { 
+        // MIGRATION: Handle old cache pattern
+        const legacyKey = storageKey.replace('simbudget_', '');
+        console.log(`CacheManager: Found legacy cache key "${storageKey}", migrating to "${legacyKey}"`);
         
-        if (storageKey.startsWith(STORAGE_PREFIX)) {
-          const cacheKey = storageKey.replace(STORAGE_PREFIX, '');
+        try {
           const data = JSON.parse(localStorage.getItem(storageKey));
-          cache.data[cacheKey] = data;
-          foundKeys.push(cacheKey);
-          console.log(`CacheManager: Loaded data for key "${cacheKey}"`);
-        }
-        
-        if (storageKey.startsWith(METADATA_PREFIX)) {
-          const cacheKey = storageKey.replace(METADATA_PREFIX, '');
-          const metadata = JSON.parse(localStorage.getItem(storageKey));
-          cache.metadata[cacheKey] = metadata;
-          console.log(`CacheManager: Loaded metadata for key "${cacheKey}"`);
+          cache.data[legacyKey] = data;
+          foundKeys.push(legacyKey);
+          
+          // Create metadata for legacy data
+          cache.metadata[legacyKey] = {
+            timestamp: Date.now(),
+            expires: Date.now() + config.ttl.longLived
+          };
+          
+          // Migrate to new format
+          saveToPersistentStorage(legacyKey, data, cache.metadata[legacyKey]);
+          
+        } catch (parseError) {
+          console.warn(`CacheManager: Could not parse legacy cache "${storageKey}":`, parseError);
         }
       }
-      
-      console.log('CacheManager: Loaded cache from localStorage, keys:', foundKeys);
-      console.log('CacheManager: Total localStorage items:', localStorage.length);
-    } catch (error) {
-      console.warn('CacheManager: Error loading cache:', error);
     }
+    
+    console.log('CacheManager: Loaded cache from localStorage, keys:', foundKeys);
+    console.log('CacheManager: Total localStorage items:', localStorage.length);
+  } catch (error) {
+    console.warn('CacheManager: Error loading cache:', error);
   }
+}
 
   /**
    * Save to localStorage
@@ -654,7 +678,7 @@ const CacheManager = (function() {
     const stats = {
       itemCount: Object.keys(cache.data).length,
       items: {}
-    };
+    }; 
     
     Object.entries(cache.metadata).forEach(([key, meta]) => {
       stats.items[key] = {
@@ -722,6 +746,102 @@ const CacheManager = (function() {
       }, { ttl: config.ttl.longLived });
       console.log(`CacheManager: Cached budget data with timestamp ${timestamp}`);
     },
+
+    // Settings with timestamp system (add to CacheManager return object)
+getSettingsWithTimestamp: function() {
+  return get('settings_with_timestamp');
+},
+
+setSettingsWithTimestamp: function(settings, timestamp) {
+  set('settings_with_timestamp', {
+    settings: settings,
+    timestamp: timestamp,
+    cached_at: Date.now()
+  }, { ttl: config.ttl.longLived });
+  console.log(`CacheManager: Cached settings with timestamp ${timestamp}`);
+},
+
+// Smart loading for settings (like budget data)
+loadSettingsWithTimestamp: function() {
+  return new Promise((resolve, reject) => {
+    console.log('CacheManager: Loading settings with timestamp checking...');
+    
+    // Check cache first
+    const cachedData = this.getSettingsWithTimestamp();
+    
+    if (cachedData && cachedData.settings && cachedData.timestamp) {
+      console.log('CacheManager: Found cached settings, checking timestamp...');
+      
+      // Check if server has newer data
+      if (window.API && typeof API.getUserSettings === 'function') {
+        API.getUserSettings(
+          (result) => {
+            if (result && result.success) {
+              const serverTimestamp = new Date(result.timestamp).getTime();
+              const cachedTimestamp = new Date(cachedData.timestamp).getTime();
+              
+              console.log('CacheManager: Server timestamp:', result.timestamp);
+              console.log('CacheManager: Cached timestamp:', cachedData.timestamp);
+              
+              if (serverTimestamp > cachedTimestamp) {
+                console.log('CacheManager: Server data is newer, using fresh settings...');
+                this.setSettingsWithTimestamp(result.settings, result.timestamp);
+                resolve(result.settings);
+              } else {
+                console.log('CacheManager: Cached settings are current, using cache...');
+                resolve(cachedData.settings);
+              }
+            } else {
+              console.error('CacheManager: Error checking settings timestamp, using cache anyway');
+              resolve(cachedData.settings);
+            }
+          },
+          (error) => {
+            console.error('CacheManager: Error checking settings timestamp:', error);
+            resolve(cachedData.settings);
+          },
+          false // Don't force refresh, just get timestamp
+        );
+      } else {
+        console.log('CacheManager: API not available, using cached settings');
+        resolve(cachedData.settings);
+      }
+    } else {
+      console.log('CacheManager: No cached settings, fetching fresh...');
+      this.fetchFreshSettings().then(resolve).catch(reject);
+    }
+  });
+},
+
+// Fetch fresh settings from server
+fetchFreshSettings: function() {
+  return new Promise((resolve, reject) => {
+    if (window.API && typeof API.getUserSettings === 'function') {
+      API.getUserSettings(
+        (result) => {
+          if (result && result.success && result.settings) {
+            console.log('CacheManager: Fresh settings loaded from server');
+            
+            // Cache the fresh data with timestamp
+            this.setSettingsWithTimestamp(result.settings, result.timestamp);
+            resolve(result.settings);
+          } else {
+            console.error('CacheManager: Invalid server response for settings:', result);
+            reject(result ? result.error : 'Invalid response from server');
+          }
+        },
+        (error) => {
+          console.error('CacheManager: Server error loading settings:', error);
+          reject('Error loading from server: ' + error);
+        },
+        true // Force fresh data
+      );
+    } else {
+      console.error('CacheManager: API.getUserSettings not available');
+      reject('API method not available');
+    }
+  });
+},
 
     // Smart loading for budget data (like categories loadCategoriesWithTimestamp)
     loadBudgetDataWithTimestamp: function() {

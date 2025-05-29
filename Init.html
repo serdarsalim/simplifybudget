@@ -258,25 +258,48 @@ initialize: function() {
 },
 
 /**
- * Load settings synchronously and silently (no UI changes)
+ * Load settings using timestamp-based caching (ENHANCED VERSION)
  */
 loadSettingsSync: function() {
-  // Try cache first
-  const cached = CacheManager.getSettings();
-  if (cached) {
-    console.log('Using cached settings');
-    this.applySettingsFromData(cached);
-    return;
+  console.log('SimBudget: Loading settings with smart caching...');
+  
+  // Check CacheManager first
+  const cachedData = window.CacheManager.getSettingsWithTimestamp();
+  
+  if (cachedData && cachedData.settings && cachedData.timestamp) {
+    console.log('SimBudget: Found cached settings, applying immediately');
+    this.applySettingsFromData(cachedData.settings);
+    
+    // Then check for updates in background
+    setTimeout(() => {
+      window.CacheManager.loadSettingsWithTimestamp()
+        .then(freshSettings => {
+          // Only re-apply if settings actually changed
+          const hasChanged = JSON.stringify(cachedData.settings) !== JSON.stringify(freshSettings);
+          if (hasChanged) {
+            console.log('SimBudget: Settings updated from server, re-applying');
+            this.applySettingsFromData(freshSettings);
+          }
+        })
+        .catch(error => {
+          console.error('SimBudget: Error updating settings in background:', error);
+        });
+    }, 100);
+  } else {
+    console.log('SimBudget: No cached settings, using defaults then fetching');
+    this.applySettingsFromData(this.Settings.defaults);
+    
+    // Fetch fresh settings
+    setTimeout(() => {
+      window.CacheManager.fetchFreshSettings()
+        .then(settings => {
+          this.applySettingsFromData(settings);
+        })
+        .catch(error => {
+          console.error('SimBudget: Error loading fresh settings:', error);
+        });
+    }, 100);
   }
-
-  // If no cache, use defaults immediately (prevents flash)
-  console.log('No cached settings, using defaults to prevent flash');
-  this.applySettingsFromData(this.Settings.defaults);
-
-  // Then load real settings in background (no UI blocking)
-  setTimeout(() => {
-    this.Settings._fetchFromServer();
-  }, 100);
 },
 
 /**
@@ -1049,27 +1072,27 @@ document.addEventListener("click", function(e) {
   }
 },
 
-      /**
-       * Check for existing connection and load if available
-       */
-      checkExistingConnection: function () {
-        API.getUserCredentials(
-          function (result) {
-            if (result.sheetUrl) {
-              const urlInput = document.getElementById("budgetSheetUrl");
-              if (urlInput) {
-                urlInput.value = result.sheetUrl;
-              }
+    /**
+ * Check for existing connection and load if available
+ */
+checkExistingConnection: function () {
+  API.getUserCredentials(
+    function (result) {
+      if (result.sheetUrl) {
+        const urlInput = document.getElementById("budgetSheetUrl");
+        if (urlInput) {
+          urlInput.value = result.sheetUrl;
+        }
 
-              // Auto-test connection
-              SimBudget.testConnection();
-            }
-          },
-          function (error) {
-            console.error("Error getting user credentials:", error);
-          }
-        );
-      },
+        // REMOVED: Auto-test connection that was clearing cache
+        // SimBudget.testConnection();
+      }
+    },
+    function (error) {
+      console.error("Error getting user credentials:", error);
+    }
+  );
+},
 
       /**
        * Apply user settings
@@ -1242,7 +1265,7 @@ document.addEventListener("click", function(e) {
         }
       },
 
- testConnection: function () {
+testConnection: function () {
   const sheetUrl = document.getElementById("budgetSheetUrl").value;
   if (!sheetUrl) {
     Utils.showStatus(
@@ -1270,11 +1293,21 @@ document.addEventListener("click", function(e) {
         3000
       );
 
-      // FIXED: Only clear cache if URL actually changed
+      // FIXED: Only clear cache if URL actually changed AND preserve settings
       if (window._lastTestedUrl !== sheetUrl) {
         window._lastTestedUrl = sheetUrl;
+        
+        // PRESERVE settings cache before clearing
+        const preservedSettings = CacheManager.getSettingsWithTimestamp();
+        
         CacheManager.invalidateAll();
         console.log('CacheManager: Cache cleared due to spreadsheet URL change');
+        
+        // RESTORE settings cache after clearing
+        if (preservedSettings && preservedSettings.settings && preservedSettings.timestamp) {
+          CacheManager.setSettingsWithTimestamp(preservedSettings.settings, preservedSettings.timestamp);
+          console.log('CacheManager: Settings cache restored after URL change');
+        }
       } else {
         console.log('CacheManager: Same URL tested, keeping cache intact');
       }

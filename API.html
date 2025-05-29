@@ -66,19 +66,51 @@ getTranslations: function(languageCode, successCallback, errorCallback, bustCach
 
 
 /**
- * Save all user settings to server-side storage
- * @param {Object} settings - Complete settings object
- * @param {function} successCallback - Called when successful
- * @param {function} errorCallback - Called when error occurs
+ * Enhanced getUserSettings - now returns timestamp
+ * @param {Function} successCallback - Called with {success, settings, timestamp}
+ * @param {Function} errorCallback - Called on error
+ * @param {boolean} forceRefresh - Whether to bypass cache
  */
-setUserSettings: function(settings, successCallback, errorCallback) {
+getUserSettings: function(successCallback, errorCallback, forceRefresh = false) {
   try {
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success) {
           successCallback(result);
         } else {
-          _lastError = result && result.error ? result.error : "Unknown error";
+          _lastError = result && result.error ? result.error : "Unknown error getting settings";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getUserSettings(!forceRefresh); // Pass useCache parameter
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
+},
+
+/**
+ * Enhanced setUserSettings - now updates cache with timestamp
+ * @param {Object} settings - Settings object to save
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+setUserSettings: function(settings, successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          // ENHANCED: Update cache with timestamp when save succeeds
+          if (result.timestamp && window.CacheManager) {
+            CacheManager.setSettingsWithTimestamp(settings, result.timestamp);
+          }
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error saving settings";
           errorCallback(_lastError);
         }
       })
@@ -87,33 +119,6 @@ setUserSettings: function(settings, successCallback, errorCallback) {
         errorCallback(error);
       })
       .setUserSettings(settings);
-  } catch (e) {
-    _lastError = e.message || String(e);
-    errorCallback(_lastError);
-  }
-},
-
-/**
- * Get all user settings from server-side storage
- * @param {function} successCallback - Called with settings object
- * @param {function} errorCallback - Called when error occurs
- */
-getUserSettings: function(successCallback, errorCallback) {
-  try {
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          successCallback(result);
-        } else {
-          _lastError = result && result.error ? result.error : "Unknown error";
-          errorCallback(_lastError);
-        }
-      })
-      .withFailureHandler(function(error) {
-        _lastError = error;
-        errorCallback(error);
-      })
-      .getUserSettings();
   } catch (e) {
     _lastError = e.message || String(e);
     errorCallback(_lastError);
@@ -887,6 +892,8 @@ updateCategoriesTimestamp: function(successCallback, errorCallback) {
     errorCallback(_lastError);
   }
 },
+
+
 
 
 
