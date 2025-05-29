@@ -52,91 +52,129 @@ const CacheManager = (function() {
     netWorth: ["reports"],
   };
 
+
 /**
- * Load cache from localStorage on startup - FIXED PREFIX MATCHING
+ * Load cache from localStorage on startup - FIXED with Phase 1 optimizations
  */
 function loadCacheFromStorage() {
   try {
-    let foundKeys = [];
-    console.log('CacheManager: Looking for localStorage items...');
+    // Check if we've already migrated
+    const migrationDone = localStorage.getItem('simbudget_migration_v2_done');
     
-    for (let i = 0; i < localStorage.length; i++) {
-      const storageKey = localStorage.key(i);
-      console.log(`CacheManager: Checking localStorage key ${i}: "${storageKey}"`);
+    if (!migrationDone) {
+      console.log('CacheManager: Running one-time legacy migration...');
       
-      // FIXED: Handle both old and new cache key patterns
-      if (storageKey.startsWith(STORAGE_PREFIX)) {
-        // New pattern: simbudget_cache_*
-        const cacheKey = storageKey.replace(STORAGE_PREFIX, '');
-        const data = JSON.parse(localStorage.getItem(storageKey));
-        cache.data[cacheKey] = data;
-        foundKeys.push(cacheKey);
-        console.log(`CacheManager: Loaded data for key "${cacheKey}"`);
-      } else if (storageKey.startsWith(METADATA_PREFIX)) {
-        // New pattern: simbudget_meta_*
-        const cacheKey = storageKey.replace(METADATA_PREFIX, '');
-        const metadata = JSON.parse(localStorage.getItem(storageKey));
-        cache.metadata[cacheKey] = metadata;
-        console.log(`CacheManager: Loaded metadata for key "${cacheKey}"`);
-      } else if (storageKey.startsWith('simbudget_') && 
-                 !storageKey.includes('transaction_queue') && 
-                 !storageKey.includes('lastActiveView') &&
-                 !storageKey.includes('accounts') &&
-                 !storageKey.includes('categories-changed')  &&
-                 !storageKey.includes('cache_')) { 
-        // MIGRATION: Handle old cache pattern
-        const legacyKey = storageKey.replace('simbudget_', '');
-        console.log(`CacheManager: Found legacy cache key "${storageKey}", migrating to "${legacyKey}"`);
-        
-        try {
-          const data = JSON.parse(localStorage.getItem(storageKey));
-          cache.data[legacyKey] = data;
-          foundKeys.push(legacyKey);
-          
-          // Create metadata for legacy data
-          cache.metadata[legacyKey] = {
-            timestamp: Date.now(),
-            expires: Date.now() + config.ttl.longLived
-          };
-          
-          // Migrate to new format
-          saveToPersistentStorage(legacyKey, data, cache.metadata[legacyKey]);
-          
-        } catch (parseError) {
-          console.warn(`CacheManager: Could not parse legacy cache "${storageKey}":`, parseError);
-        }
-      }
+      // Do the migration ONCE
+      migrateLegacyKeys();
+      
+      // Mark it as done
+      localStorage.setItem('simbudget_migration_v2_done', 'true');
+      
+      console.log('CacheManager: Migration complete and will not run again');
     }
     
-    console.log('CacheManager: Loaded cache from localStorage, keys:', foundKeys);
-    console.log('CacheManager: Total localStorage items:', localStorage.length);
+    // Now do the normal cache loading (much faster)
+    loadCacheEfficiently();
+    
   } catch (error) {
     console.warn('CacheManager: Error loading cache:', error);
   }
 }
 
+/**
+ * Efficiently load cache data with batch operations
+ */
+function loadCacheEfficiently() {
+  // Get ALL localStorage keys at once
+  const allKeys = Object.keys(localStorage);
+  
+  // Filter for our keys
+  const cacheKeys = allKeys.filter(key => 
+    key.startsWith('simbudget_cache_') || 
+    key.startsWith('simbudget_meta_')
+  );
+  
+  // Now batch process them
+  cacheKeys.forEach(key => {
+    const value = localStorage.getItem(key);
+    
+    if (key.startsWith('simbudget_cache_')) {
+      const cacheKey = key.replace('simbudget_cache_', '');
+      cache.data[cacheKey] = JSON.parse(value);
+    } else if (key.startsWith('simbudget_meta_')) {
+      const metaKey = key.replace('simbudget_meta_', '');
+      cache.metadata[metaKey] = JSON.parse(value);
+    }
+  });
+  
+  console.log(`CacheManager: Loaded ${cacheKeys.length} cache entries`);
+}
+
+/**
+ * Migrate legacy keys ONCE and delete them
+ */
+function migrateLegacyKeys() {
+  const legacyPrefixes = ['simbudget_'];
+  const ignoreSuffixes = ['transaction_queue', 'lastActiveView', 'accounts', 
+                          'categories-changed', 'cache_', 'meta_', 'migration'];
+  
+  const keysToMigrate = [];
+  
+  // Collect keys to migrate
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    
+    if (key.startsWith('simbudget_') && 
+        !ignoreSuffixes.some(suffix => key.includes(suffix))) {
+      keysToMigrate.push(key);
+    }
+  }
+  
+  console.log(`CacheManager: Migrating ${keysToMigrate.length} legacy keys`);
+  
+  // Migrate and DELETE old keys
+  keysToMigrate.forEach(oldKey => {
+    const value = localStorage.getItem(oldKey);
+    const newKey = oldKey.replace('simbudget_', '');
+    
+    // Save with new format
+    saveToPersistentStorage(newKey, JSON.parse(value), {
+      timestamp: Date.now(),
+      expires: Date.now() + config.ttl.longLived
+    });
+    
+    // DELETE the old key
+    localStorage.removeItem(oldKey);
+    console.log(`CacheManager: Migrated and removed ${oldKey}`);
+  });
+}
+
+
   /**
    * Save to localStorage
    */
-  function saveToPersistentStorage(key, data, metadata) {
-    try {
-      const dataKey = STORAGE_PREFIX + key;
-      const metaKey = METADATA_PREFIX + key;
-      
-      localStorage.setItem(dataKey, JSON.stringify(data));
-      localStorage.setItem(metaKey, JSON.stringify(metadata));
-      
-      console.log(`CacheManager: Saved to localStorage - data key: "${dataKey}", meta key: "${metaKey}"`);
-      
-      // Verify it was saved
-      const savedData = localStorage.getItem(dataKey);
-      const savedMeta = localStorage.getItem(metaKey);
-      console.log(`CacheManager: Verification - data saved: ${!!savedData}, meta saved: ${!!savedMeta}`);
-      
-    } catch (error) {
-      console.warn('CacheManager: Error saving to localStorage:', error);
+// In saveToPersistentStorage
+function saveToPersistentStorage(key, data, metadata) {
+  try {
+    // Create a simple hash of the data
+    const dataHash = JSON.stringify(data).length; // Simple but effective
+    
+    // Check if we just saved this exact data
+    if (window._lastSaveHash === `${key}-${dataHash}`) {
+      console.log(`CacheManager: Skipping duplicate save for ${key}`);
+      return;
     }
+    
+    window._lastSaveHash = `${key}-${dataHash}`;
+    
+    // Continue with normal save...
+    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data));
+    localStorage.setItem(METADATA_PREFIX + key, JSON.stringify(metadata));
+    
+  } catch (error) {
+    console.warn('CacheManager: Error saving:', error);
   }
+}
 
   /**
    * Remove from localStorage

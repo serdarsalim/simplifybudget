@@ -219,7 +219,14 @@ _fetchFromServer: function() {
  * Initialize the application - CLEAN VERSION: Settings load silently first
  */
 initialize: function() {
-  if (_initialized) return;
+  if (_initialized) {
+    console.warn('SimBudget: Already initialized, skipping');
+    return;
+  }
+  
+  console.log('SimBudget: Starting initialization');
+  _initialized = true; // Set this IMMEDIATELY
+  
 
   // STEP 1: Load settings IMMEDIATELY and SILENTLY (no spinner)
   this.loadSettingsSync();
