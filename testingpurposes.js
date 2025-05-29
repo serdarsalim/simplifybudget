@@ -55,7 +55,7 @@ function getCategoriesWithTimestamp() {
       // Parse category to extract name and emoji
       const parsed = parseCategoryNameAndEmoji(categoryString);
       
-      // Create category object (like UserProperties was doing)
+      // Create category object 
       const categoryObj = {
         id: parsed.name,
         name: parsed.name,

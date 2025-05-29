@@ -256,7 +256,7 @@ const CacheManager = (function() {
   // Dashboard
   function getDashboardData(month = currentMonth, year = currentYear) {
     // ✅ CLEAN: Just return cached dashboard data or null
-    // Let Init.html handle all the loading and calculation with fresh UserProperties data
+    // Let Init.html handle all the loading and calculation 
     return get(`dashboard_${year}-${month}`);
   }
   
@@ -298,7 +298,7 @@ const CacheManager = (function() {
    * Calculate dashboard data with optimized performance
    * UPDATED: Extracts subscriptions directly from expenses (no recurring parameter needed)
    * @param {Array} expenses - Expense data
-   * @param {Array} categories - Categories from UserProperties
+   * @param {Array} categories - Categories from cache with timestamp
    * @param {number} month - Month (0-11)
    * @param {number} year - Year
    */
@@ -638,7 +638,7 @@ const CacheManager = (function() {
     });
   }
 
-  // Categories (from UserProperties)
+  // Categories (from cache with timestamp)
   function getCategories() {
     return get('categories');
   }

@@ -1,11 +1,6 @@
 const userProps = PropertiesService.getUserProperties();
 
-/**
- * Translate a batch of strings to the target language
- * @param {Object} strings - Object with string keys to translate
- * @param {string} targetLanguage - Language code (e.g., 'es', 'fr')
- * @return {Object} Translated strings
- */
+
 /**
  * Translate a batch of strings to the target language
  * @param {Object} strings - Object with string keys to translate

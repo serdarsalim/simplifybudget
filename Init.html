@@ -744,7 +744,7 @@ if (fromView === 'budget' && toView === 'expense') {
               if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
                 MonthlyGrid.refresh();
               }
-            }, 100); // Reduced from 200ms since no UserProperties delay needed
+            }, 100); 
           }
           
           // Update quick expense dropdown regardless of current view
@@ -1558,7 +1558,6 @@ loadBudgetData: function(forceRefresh = false) {
     }
   };
   
-  // 1. Load categories immediately (fast from UserProperties)
   API.getCategoriesWithTimestamp(
     function(result) {
       categoriesData = (result && result.categories) ? result.categories : [];
