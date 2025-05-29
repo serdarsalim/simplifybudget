@@ -1,11 +1,11 @@
 
 <script>
 /**
- * CategoriesManager - UserProperties Architecture
+ * CategoriesManager - smart caching Architecture
  * Features:
  * - Preserves spreadsheet order
  * - Only fetches from spreadsheet on first load or manual refresh
- * - Toggles update UserProperties immediately
+ * - Toggles update immediately inshallah yani
  */
 
 var CategoriesManager = (function() {
@@ -32,7 +32,7 @@ var CategoriesManager = (function() {
   
   /**
    * Initialize the Categories Manager
-   * Checks UserProperties first, then spreadsheet if needed
+   * Checks cache first, at least it should, then spreadsheet if needed
    */
   function init() {
     console.log('CategoriesManager: Starting initialization...');
@@ -159,55 +159,7 @@ function useCachedCategories(cachedData) {
   hideLoadingIndicator();
 }
 
-  /**
-   * Load categories from spreadsheet
-   * @param {boolean} saveToUserProperties - Whether to save to UserProperties after loading
-   */
-  function loadCategoriesFromSpreadsheet(saveToUserProperties = false) {
-    console.log('CategoriesManager: Loading from spreadsheet...');
-    _isLoading = true;
-    
-    if (!window.API || typeof API.getCategories !== 'function') {
-      console.error('CategoriesManager: API.getCategories not available');
-      showError('API not available');
-      return;
-    }
-    
-    API.getCategories(
-      function(result) {
-        console.log('CategoriesManager: Spreadsheet result:', result);
-        
-        if (result && result.success && result.categories) {
-          // Process categories and preserve spreadsheet order
-          _categories = processCategories(result.categories, result.activeCategories || []);
-          
-          console.log('CategoriesManager: Processed', _categories.length, 'categories');
-          
-          // Save to UserProperties if requested
-          if (saveToUserProperties) {
-            saveCategoriestoUserProperties(_categories);
-          }
-          
-          // Render categories
-          renderCategories();
-          _initialized = true;
-          
-        } else {
-          console.error('CategoriesManager: Invalid spreadsheet response:', result);
-          showError(result ? result.error : 'Invalid response from spreadsheet');
-        }
-        
-        hideLoadingIndicator();
-        _isLoading = false;
-      },
-      function(error) {
-        console.error('CategoriesManager: Spreadsheet error:', error);
-        showError('Error loading from spreadsheet: ' + error);
-        hideLoadingIndicator();
-        _isLoading = false;
-      }
-    );
-  }
+ 
   
   /**
    * Process categories from spreadsheet data
@@ -247,51 +199,9 @@ function useCachedCategories(cachedData) {
     return processed;
   }
   
-  /**
-   * Parse category string to extract name and emoji
-   * @param {string} categoryString - Original category string
-   * @return {Object} {name, emoji}
-   */
-  function parseCategoryNameAndEmoji(categoryString) {
-    const parts = categoryString.trim().split(' ');
-    
-    if (parts.length >= 2) {
-      const lastPart = parts[parts.length - 1];
-      const emojiRegex = /[\u{1F600}-\u{1F6FF}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
-      
-      if (emojiRegex.test(lastPart)) {
-        const name = parts.slice(0, -1).join(' ');
-        const emoji = lastPart;
-        return { name, emoji };
-      }
-    }
-    
-    return { name: categoryString, emoji: '' };
-  }
+
   
-  /**
-   * Save categories to UserProperties
-   * @param {Array} categories - Categories to save
-   */
-  function saveCategoriestoUserProperties(categories) {
-    console.log('CategoriesManager: Saving to UserProperties...', categories.length, 'categories');
-    
-    if (!window.API || typeof API.saveCategoriestoUserProperties !== 'function') {
-      console.error('CategoriesManager: API.saveCategoriestoUserProperties not available');
-      return;
-    }
-    
-    API.saveCategoriestoUserProperties(
-      categories,
-      function(result) {
-        console.log('CategoriesManager: Saved to UserProperties successfully');
-      },
-      function(error) {
-        console.error('CategoriesManager: Error saving to UserProperties:', error);
-      }
-    );
-  }
-  
+
  
 
  /**
@@ -443,40 +353,35 @@ API.updateCategoryStatus(
 
 
   
-  /**
-   * Refresh categories from spreadsheet
-   * This is the ONLY way to get fresh data from spreadsheet
-   */
-  function refreshCategories() {
-    console.log('CategoriesManager: Manual refresh triggered');
-    
-    if (_isLoading || _isSaving) {
-      console.log('CategoriesManager: Already loading/saving, skipping refresh');
-      return;
-    }
-    
-    // Clear existing data
-    _categories = [];
-    _initialized = false;
-    
-    // Clear UserProperties first
-    if (window.API && typeof API.clearCategoriesFromUserProperties === 'function') {
-      API.clearCategoriesFromUserProperties(
-        function() {
-          console.log('CategoriesManager: UserProperties cleared, loading fresh from spreadsheet');
-          loadCategoriesFromSpreadsheet(true); // true = save to UserProperties after loading
-        },
-        function(error) {
-          console.error('CategoriesManager: Error clearing UserProperties:', error);
-          // Continue with refresh anyway
-          loadCategoriesFromSpreadsheet(true);
-        }
-      );
-    } else {
-      // If API not available, just load from spreadsheet
-      loadCategoriesFromSpreadsheet(true);
-    }
+/**
+ * Refresh categories from spreadsheet
+ * Forces fresh fetch bypassing cache and timestamp checks
+ */
+function refreshCategories() {
+  console.log('CategoriesManager: Manual refresh triggered');
+  
+  if (_isLoading || _isSaving) {
+    console.log('CategoriesManager: Already loading/saving, skipping refresh');
+    return;
   }
+  
+  // Clear existing data
+  _categories = [];
+  _initialized = false;
+  
+  // Clear CacheManager cache to force fresh fetch
+  if (window.CacheManager && typeof CacheManager.invalidate === 'function') {
+    console.log('CategoriesManager: Clearing CacheManager cache');
+    CacheManager.invalidate('categories_with_timestamp');
+  }
+  
+  // Show loading indicator
+  showLoadingIndicator();
+  
+  // Force fresh fetch from server (bypass timestamp checking)
+  console.log('CategoriesManager: Forcing fresh fetch from server');
+  fetchFreshCategories();
+}
   
   /**
    * Render categories to the UI
