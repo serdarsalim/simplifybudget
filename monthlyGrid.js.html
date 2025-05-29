@@ -1201,8 +1201,17 @@ if (refreshExpenses) {
     // Signal fresh data needed (from your index.html)
     window.FORCE_FRESH_DATA = true;
     
-    // Clear BOTH in-memory and localStorage cache
-    clearCache();
+    // Clear ONLY expense-related cache
+if (window.CacheManager) {
+  // Clear current month's expenses
+  CacheManager.invalidate(`expenses_${_currentYear}-${_currentMonth}`);
+  
+  // Clear master timestamp to force freshness check
+  CacheManager.invalidate('master_data_timestamp');
+  
+  // Clear any local MonthlyGrid cache
+  _transactions = [];
+}
     
     // Force a complete refresh
     refresh();

@@ -210,25 +210,17 @@
 }
 
 
-
-  document.addEventListener('DOMContentLoaded', function() {
-  const refreshBtn = document.getElementById('refreshExpenses');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', function() {
-      console.log('Manual refresh triggered');
-      
-      // Clear ALL cache
-      if (window.CacheManager) {
-        CacheManager.clear();
-      }
-      
-      // Force refresh
-      if (window.MonthlyGrid && typeof MonthlyGrid.refresh === 'function') {
-        MonthlyGrid.refresh();
-      }
-    });
-  }
-});
+// Clear ONLY expense cache for current month
+if (window.CacheManager) {
+  const currentMonth = window.MonthlyGrid?._currentMonth || new Date().getMonth();
+  const currentYear = window.MonthlyGrid?._currentYear || new Date().getFullYear();
+  
+  // Clear only expense data
+  CacheManager.invalidate(`expenses_${currentYear}-${currentMonth}`);
+  
+  // Also clear the master timestamp so it re-checks
+  CacheManager.invalidate('master_data_timestamp');
+}
 
 
 </script>
