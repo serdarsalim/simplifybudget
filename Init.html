@@ -1242,49 +1242,52 @@ document.addEventListener("click", function(e) {
         }
       },
 
-      /**
-       * Test connection to sheet
-       */
-      testConnection: function () {
-        const sheetUrl = document.getElementById("budgetSheetUrl").value;
-        if (!sheetUrl) {
-          Utils.showStatus(
-            "Please enter a spreadsheet URL",
-            true,
-            document.getElementById("connectionStatus")
-          );
-          return;
-        }
+ testConnection: function () {
+  const sheetUrl = document.getElementById("budgetSheetUrl").value;
+  if (!sheetUrl) {
+    Utils.showStatus(
+      "Please enter a spreadsheet URL",
+      true,
+      document.getElementById("connectionStatus")
+    );
+    return;
+  }
 
-        // Show loading state
-        Utils.showStatus(
-          "Testing connection...",
-          false,
-          document.getElementById("connectionStatus")
-        );
+  // Show loading state
+  Utils.showStatus(
+    "Testing connection...",
+    false,
+    document.getElementById("connectionStatus")
+  );
 
-        API.verifySheetUrl(
-          sheetUrl,
-          function (result) {
-            Utils.showStatus(
-              "Connection successful!",
-              false,
-              document.getElementById("connectionStatus"),
-              3000
-            );
+  API.verifySheetUrl(
+    sheetUrl,
+    function (result) {
+      Utils.showStatus(
+        "Connection successful!",
+        false,
+        document.getElementById("connectionStatus"),
+        3000
+      );
 
-            // Invalidate all caches when connection changes
-            CacheManager.invalidateAll();
-          },
-          function (error) {
-            Utils.showStatus(
-              "Connection failed: " + error,
-              true,
-              document.getElementById("connectionStatus")
-            );
-          }
-        );
-      },
+      // FIXED: Only clear cache if URL actually changed
+      if (window._lastTestedUrl !== sheetUrl) {
+        window._lastTestedUrl = sheetUrl;
+        CacheManager.invalidateAll();
+        console.log('CacheManager: Cache cleared due to spreadsheet URL change');
+      } else {
+        console.log('CacheManager: Same URL tested, keeping cache intact');
+      }
+    },
+    function (error) {
+      Utils.showStatus(
+        "Connection failed: " + error,
+        true,
+        document.getElementById("connectionStatus")
+      );
+    }
+  );
+},
 
 /**
  * Load data for a specific view with caching and preloading
@@ -1462,10 +1465,9 @@ renderViewFromCache: function (viewName) {
   }
 },
 
-  
 /**
- * Load budget data - CLEAN VERSION (settings loaded at startup)
- * UPDATED: Removed recurring API call - subscriptions extracted from expenses
+ * Load budget data - CLEAN VERSION with timestamp caching and no delays
+ * UPDATED: Uses CacheManager.loadBudgetDataWithTimestamp() and removes setTimeout delays
  */
 loadBudgetData: function(forceRefresh = false) {
   if (typeof _currentMonth === 'undefined') {
@@ -1477,8 +1479,8 @@ loadBudgetData: function(forceRefresh = false) {
   
   // Check cache ONLY if not forcing refresh
   if (!forceRefresh) {
-const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_currentMonth}`);
-  if (cachedData) {
+    const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_currentMonth}`);
+    if (cachedData) {
       SimBudget.renderBudgetDashboard(cachedData);
       CacheManager.set('budget', cachedData);
       _loadingView = null;
@@ -1508,7 +1510,7 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
     CacheManager.clearMonth(_currentMonth, _currentYear);
   }
   
-  // Load required data (REMOVED RECURRING - now extracted from expenses)
+  // Load required data - NO MORE TIMEOUTS!
   let expensesLoaded = false;
   let budgetLoaded = false;
   let categoriesLoaded = false;
@@ -1518,7 +1520,6 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
 
   const checkAndRender = () => {
     if (expensesLoaded && budgetLoaded && categoriesLoaded) {
-      
       try {
         // Store in cache
         if (expensesData) {
@@ -1528,7 +1529,7 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
           window.CacheManager.setBudgetData(budgetData);
         }
         
-        // UPDATED: Pass only expenses and categories (no recurring parameter)
+        // Calculate dashboard data
         const dashboardData = window.CacheManager.calculateDashboardData(
           expensesData || [], 
           categoriesData || [],
@@ -1539,8 +1540,6 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
         if (dashboardData) {
           SimBudget.renderBudgetDashboard(dashboardData);
           CacheManager.set(`dashboard_${_currentYear}-${_currentMonth}`, dashboardData);
-
-
         } else {
           console.error('FAILED to calculate dashboard data');
           const contentArea = document.getElementById("budgetContent");
@@ -1559,13 +1558,13 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
     }
   };
   
-  // Load categories immediately (from UserProperties - fast)
+  // 1. Load categories immediately (fast from UserProperties)
   API.getCategoriesWithTimestamp(
-  function(result) {
-    categoriesData = (result && result.categories) ? result.categories : [];
-    categoriesLoaded = true;
-    checkAndRender();
-  },
+    function(result) {
+      categoriesData = (result && result.categories) ? result.categories : [];
+      categoriesLoaded = true;
+      checkAndRender();
+    },
     function(error) {
       console.error('Categories error:', error);
       categoriesData = [];
@@ -1574,40 +1573,54 @@ const cachedData = window.CacheManager.get(`dashboard_${_currentYear}-${_current
     }
   );
   
-  // Stagger the server calls
-  setTimeout(() => {
-    API.getBudgetData(
-      function(result) {
-        budgetData = result.budgetData || {};
+  // 2. Load budget data using timestamp caching - NO TIMEOUT!
+  if (forceRefresh) {
+    // Force fresh data
+    CacheManager.fetchFreshBudgetData()
+      .then(data => {
+        budgetData = data || {};
         budgetLoaded = true;
         checkAndRender();
-      },
-      function(error) {
+      })
+      .catch(error => {
         console.error('Budget error:', error);
+        budgetData = {};
         budgetLoaded = true;
         checkAndRender();
-      },
-      forceRefresh
-    );
-  }, 400);
-  
-  setTimeout(() => {
-    API.getExpenseData(_currentMonth, _currentYear,
-      function(result) {
-        expensesData = result.expenses || [];
-        expensesLoaded = true;
+      });
+  } else {
+    // Use smart caching
+    CacheManager.loadBudgetDataWithTimestamp()
+      .then(data => {
+        budgetData = data || {};
+        budgetLoaded = true;
         checkAndRender();
-      },
-      function(error) {
-        console.error('Expenses error:', error);
-        expensesLoaded = true;
+      })
+      .catch(error => {
+        console.error('Budget error:', error);
+        budgetData = {};
+        budgetLoaded = true;
         checkAndRender();
-      }
-    );
-  }, 800);
+      });
+  }
   
-  // REMOVED: setTimeout for recurring API call - no longer needed!
+  // 3. Load expenses - NO TIMEOUT!
+  API.getExpenseData(_currentMonth, _currentYear,
+    function(result) {
+      expensesData = result.expenses || [];
+      expensesLoaded = true;
+      checkAndRender();
+    },
+    function(error) {
+      console.error('Expenses error:', error);
+      expensesData = [];
+      expensesLoaded = true;
+      checkAndRender();
+    }
+  );
 },
+  
+
 
 
       /**

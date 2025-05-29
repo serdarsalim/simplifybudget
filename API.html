@@ -771,28 +771,68 @@ clearRecurringRow: function(transactionId, successCallback, errorCallback) {
 },
 
 
-
-
-// to save budgeted amounts for categories in budgetdashboard
-
+/**
+ * Enhanced getBudgetData - now returns timestamp
+ * @param {Function} successCallback - Called with {success, budgetData, timestamp}
+ * @param {Function} errorCallback - Called on error
+ * @param {boolean} forceRefresh - Whether to bypass cache
+ */
 getBudgetData: function(successCallback, errorCallback, forceRefresh = false) {
-  google.script.run
-    .withSuccessHandler(successCallback)
-    .withFailureHandler(errorCallback)
-    .getBudgetData(!forceRefresh);
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error getting budget data";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .getBudgetData(!forceRefresh); // Pass useCache parameter
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
 },
 
+
+
+
+/**
+ * Enhanced saveBudgetData - now updates cache with timestamp
+ * @param {Object} budgetData - Budget data to save
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
 saveBudgetData: function(budgetData, successCallback, errorCallback) {
-  google.script.run
-    .withSuccessHandler(successCallback)
-    .withFailureHandler(errorCallback)
-    .saveBudgetData(budgetData);
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          // ENHANCED: Update cache with timestamp when save succeeds
+          if (result.timestamp && window.CacheManager) {
+            CacheManager.setBudgetDataWithTimestamp(budgetData, result.timestamp);
+          }
+          successCallback(result);
+        } else {
+          _lastError = result && result.error ? result.error : "Unknown error saving budget";
+          errorCallback(_lastError);
+        }
+      })
+      .withFailureHandler(function(error) {
+        _lastError = error;
+        errorCallback(error);
+      })
+      .saveBudgetData(budgetData);
+  } catch (e) {
+    _lastError = e.message || String(e);
+    errorCallback(_lastError);
+  }
 },
-
-
-
-
-
 
 /**
  * Get categories with timestamp from server

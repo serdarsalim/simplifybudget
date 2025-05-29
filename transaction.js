@@ -925,12 +925,60 @@ function getRecurringData() {
 }
 
 
-
+/**
+ * Enhanced saveBudgetData function with timestamp support
+ * Saves to Dontedit sheet, cell N86 with embedded timestamp
+ * @param {Object} budgetData - Complete budget data object
+ * @return {Object} Result with success status and timestamp
+ */
+function saveBudgetData(budgetData) {
+  try {
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
+    }
+    
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const sheet = ss.getSheetByName("Dontedit");
+    
+    if (!sheet) {
+      return { success: false, error: "Dontedit sheet not found" };
+    }
+    
+    // ENHANCED: Add timestamp and version to the budget data
+    const enhancedBudgetData = {
+      ...budgetData,
+      timestamp: new Date().toISOString(),
+      version: 1
+    };
+    
+    // Save to N86 (same cell as before, but with timestamp)
+    sheet.getRange("N86").setValue(JSON.stringify(enhancedBudgetData));
+    
+    // Update cache with enhanced data
+    props.setProperty("CACHED_BUDGET_DATA", JSON.stringify(enhancedBudgetData));
+    
+    // Clear dashboard cache since budget changed
+    props.deleteProperty("CACHED_DASHBOARD_DATA");
+    
+    // ENHANCED: Return the timestamp so client knows when data was saved
+    return { 
+      success: true, 
+      timestamp: enhancedBudgetData.timestamp 
+    };
+    
+  } catch (error) {
+    Logger.log("Error in saveBudgetData: " + error.toString());
+    return { success: false, error: error.toString() };
+  }
+}
 
 /**
- * Get budget data from JSON cell in Dontedit sheet
+ * Enhanced getBudgetData function with timestamp support
  * @param {boolean} useCache - Whether to use cached data
- * @return {Object} Budget data by month
+ * @return {Object} Budget data with timestamp
  */
 function getBudgetData(useCache = true) {
   try {
@@ -940,9 +988,11 @@ function getBudgetData(useCache = true) {
     if (useCache) {
       const cached = props.getProperty("CACHED_BUDGET_DATA");
       if (cached) {
+        const parsedData = JSON.parse(cached);
         return {
           success: true,
-          budgetData: JSON.parse(cached),
+          budgetData: parsedData,
+          timestamp: parsedData.timestamp, // Extract timestamp
           fromCache: true
         };
       }
@@ -964,12 +1014,20 @@ function getBudgetData(useCache = true) {
     const budgetCell = sheet.getRange("N86").getValue();
     
     if (!budgetCell) {
-  // Return empty object if no data yet
-  return { 
-    success: true, 
-    budgetData: {} // This might be the issue
-  };
-}
+      // Return empty object with current timestamp if no data yet
+      const emptyData = {
+        categories: [],
+        budgets: {},
+        timestamp: new Date().toISOString(),
+        version: 1
+      };
+      
+      return { 
+        success: true, 
+        budgetData: emptyData,
+        timestamp: emptyData.timestamp
+      };
+    }
     
     let budgetData;
     try {
@@ -978,54 +1036,26 @@ function getBudgetData(useCache = true) {
       return { success: false, error: "Invalid JSON in budget cell: " + e.toString() };
     }
     
+    // ENHANCED: If old data without timestamp, add one
+    if (!budgetData.timestamp) {
+      budgetData.timestamp = new Date().toISOString();
+      budgetData.version = 1;
+      
+      // Save back to spreadsheet with timestamp
+      sheet.getRange("N86").setValue(JSON.stringify(budgetData));
+    }
+    
     // Cache for next time
     props.setProperty("CACHED_BUDGET_DATA", JSON.stringify(budgetData));
     
     return {
       success: true,
-      budgetData: budgetData
+      budgetData: budgetData,
+      timestamp: budgetData.timestamp
     };
     
   } catch (error) {
     Logger.log("Error in getBudgetData: " + error.toString());
-    return { success: false, error: error.toString() };
-  }
-}
-
-/**
- * Save budget data to JSON cell
- * @param {Object} budgetData - Complete budget data object
- * @return {Object} Result
- */
-function saveBudgetData(budgetData) {
-  try {
-    const props = PropertiesService.getUserProperties();
-    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
-    
-    if (!spreadsheetId) {
-      return { success: false, error: "No spreadsheet ID found" };
-    }
-    
-    const ss = SpreadsheetApp.openById(spreadsheetId);
-    const sheet = ss.getSheetByName("Dontedit");
-    
-    if (!sheet) {
-      return { success: false, error: "Dontedit sheet not found" };
-    }
-    
-    // Save to N86
-    sheet.getRange("N86").setValue(JSON.stringify(budgetData));
-    
-    // Update cache
-    props.setProperty("CACHED_BUDGET_DATA", JSON.stringify(budgetData));
-    
-    // Clear dashboard cache since budget changed
-    props.deleteProperty("CACHED_DASHBOARD_DATA");
-    
-    return { success: true };
-    
-  } catch (error) {
-    Logger.log("Error in saveBudgetData: " + error.toString());
     return { success: false, error: error.toString() };
   }
 }

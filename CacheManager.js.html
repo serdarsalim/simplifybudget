@@ -61,22 +61,31 @@ const CacheManager = (function() {
    */
   function loadCacheFromStorage() {
     try {
+      let foundKeys = [];
+      console.log('CacheManager: Looking for localStorage items...');
+      
       for (let i = 0; i < localStorage.length; i++) {
         const storageKey = localStorage.key(i);
+        console.log(`CacheManager: Checking localStorage key ${i}: "${storageKey}"`);
         
         if (storageKey.startsWith(STORAGE_PREFIX)) {
           const cacheKey = storageKey.replace(STORAGE_PREFIX, '');
           const data = JSON.parse(localStorage.getItem(storageKey));
           cache.data[cacheKey] = data;
+          foundKeys.push(cacheKey);
+          console.log(`CacheManager: Loaded data for key "${cacheKey}"`);
         }
         
         if (storageKey.startsWith(METADATA_PREFIX)) {
           const cacheKey = storageKey.replace(METADATA_PREFIX, '');
           const metadata = JSON.parse(localStorage.getItem(storageKey));
           cache.metadata[cacheKey] = metadata;
+          console.log(`CacheManager: Loaded metadata for key "${cacheKey}"`);
         }
       }
-      console.log('CacheManager: Loaded cache from localStorage, keys:', Object.keys(cache.data));
+      
+      console.log('CacheManager: Loaded cache from localStorage, keys:', foundKeys);
+      console.log('CacheManager: Total localStorage items:', localStorage.length);
     } catch (error) {
       console.warn('CacheManager: Error loading cache:', error);
     }
@@ -87,8 +96,19 @@ const CacheManager = (function() {
    */
   function saveToPersistentStorage(key, data, metadata) {
     try {
-      localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data));
-      localStorage.setItem(METADATA_PREFIX + key, JSON.stringify(metadata));
+      const dataKey = STORAGE_PREFIX + key;
+      const metaKey = METADATA_PREFIX + key;
+      
+      localStorage.setItem(dataKey, JSON.stringify(data));
+      localStorage.setItem(metaKey, JSON.stringify(metadata));
+      
+      console.log(`CacheManager: Saved to localStorage - data key: "${dataKey}", meta key: "${metaKey}"`);
+      
+      // Verify it was saved
+      const savedData = localStorage.getItem(dataKey);
+      const savedMeta = localStorage.getItem(metaKey);
+      console.log(`CacheManager: Verification - data saved: ${!!savedData}, meta saved: ${!!savedMeta}`);
+      
     } catch (error) {
       console.warn('CacheManager: Error saving to localStorage:', error);
     }
@@ -99,8 +119,14 @@ const CacheManager = (function() {
    */
   function removeFromPersistentStorage(key) {
     try {
-      localStorage.removeItem(STORAGE_PREFIX + key);
-      localStorage.removeItem(METADATA_PREFIX + key);
+      const dataKey = STORAGE_PREFIX + key;
+      const metaKey = METADATA_PREFIX + key;
+      
+      console.log(`CacheManager: REMOVING from localStorage - data key: "${dataKey}", meta key: "${metaKey}"`);
+      console.trace('CacheManager: removeFromPersistentStorage called by:');
+      
+      localStorage.removeItem(dataKey);
+      localStorage.removeItem(metaKey);
     } catch (error) {
       console.warn('CacheManager: Error removing from localStorage:', error);
     }
@@ -681,6 +707,102 @@ const CacheManager = (function() {
         timestamp: timestamp,
         cached_at: Date.now()
       }, { ttl: config.ttl.longLived });
+    },
+
+    // Budget data with timestamp system (complete like categories)
+    getBudgetDataWithTimestamp: function() {
+      return get('budget_data_with_timestamp');
+    },
+
+    setBudgetDataWithTimestamp: function(budgetData, timestamp) {
+      set('budget_data_with_timestamp', {
+        budgetData: budgetData,
+        timestamp: timestamp,
+        cached_at: Date.now()
+      }, { ttl: config.ttl.longLived });
+      console.log(`CacheManager: Cached budget data with timestamp ${timestamp}`);
+    },
+
+    // Smart loading for budget data (like categories loadCategoriesWithTimestamp)
+    loadBudgetDataWithTimestamp: function() {
+      return new Promise((resolve, reject) => {
+        console.log('CacheManager: Loading budget data with timestamp checking...');
+        
+        // Check cache first
+        const cachedData = this.getBudgetDataWithTimestamp();
+        
+        if (cachedData && cachedData.budgetData && cachedData.timestamp) {
+          console.log('CacheManager: Found cached budget data, checking timestamp...');
+          
+          // Check if server has newer data
+          if (window.API && typeof API.getBudgetData === 'function') {
+            API.getBudgetData(
+              (result) => {
+                if (result && result.success) {
+                  const serverTimestamp = new Date(result.timestamp).getTime();
+                  const cachedTimestamp = new Date(cachedData.timestamp).getTime();
+                  
+                  console.log('CacheManager: Server timestamp:', result.timestamp);
+                  console.log('CacheManager: Cached timestamp:', cachedData.timestamp);
+                  
+                  if (serverTimestamp > cachedTimestamp) {
+                    console.log('CacheManager: Server data is newer, using fresh budget data...');
+                    this.setBudgetDataWithTimestamp(result.budgetData, result.timestamp);
+                    resolve(result.budgetData);
+                  } else {
+                    console.log('CacheManager: Cached budget data is current, using cache...');
+                    resolve(cachedData.budgetData);
+                  }
+                } else {
+                  console.error('CacheManager: Error checking budget timestamp, using cache anyway');
+                  resolve(cachedData.budgetData);
+                }
+              },
+              (error) => {
+                console.error('CacheManager: Error checking budget timestamp:', error);
+                resolve(cachedData.budgetData);
+              },
+              false // Don't force refresh, just get timestamp
+            );
+          } else {
+            console.log('CacheManager: API not available, using cached budget data');
+            resolve(cachedData.budgetData);
+          }
+        } else {
+          console.log('CacheManager: No cached budget data, fetching fresh...');
+          this.fetchFreshBudgetData().then(resolve).catch(reject);
+        }
+      });
+    },
+
+    // Fetch fresh budget data from server
+    fetchFreshBudgetData: function() {
+      return new Promise((resolve, reject) => {
+        if (window.API && typeof API.getBudgetData === 'function') {
+          API.getBudgetData(
+            (result) => {
+              if (result && result.success && result.budgetData) {
+                console.log('CacheManager: Fresh budget data loaded from server');
+                
+                // Cache the fresh data with timestamp
+                this.setBudgetDataWithTimestamp(result.budgetData, result.timestamp);
+                resolve(result.budgetData);
+              } else {
+                console.error('CacheManager: Invalid server response for budget data:', result);
+                reject(result ? result.error : 'Invalid response from server');
+              }
+            },
+            (error) => {
+              console.error('CacheManager: Server error loading budget data:', error);
+              reject('Error loading from server: ' + error);
+            },
+            true // Force fresh data
+          );
+        } else {
+          console.error('CacheManager: API.getBudgetData not available');
+          reject('API method not available');
+        }
+      });
     },
     
     // Update expense (for transaction updates)
