@@ -328,18 +328,19 @@ function calculateDashboardData(expenses, categories, month, year) {
   
   // Convert categories map to array and sort (using pre-computed order)
   const categoriesArray = Object.entries(categoriesMap).map(([key, catData]) => ({
-    ...catData,
-    sortOrder: categoryOrderMap.get(key) || 999
-  }));
+  ...catData,
+  sortOrder: categoryOrderMap.get(key) || 0  // Use 0 instead of 999 as fallback
+}));
+
+// Sort exactly like MonthlyGrid does - FIXED ordering
+categoriesArray.sort((a, b) => {
+  // Active categories first
+  if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
   
-  // Sort with typed comparisons for better performance
-  categoriesArray.sort((a, b) => {
-    // Active categories first
-    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-    
-    // Within same active state, sort by original order
-    return a.sortOrder - b.sortOrder;
-  });
+  // Within same active state, sort by original spreadsheet order
+  return (a.sortOrder || 0) - (b.sortOrder || 0);
+});
+
   
   // Build final dashboard data object
   const dashboardData = {
