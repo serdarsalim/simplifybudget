@@ -292,6 +292,15 @@ API.updateCategoryStatus(
         const newTimestamp = timestampResult.timestamp || new Date().toISOString();
         window.CacheManager.setCategoriesWithTimestamp(_categories, newTimestamp);
         console.log('CategoriesManager: Cache updated with timestamp:', newTimestamp);
+
+                // 🚀 ADD THIS: Broadcast to other tabs
+        console.log('CategoriesManager: Broadcasting category change to other tabs');
+        localStorage.setItem('simbudget-categories-changed', JSON.stringify({
+          timestamp: Date.now(),
+          categories: _categories,
+          changedCategory: category.name,
+          newActiveStatus: active
+        }));
         
       },
       function(timestampError) {

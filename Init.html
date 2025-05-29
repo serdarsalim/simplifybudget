@@ -753,6 +753,47 @@ if (fromView === 'budget' && toView === 'expense') {
           }
         });
 
+        // Cross-tab communication listener for category changes
+window.addEventListener('storage', function(e) {
+  if (e.key === 'simbudget-categories-changed' && e.newValue) {
+    try {
+      const data = JSON.parse(e.newValue);
+      console.log('Init: Received category change from another tab:', data);
+      
+      // Update CacheManager cache immediately
+      if (window.CacheManager && data.categories) {
+        const timestamp = new Date().toISOString();
+        CacheManager.setCategoriesWithTimestamp(data.categories, timestamp);
+      }
+      
+      // Update current view if it's categories
+      if (SimBudget.Views.getCurrent() === 'categories' && window.CategoriesManager) {
+        console.log('Init: Updating categories view from cross-tab change');
+        CategoriesManager.init(); // Refresh categories view
+      }
+      
+      // Update expense view if active
+      if (SimBudget.Views.getCurrent() === 'expense' && window.MonthlyGrid) {
+        console.log('Init: Updating expense grid from cross-tab change');
+        MonthlyGrid.refresh();
+      }
+      
+      // Update budget view if active
+      if (SimBudget.Views.getCurrent() === 'budget') {
+        console.log('Init: Updating budget view from cross-tab change');
+        // Force dashboard refresh without server call
+        const cachedData = CacheManager.getDashboardData();
+        if (cachedData) {
+          SimBudget.renderBudgetDashboard(cachedData);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Init: Error processing cross-tab category change:', error);
+    }
+  }
+});
+
 
       // DESKTOP sidebar toggle with reliable event delegation 
       document.addEventListener("click", function(e) {
