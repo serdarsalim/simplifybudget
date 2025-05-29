@@ -632,6 +632,19 @@ function setCategories(categories) {
     setSettings,
     getBudgetForMonth,
     calculateDashboardData,
+
+    // Add these to the return statement in CacheManager
+    getCategoriesWithTimestamp: function() {
+      return get('categories_with_timestamp');
+    },
+
+    setCategoriesWithTimestamp: function(categories, timestamp) {
+      set('categories_with_timestamp', {
+        categories: categories,
+        timestamp: timestamp,
+        cached_at: Date.now()
+      }, { ttl: config.ttl.longLived });
+    },
     
     // Update expense (for transaction updates)
     updateExpense: function(expense, month = currentMonth, year = currentYear) {

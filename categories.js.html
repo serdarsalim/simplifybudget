@@ -56,48 +56,110 @@ var CategoriesManager = (function() {
     // Show loading state
     showLoadingIndicator();
     
-    // STEP 1: Check UserProperties first
-    loadCategoriesFromUserProperties();
+    //  Check timestamp changes first
+    loadCategoriesWithTimestamp();
+
   }
   
-  /**
-   * Load categories from UserProperties
-   * If not found, fetch from spreadsheet
-   */
-  function loadCategoriesFromUserProperties() {
-    console.log('CategoriesManager: Checking UserProperties...');
+  
+/**
+ * Load categories using timestamp-based caching
+ */
+function loadCategoriesWithTimestamp() {
+  console.log('CategoriesManager: Loading categories with timestamp checking...');
+  
+  // Check CacheManager first
+  const cachedData = window.CacheManager.getCategoriesWithTimestamp();
+  
+  if (cachedData && cachedData.categories && cachedData.timestamp) {
+    console.log('CategoriesManager: Found cached categories, checking timestamp...');
     
-    if (!window.API || typeof API.getCategoriesFromUserProperties !== 'function') {
-      console.error('CategoriesManager: API.getCategoriesFromUserProperties not available');
-      showError('API not available');
-      return;
-    }
+    // We have cached data, now check if it's fresh
+    checkTimestampAndLoad(cachedData);
+  } else {
+    console.log('CategoriesManager: No cached categories, fetching fresh...');
     
-    API.getCategoriesFromUserProperties(
-      function(result) {
-        console.log('CategoriesManager: UserProperties result:', result);
+    // No cached data, fetch fresh from server
+    fetchFreshCategories();
+  }
+}
+
+/**
+ * Check if cached data is fresh by comparing timestamps
+ */
+function checkTimestampAndLoad(cachedData) {
+  API.getCategoriesWithTimestamp(
+    function(result) {
+      if (result && result.success) {
+        const serverTimestamp = new Date(result.timestamp).getTime();
+        const cachedTimestamp = new Date(cachedData.timestamp).getTime();
         
-        if (result && result.success && result.categories && result.categories.length > 0) {
-          // Found categories in UserProperties - use them
-          console.log('CategoriesManager: Using categories from UserProperties');
-          _categories = result.categories;
-          renderCategories();
-          _initialized = true;
-          hideLoadingIndicator();
+        console.log('CategoriesManager: Server timestamp:', result.timestamp);
+        console.log('CategoriesManager: Cached timestamp:', cachedData.timestamp);
+        
+        if (serverTimestamp > cachedTimestamp) {
+          console.log('CategoriesManager: Server data is newer, fetching fresh...');
+          fetchFreshCategories();
         } else {
-          // No categories in UserProperties - fetch from spreadsheet
-          console.log('CategoriesManager: No UserProperties found, fetching from spreadsheet');
-          loadCategoriesFromSpreadsheet(true); // true = save to UserProperties after loading
+          console.log('CategoriesManager: Cached data is current, using cache...');
+          useCachedCategories(cachedData);
         }
-      },
-      function(error) {
-        console.error('CategoriesManager: Error checking UserProperties:', error);
-        // Fallback to spreadsheet on error
-        loadCategoriesFromSpreadsheet(true);
+      } else {
+        console.error('CategoriesManager: Error checking timestamp, using cache anyway');
+        useCachedCategories(cachedData);
       }
-    );
-  }
-  
+    },
+    function(error) {
+      console.error('CategoriesManager: Error checking timestamp:', error);
+      useCachedCategories(cachedData);
+    }
+  );
+}
+
+/**
+ * Fetch fresh categories from server and cache them
+ */
+function fetchFreshCategories() {
+  API.getCategoriesWithTimestamp(
+    function(result) {
+      if (result && result.success && result.categories) {
+        console.log('CategoriesManager: Fresh categories loaded from server');
+        
+        // Process categories (reuse existing logic)
+        _categories = processCategories(result.categories, result.activeCategories || []);
+        
+        // Cache the fresh data
+        window.CacheManager.setCategoriesWithTimestamp(_categories, result.timestamp);
+        
+        // Render categories
+        renderCategories();
+        _initialized = true;
+        hideLoadingIndicator();
+        
+      } else {
+        console.error('CategoriesManager: Invalid server response:', result);
+        showError(result ? result.error : 'Invalid response from server');
+        hideLoadingIndicator();
+      }
+    },
+    function(error) {
+      console.error('CategoriesManager: Server error:', error);
+      showError('Error loading from server: ' + error);
+      hideLoadingIndicator();
+    }
+  );
+}
+
+/**
+ * Use cached categories without server call
+ */
+function useCachedCategories(cachedData) {
+  _categories = cachedData.categories;
+  renderCategories();
+  _initialized = true;
+  hideLoadingIndicator();
+}
+
   /**
    * Load categories from spreadsheet
    * @param {boolean} saveToUserProperties - Whether to save to UserProperties after loading
@@ -231,15 +293,17 @@ var CategoriesManager = (function() {
     );
   }
   
-  /**
-   * Toggle a category's active status
-   * Updates UserProperties immediately
-   * @param {number} index - Index of the category to toggle
-   * @param {boolean} active - New active status
-   * @param {Function} successCallback - Called on success
-   * @param {Function} errorCallback - Called on error
-   */
-  function toggleCategory(index, active, successCallback, errorCallback) {
+ 
+
+ /**
+ * Toggle a category's active status
+ * Updates spreadsheet, timestamp, and cache
+ * @param {number} index - Index of the category to toggle
+ * @param {boolean} active - New active status
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+function toggleCategory(index, active, successCallback, errorCallback) {
   console.log('CategoriesManager: Toggling category at index', index, 'to', active);
   
   if (_isSaving) {
@@ -254,89 +318,128 @@ var CategoriesManager = (function() {
     return;
   }
   
-  // Update local data
+  // DEBUG: Show category details
   const category = _categories[index];
+  console.log('CategoriesManager: Category details:', {
+    name: category.name,
+    fullName: category.fullName,
+    currentActive: category.active,
+    newActive: active
+  });
+  
   const oldActive = category.active;
   category.active = active;
   
   // Update UI immediately
   const card = document.querySelector(`.category-card[data-index="${index}"]`);
+  console.log('CategoriesManager: Found card element:', !!card);
   if (card) {
     if (active) {
       card.classList.add('active');
     } else {
       card.classList.remove('active');
     }
+    console.log('CategoriesManager: UI updated for card');
   }
   
   // Set saving flag
   _isSaving = true;
   
-  // Save to UserProperties
-  if (!window.API || typeof API.saveCategoriestoUserProperties !== 'function') {
-    console.error('CategoriesManager: API.saveCategoriestoUserProperties not available');
-    // Revert local change
+  // DEBUG: Check API availability
+  console.log('CategoriesManager: Checking API availability...');
+  console.log('CategoriesManager: window.API exists:', !!window.API);
+  console.log('CategoriesManager: updateCategoryStatus exists:', !!(window.API && typeof API.updateCategoryStatus === 'function'));
+  
+  if (!window.API || typeof API.updateCategoryStatus !== 'function') {
+    console.error('CategoriesManager: API.updateCategoryStatus not available');
     category.active = oldActive;
     _isSaving = false;
     if (errorCallback) errorCallback('API not available');
     return;
   }
   
-  API.saveCategoriestoUserProperties(
-    _categories,
-    function(result) {
-      console.log('CategoriesManager: Category toggle saved to UserProperties');
-      _isSaving = false;
-      
-      // Update QuickExpenseEntry dropdown
-      updateQuickExpenseDropdown();
-      
-      // ✅ IMMEDIATE NOTIFICATION - Don't wait!
-      if (window.notifyMonthlyGridOfCategoryChange) {
-        notifyMonthlyGridOfCategoryChange();
+  console.log('CategoriesManager: Calling API.updateCategoryStatus with:', category.name, active);
+  
+  console.log('CategoriesManager: Calling API.updateCategoryStatus with:', category.fullName, active);
+
+API.updateCategoryStatus(
+  category.fullName, // Make sure this is fullName not name
+  active,
+  function(result) {
+  console.log('CategoriesManager: SUCCESS CALLBACK FIRED - Result:', result);
+  console.log('CategoriesManager: Result type:', typeof result);
+  console.log('CategoriesManager: Result success:', result?.success);
+  
+  if (result && result.success) {
+    console.log('CategoriesManager: Category status updated in spreadsheet');
+    
+    // 🚀 Update server timestamp since categories changed
+    console.log('CategoriesManager: Updating categories timestamp...');
+    API.updateCategoriesTimestamp(
+      function(timestampResult) {
+        console.log('CategoriesManager: SUCCESS - Categories timestamp updated:', timestampResult);
+        
+        // Update CacheManager cache with new UTC timestamp
+        const newTimestamp = timestampResult.timestamp || new Date().toISOString();
+        window.CacheManager.setCategoriesWithTimestamp(_categories, newTimestamp);
+        console.log('CategoriesManager: Cache updated with timestamp:', newTimestamp);
+        
+      },
+      function(timestampError) {
+        console.warn('CategoriesManager: ERROR - Failed to update timestamp:', timestampError);
+        // Update cache with current UTC timestamp as fallback
+        const fallbackTimestamp = new Date().toISOString();
+        window.CacheManager.setCategoriesWithTimestamp(_categories, fallbackTimestamp);
+        console.log('CategoriesManager: Cache updated with fallback timestamp:', fallbackTimestamp);
       }
-      // ✅ ADD THIS - Direct dashboard notification
-if (window.notifyDashboardOfCategoryChange) {
-  notifyDashboardOfCategoryChange();
-}
-      // ✅ BROADCAST TO ALL COMPONENTS
-      document.dispatchEvent(new CustomEvent('categories-changed', {
-        detail: { 
-          changedCategory: category.name,
-          newActiveStatus: active,
-          allCategories: _categories
-        }
-      }));
-      
-      // Success callback
-      if (successCallback) successCallback(result);
-    },
-    function(error) {
-      console.error('CategoriesManager: Error saving toggle to UserProperties:', error);
-      
-      // Revert the change
-      category.active = oldActive;
-      
-      // Revert UI
-      if (card) {
-        if (oldActive) {
-          card.classList.add('active');
-        } else {
-          card.classList.remove('active');
-        }
-      }
-      
-      _isSaving = false;
-      
-      // Error callback
-      if (errorCallback) errorCallback(error);
+    );
+    
+    // Update QuickExpenseEntry dropdown
+    updateQuickExpenseDropdown();
+    
+    // Broadcast notifications
+    if (window.notifyMonthlyGridOfCategoryChange) {
+      notifyMonthlyGridOfCategoryChange();
     }
-  );
+    
+    if (window.notifyDashboardOfCategoryChange) {
+      notifyDashboardOfCategoryChange();
+    }
+    
+    document.dispatchEvent(new CustomEvent('categories-changed', {
+      detail: { 
+        changedCategory: category.name,
+        newActiveStatus: active,
+        allCategories: _categories
+      }
+    }));
+    
+  } else {
+    console.log('CategoriesManager: Server returned success=false:', result?.error);
+  }
+  
+  _isSaving = false;
+  if (successCallback) successCallback(result);
+},
+  function(error) {
+    console.log('CategoriesManager: ERROR CALLBACK FIRED - Error:', error);
+    console.log('CategoriesManager: Error type:', typeof error);
+    
+    // Revert changes
+    category.active = oldActive;
+    if (card) {
+      if (oldActive) {
+        card.classList.add('active');
+      } else {
+        card.classList.remove('active');
+      }
+    }
+    
+    _isSaving = false;
+    if (errorCallback) errorCallback(error);
+  }
+);
 }
-
-
-
-
 
 
 
