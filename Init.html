@@ -870,24 +870,25 @@ document.addEventListener("change", function(e) {
     }
   }
 });
-  // Refresh recurring button
   const refreshRecurringBtn = document.getElementById("refreshRecurring");
-  if (refreshRecurringBtn) {
-    refreshRecurringBtn.addEventListener("click", () => {
-      console.log("Manual refresh triggered for recurring");
-      
-      // Clear cache
-      CacheManager.invalidate("recurring");
-      
-      // Call RecurringManager's refresh method
-      if (window.RecurringManager && typeof RecurringManager.refresh === 'function') {
-        RecurringManager.refresh();
-      } else {
-        // Fallback: reload the view
-        this.loadViewData("recurring", true);
-      }
-    });
-  }
+if (refreshRecurringBtn) {
+  refreshRecurringBtn.addEventListener("click", () => {
+    console.log("Manual refresh triggered for recurring");
+    
+    // Clear cache
+    CacheManager.invalidate("recurring");
+    
+    // DON'T invalidate master_data_timestamp!
+    
+    // Call RecurringManager's refresh method
+    if (window.RecurringManager && typeof RecurringManager.refresh === 'function') {
+      RecurringManager.refresh();
+    } else {
+      // Fallback: reload the view with forceRefresh=true
+      this.loadViewData("recurring", true);  // true forces fresh fetch
+    }
+  });
+}
 
   // Refresh categories
   const refreshCategoriesBtn = document.getElementById("refreshCategories");
@@ -1061,13 +1062,23 @@ document.addEventListener("click", function(e) {
 
   // Set up view-specific buttons
   const refreshBudgetBtn = document.getElementById("refreshBudget");
-  if (refreshBudgetBtn) {
-    refreshBudgetBtn.addEventListener("click", () => {
-      // Only clear the view cache, NOT the data!
-      CacheManager.invalidate("budget");
-      this.loadViewData("budget", true);
-    });
-  }
+if (refreshBudgetBtn) {
+  refreshBudgetBtn.addEventListener("click", () => {
+    // Clear the dashboard cache for current month
+    const monthKey = `dashboard_${_currentYear}-${_currentMonth}`;
+    CacheManager.invalidate(monthKey);
+    
+    // Also clear the budget data cache
+    CacheManager.invalidate("budgetData");
+    CacheManager.invalidate("budget_data_with_timestamp");
+    
+    // Clear master timestamp to force fresh data
+    CacheManager.invalidate("master_data_timestamp");
+    
+    // Force reload
+    this.loadViewData("budget", true);
+  });
+}
 
   const refreshNetWorthBtn = document.getElementById("refreshNetWorth");
   if (refreshNetWorthBtn) {
