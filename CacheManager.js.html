@@ -1,13 +1,13 @@
 <script>
 /**
  * CacheManager - Unified caching system for SimBudget
- * Merges Init cache + CacheManager + Preloader into one predictable system
+ * ENHANCED with localStorage persistence to survive page reloads
  * 
  * Key principles:
- * 1. Simple TTLs (2 min for data, 30 min for settings)
+ * 1. Simple TTLs (30 days for most data)
  * 2. Aggressive invalidation on writes
  * 3. Background preloading for better UX
- * 4. No localStorage - just memory cache for simplicity
+ * 4. Persistent storage for cache survival across sessions
  */
 const CacheManager = (function() {
   // Cache storage
@@ -16,18 +16,21 @@ const CacheManager = (function() {
     metadata: {},
   };
   
+  // Storage keys for localStorage persistence
+  const STORAGE_PREFIX = 'simbudget_cache_';
+  const METADATA_PREFIX = 'simbudget_meta_';
+  
   // Configuration
-  // Configuration
-const config = {
-ttl: {
-  shortLived: 30 * 24 * 60 * 60 * 1000,    // 30 days for expenses
-  mediumLived: 30 * 24 * 60 * 60 * 1000,   // 30 days for budget data
-  longLived: 30 * 24 * 60 * 60 * 1000,     // 30 days for categories, settings
-  dashboard: 30 * 24 * 60 * 60 * 1000,     // 30 days for dashboard
-  },
-  preloadDelay: 1000,              // Wait 1 second before preloading
-  preloadInterval: 2000,           // 2 seconds between preloads
-};
+  const config = {
+    ttl: {
+      shortLived: 30 * 24 * 60 * 60 * 1000,    // 30 days for expenses
+      mediumLived: 30 * 24 * 60 * 60 * 1000,   // 30 days for budget data
+      longLived: 30 * 24 * 60 * 60 * 1000,     // 30 days for categories, settings
+      dashboard: 30 * 24 * 60 * 60 * 1000,     // 30 days for dashboard
+    },
+    preloadDelay: 1000,              // Wait 1 second before preloading
+    preloadInterval: 2000,           // 2 seconds between preloads
+  };
   
   // Track current month/year
   let currentMonth = new Date().getMonth();
@@ -40,15 +43,68 @@ ttl: {
     hasRunInSession: false,
   };
   
-  // Cache invalidation relationships (from Init)
+  // Cache invalidation relationships
   const relationships = {
     budget: ["reports", "dashboard"],
     expense: ["budget", "reports", "dashboard"],
     income: ["budget", "reports", "dashboard"],
     recurring: ["reports", "dashboard"],
     netWorth: ["reports"],
-  
   };
+
+  /**
+   * Persistence Helper Functions
+   */
+  
+  /**
+   * Load cache from localStorage on startup
+   */
+  function loadCacheFromStorage() {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const storageKey = localStorage.key(i);
+        
+        if (storageKey.startsWith(STORAGE_PREFIX)) {
+          const cacheKey = storageKey.replace(STORAGE_PREFIX, '');
+          const data = JSON.parse(localStorage.getItem(storageKey));
+          cache.data[cacheKey] = data;
+        }
+        
+        if (storageKey.startsWith(METADATA_PREFIX)) {
+          const cacheKey = storageKey.replace(METADATA_PREFIX, '');
+          const metadata = JSON.parse(localStorage.getItem(storageKey));
+          cache.metadata[cacheKey] = metadata;
+        }
+      }
+      console.log('CacheManager: Loaded cache from localStorage, keys:', Object.keys(cache.data));
+    } catch (error) {
+      console.warn('CacheManager: Error loading cache:', error);
+    }
+  }
+
+  /**
+   * Save to localStorage
+   */
+  function saveToPersistentStorage(key, data, metadata) {
+    try {
+      localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data));
+      localStorage.setItem(METADATA_PREFIX + key, JSON.stringify(metadata));
+    } catch (error) {
+      console.warn('CacheManager: Error saving to localStorage:', error);
+    }
+  }
+
+  /**
+   * Remove from localStorage
+   */
+  function removeFromPersistentStorage(key) {
+    try {
+      localStorage.removeItem(STORAGE_PREFIX + key);
+      localStorage.removeItem(METADATA_PREFIX + key);
+    } catch (error) {
+      console.warn('CacheManager: Error removing from localStorage:', error);
+    }
+  }
 
   /**
    * Core cache operations
@@ -56,47 +112,51 @@ ttl: {
   
   // Set data in cache
   function set(key, data, options = {}) {
-  // Handle special view keys
-  if (key === 'budget') {
-    key = `dashboard_${currentYear}-${currentMonth}`;
-  } else if (key === 'expense') {
-    key = `expenses_${currentYear}-${currentMonth}`;
+    // Handle special view keys
+    if (key === 'budget') {
+      key = `dashboard_${currentYear}-${currentMonth}`;
+    } else if (key === 'expense') {
+      key = `expenses_${currentYear}-${currentMonth}`;
+    }
+    
+    const ttl = options.ttl || config.ttl.shortLived;
+    const metadata = {
+      timestamp: Date.now(),
+      expires: Date.now() + ttl,
+    };
+    
+    cache.data[key] = data;
+    cache.metadata[key] = metadata;
+    
+    // ENHANCED: Save to localStorage for persistence
+    saveToPersistentStorage(key, data, metadata);
+    
+    return true;
   }
-  
-  const ttl = options.ttl || config.ttl.shortLived;
-  
-  cache.data[key] = data;
-  cache.metadata[key] = {
-    timestamp: Date.now(),
-    expires: Date.now() + ttl,
-  };
-  
-  return true;
-}
   
   // Get data from cache
- function get(key) {
-  // Handle special view keys
-  if (key === 'budget') {
-    key = `dashboard_${currentYear}-${currentMonth}`;
-  } else if (key === 'expense') {
-    key = `expenses_${currentYear}-${currentMonth}`;
+  function get(key) {
+    // Handle special view keys
+    if (key === 'budget') {
+      key = `dashboard_${currentYear}-${currentMonth}`;
+    } else if (key === 'expense') {
+      key = `expenses_${currentYear}-${currentMonth}`;
+    }
+    
+    const meta = cache.metadata[key];
+    
+    if (!meta || !cache.data[key]) {
+      return null;
+    }
+    
+    // Check if expired
+    if (Date.now() > meta.expires) {
+      invalidate(key);
+      return null;
+    }
+    
+    return cache.data[key];
   }
-  
-  const meta = cache.metadata[key];
-  
-  if (!meta || !cache.data[key]) {
-    return null;
-  }
-  
-  // Check if expired
-  if (Date.now() > meta.expires) {
-    invalidate(key);
-    return null;
-  }
-  
-  return cache.data[key];
-}
   
   // Check if cache is valid
   function isValid(key) {
@@ -107,6 +167,9 @@ ttl: {
   function invalidate(key) {
     delete cache.data[key];
     delete cache.metadata[key];
+    
+    // ENHANCED: Remove from localStorage
+    removeFromPersistentStorage(key);
     
     // Don't invalidate during rendering (from Init logic)
     if (window._isRendering) {
@@ -130,6 +193,8 @@ ttl: {
     Object.keys(cache.data).forEach(key => {
       delete cache.data[key];
       delete cache.metadata[key];
+      // ENHANCED: Remove from localStorage
+      removeFromPersistentStorage(key);
     });
   }
   
@@ -163,27 +228,22 @@ ttl: {
   }
   
   // Dashboard
-// Replace the getDashboardData function in CacheManager (around line 150)
-
-// Dashboard
-function getDashboardData(month = currentMonth, year = currentYear) {
-  // ✅ CLEAN: Just return cached dashboard data or null
-  // Let Init.html handle all the loading and calculation with fresh UserProperties data
-  return get(`dashboard_${year}-${month}`);
-}
+  function getDashboardData(month = currentMonth, year = currentYear) {
+    // ✅ CLEAN: Just return cached dashboard data or null
+    // Let Init.html handle all the loading and calculation with fresh UserProperties data
+    return get(`dashboard_${year}-${month}`);
+  }
   
   // Budget data
   function getBudgetData() {
     return get('budgetData');
   }
   
- function setBudgetData(data) {
-  set('budgetData', data, { ttl: config.ttl.mediumLived });
-  // REMOVED: Dashboard invalidation - let dashboard cache itself
-}
+  function setBudgetData(data) {
+    set('budgetData', data, { ttl: config.ttl.mediumLived });
+    // REMOVED: Dashboard invalidation - let dashboard cache itself
+  }
   
-
-
   // Recurring
   function getRecurring() {
     return get('recurring');
@@ -208,178 +268,176 @@ function getDashboardData(month = currentMonth, year = currentYear) {
     set('settings', settings, { ttl: config.ttl.longLived });
   }
 
-/**
- * Calculate dashboard data with optimized performance
- * UPDATED: Extracts subscriptions directly from expenses (no recurring parameter needed)
- * @param {Array} expenses - Expense data
- * @param {Array} categories - Categories from UserProperties
- * @param {number} month - Month (0-11)
- * @param {number} year - Year
- */
-function calculateDashboardData(expenses, categories, month, year) {
-  // Get budget data for this month
-  const monthlyBudget = getBudgetForMonth(month, year) || {};
-  
-  // Initialize summary with default values
-  const summary = { income: 0, spent: 0, leftToSpend: 0 };
-  
-  // Create fast lookup maps for categories (major performance boost)
-  const categoryKeyMap = new Map();
-  const categoryDisplayMap = new Map();
-  const categoryOrderMap = new Map();
-  
-  // Single pass through categories to build all maps at once
-  categories.forEach((cat, index) => {
-    const lowerName = cat.name.toLowerCase();
-    categoryKeyMap.set(lowerName, cat.name);
-    categoryDisplayMap.set(cat.name, cat.fullName || cat.name);
-    categoryOrderMap.set(cat.name, cat.order !== undefined ? cat.order : index);
+  /**
+   * Calculate dashboard data with optimized performance
+   * UPDATED: Extracts subscriptions directly from expenses (no recurring parameter needed)
+   * @param {Array} expenses - Expense data
+   * @param {Array} categories - Categories from UserProperties
+   * @param {number} month - Month (0-11)
+   * @param {number} year - Year
+   */
+  function calculateDashboardData(expenses, categories, month, year) {
+    // Get budget data for this month
+    const monthlyBudget = getBudgetForMonth(month, year) || {};
     
-    if (cat.fullName) {
-      categoryKeyMap.set(cat.fullName.toLowerCase(), cat.name);
+    // Initialize summary with default values
+    const summary = { income: 0, spent: 0, leftToSpend: 0 };
+    
+    // Create fast lookup maps for categories (major performance boost)
+    const categoryKeyMap = new Map();
+    const categoryDisplayMap = new Map();
+    const categoryOrderMap = new Map();
+    
+    // Single pass through categories to build all maps at once
+    categories.forEach((cat, index) => {
+      const lowerName = cat.name.toLowerCase();
+      categoryKeyMap.set(lowerName, cat.name);
+      categoryDisplayMap.set(cat.name, cat.fullName || cat.name);
+      categoryOrderMap.set(cat.name, cat.order !== undefined ? cat.order : index);
+      
+      if (cat.fullName) {
+        categoryKeyMap.set(cat.fullName.toLowerCase(), cat.name);
+      }
+    });
+    
+    // Initialize categories map with active categories
+    const categoriesMap = {};
+    const activeCategories = categories.filter(cat => cat.active);
+    
+    // Add all active categories with budgeted values
+    activeCategories.forEach(cat => {
+      const displayName = categoryDisplayMap.get(cat.name);
+      const budgetValue = monthlyBudget[displayName] || monthlyBudget[cat.name] || 0;
+      
+      categoriesMap[cat.name] = {
+        name: displayName,
+        budgeted: budgetValue,
+        actual: 0,
+        isActive: true
+      };
+    });
+    
+    // Single pass through expenses for both income and expense processing
+    if (expenses && expenses.length) {
+      for (let i = 0; i < expenses.length; i++) {
+        const expense = expenses[i];
+        if (!expense.category || !expense.amount) continue;
+        
+        const expenseCategoryName = expense.category;
+        const lowerCaseName = expenseCategoryName.toLowerCase();
+        
+        // Fast path - check if this is income
+        if (lowerCaseName === "income 💵" || 
+            lowerCaseName === "income" || 
+            lowerCaseName.includes("income")) {
+          summary.income += Math.abs(expense.amount);
+          continue; // Skip expense processing
+        }
+        
+        // Try to find matching category - fast lookup with Map
+        let matchedCategoryKey = null;
+        
+        // First try direct lookup from map (fastest)
+        const mappedKey = categoryKeyMap.get(lowerCaseName);
+        if (mappedKey && categoriesMap[mappedKey]) {
+          matchedCategoryKey = mappedKey;
+        } 
+        // Then try direct object lookup
+        else if (categoriesMap[expenseCategoryName]) {
+          matchedCategoryKey = expenseCategoryName;
+        }
+        
+        // If no match found, create inactive category
+        if (!matchedCategoryKey) {
+          // Find in full categories array with O(1) map lookup instead of O(n) find()
+          const categoryKey = categoryKeyMap.get(lowerCaseName);
+          
+          categoriesMap[expenseCategoryName] = {
+            name: categoryKey ? categoryDisplayMap.get(categoryKey) : expenseCategoryName,
+            budgeted: 0,
+            actual: 0,
+            isActive: false
+          };
+          
+          matchedCategoryKey = expenseCategoryName;
+        }
+        
+        // Add expense amount to category and summary
+        categoriesMap[matchedCategoryKey].actual += expense.amount;
+        summary.spent += expense.amount;
+      }
     }
-  });
-  
-  // Initialize categories map with active categories
-  const categoriesMap = {};
-  const activeCategories = categories.filter(cat => cat.active);
-  
-  // Add all active categories with budgeted values
-  activeCategories.forEach(cat => {
-    const displayName = categoryDisplayMap.get(cat.name);
-    const budgetValue = monthlyBudget[displayName] || monthlyBudget[cat.name] || 0;
     
-    categoriesMap[cat.name] = {
-      name: displayName,
-      budgeted: budgetValue,
-      actual: 0,
-      isActive: true
+    // UPDATED: Extract subscriptions directly from expenses (same logic as monthlyGrid)
+    const subscriptionsThisMonth = (expenses || []).filter(tx => {
+      return tx.label && (
+        tx.label.toLowerCase().includes('subscription') || 
+        tx.label.toLowerCase().includes('fixed payment')
+      );
+    }).map(tx => ({
+      name: tx.description || tx.name || 'Unnamed Subscription',
+      amount: Math.abs(tx.amount || 0),
+      frequency: 'Monthly', 
+      startDate: tx.date || new Date().toISOString().split('T')[0],
+      category: tx.category || 'Uncategorized',
+      id: tx.transactionId || tx.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+    }));
+    
+    // Calculate left to spend (never negative)
+    summary.leftToSpend = Math.max(0, summary.income - summary.spent);
+    
+    // Convert categories map to array and sort (using pre-computed order)
+    const categoriesArray = Object.entries(categoriesMap).map(([key, catData]) => ({
+      ...catData,
+      sortOrder: categoryOrderMap.get(key) || 0  // Use 0 instead of 999 as fallback
+    }));
+
+    // Sort exactly like MonthlyGrid does - FIXED ordering
+    categoriesArray.sort((a, b) => {
+      // Active categories first
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      
+      // Within same active state, sort by original spreadsheet order
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+    
+    // Build final dashboard data object
+    const dashboardData = {
+      summary: summary,
+      categories: categoriesArray,
+      header: {
+        month: new Date(year, month).toLocaleDateString('en-US', { month: 'long' }),
+        year: year
+      },
+      subscriptions: {
+        count: subscriptionsThisMonth.length,
+        total: subscriptionsThisMonth.reduce((sum, item) => sum + (item.amount || 0), 0),
+        items: subscriptionsThisMonth.slice(0, 10).map((item, index) => ({
+          id: index + 1,
+          name: item.name,
+          amount: item.amount,
+          nextDate: getNextPaymentDate(item, month, year)
+        }))
+      }
     };
-  });
-  
-  // Single pass through expenses for both income and expense processing
-  if (expenses && expenses.length) {
-    for (let i = 0; i < expenses.length; i++) {
-      const expense = expenses[i];
-      if (!expense.category || !expense.amount) continue;
-      
-      const expenseCategoryName = expense.category;
-      const lowerCaseName = expenseCategoryName.toLowerCase();
-      
-      // Fast path - check if this is income
-      if (lowerCaseName === "income 💵" || 
-          lowerCaseName === "income" || 
-          lowerCaseName.includes("income")) {
-        summary.income += Math.abs(expense.amount);
-        continue; // Skip expense processing
-      }
-      
-      // Try to find matching category - fast lookup with Map
-      let matchedCategoryKey = null;
-      
-      // First try direct lookup from map (fastest)
-      const mappedKey = categoryKeyMap.get(lowerCaseName);
-      if (mappedKey && categoriesMap[mappedKey]) {
-        matchedCategoryKey = mappedKey;
-      } 
-      // Then try direct object lookup
-      else if (categoriesMap[expenseCategoryName]) {
-        matchedCategoryKey = expenseCategoryName;
-      }
-      
-      // If no match found, create inactive category
-      if (!matchedCategoryKey) {
-        // Find in full categories array with O(1) map lookup instead of O(n) find()
-        const categoryKey = categoryKeyMap.get(lowerCaseName);
-        
-        categoriesMap[expenseCategoryName] = {
-          name: categoryKey ? categoryDisplayMap.get(categoryKey) : expenseCategoryName,
-          budgeted: 0,
-          actual: 0,
-          isActive: false
-        };
-        
-        matchedCategoryKey = expenseCategoryName;
-      }
-      
-      // Add expense amount to category and summary
-      categoriesMap[matchedCategoryKey].actual += expense.amount;
-      summary.spent += expense.amount;
-    }
+    
+    return dashboardData;
   }
-  
-  // UPDATED: Extract subscriptions directly from expenses (same logic as monthlyGrid)
-  const subscriptionsThisMonth = (expenses || []).filter(tx => {
-    return tx.label && (
-      tx.label.toLowerCase().includes('subscription') || 
-      tx.label.toLowerCase().includes('fixed payment')
-    );
-  }).map(tx => ({
-    name: tx.description || tx.name || 'Unnamed Subscription',
-    amount: Math.abs(tx.amount || 0),
-    frequency: 'Monthly', 
-    startDate: tx.date || new Date().toISOString().split('T')[0],
-    category: tx.category || 'Uncategorized',
-    id: tx.transactionId || tx.id || `sub-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
-  }));
-  
-  // Calculate left to spend (never negative)
-  summary.leftToSpend = Math.max(0, summary.income - summary.spent);
-  
-  // Convert categories map to array and sort (using pre-computed order)
-  const categoriesArray = Object.entries(categoriesMap).map(([key, catData]) => ({
-  ...catData,
-  sortOrder: categoryOrderMap.get(key) || 0  // Use 0 instead of 999 as fallback
-}));
 
-// Sort exactly like MonthlyGrid does - FIXED ordering
-categoriesArray.sort((a, b) => {
-  // Active categories first
-  if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-  
-  // Within same active state, sort by original spreadsheet order
-  return (a.sortOrder || 0) - (b.sortOrder || 0);
-});
-
-  
-  // Build final dashboard data object
-  const dashboardData = {
-    summary: summary,
-    categories: categoriesArray,
-    header: {
-      month: new Date(year, month).toLocaleDateString('en-US', { month: 'long' }),
-      year: year
-    },
-    subscriptions: {
-      count: subscriptionsThisMonth.length,
-      total: subscriptionsThisMonth.reduce((sum, item) => sum + (item.amount || 0), 0),
-      items: subscriptionsThisMonth.slice(0, 10).map((item, index) => ({
-        id: index + 1,
-        name: item.name,
-        amount: item.amount,
-        nextDate: getNextPaymentDate(item, month, year)
-      }))
+  // Simplified helper function for subscription next payment dates
+  function getNextPaymentDate(item, month, year) {
+    if (!item.startDate) return '';
+    
+    const start = new Date(item.startDate);
+    const frequency = (item.frequency || 'Monthly').toLowerCase();
+    
+    if (frequency.includes('monthly')) {
+      const nextDate = new Date(year, month, start.getDate());
+      return nextDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
     }
-  };
-  
-  return dashboardData;
-}
-
-// Simplified helper function for subscription next payment dates
-function getNextPaymentDate(item, month, year) {
-  if (!item.startDate) return '';
-  
-  const start = new Date(item.startDate);
-  const frequency = (item.frequency || 'Monthly').toLowerCase();
-  
-  if (frequency.includes('monthly')) {
-    const nextDate = new Date(year, month, start.getDate());
-    return nextDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    
+    return '';
   }
-  
-  return '';
-}
-
   
   // Helper functions for dashboard calculation
   function getBudgetForMonth(month = currentMonth, year = currentYear) {
@@ -400,23 +458,6 @@ function getNextPaymentDate(item, month, year) {
     return budgetObject;
   }
   
-
-
-
-  function getNextPaymentDate(item, month, year) {
-    if (!item.startDate) return '';
-    
-    const start = new Date(item.startDate);
-    const frequency = (item.frequency || 'Monthly').toLowerCase();
-    
-    if (frequency.includes('monthly')) {
-      const nextDate = new Date(year, month, start.getDate());
-      return nextDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-    }
-    
-    return '';
-  }
-  
   // Invalidate related data (from Init)
   function invalidateRelated(key) {
     if (window._isRendering) {
@@ -430,9 +471,6 @@ function getNextPaymentDate(item, month, year) {
       });
     }
   }
-
-
-  
 
   /**
    * Preloader functionality (from Init)
@@ -450,7 +488,6 @@ function getNextPaymentDate(item, month, year) {
     preloader.hasRunInSession = true;
     preloader.queue = ['budget', 'expense', 'income', 'recurring', 'netWorth']
       .filter(view => view !== excludeView);
-    
     
     preloader.isRunning = true;
     
@@ -473,7 +510,6 @@ function getNextPaymentDate(item, month, year) {
       return;
     }
     
-
     preloadView(viewName);
   }
   
@@ -576,16 +612,14 @@ function getNextPaymentDate(item, month, year) {
     });
   }
 
-// Add this function to CacheManager (around line 230, near other getter functions)
+  // Categories (from UserProperties)
+  function getCategories() {
+    return get('categories');
+  }
 
-// Categories (from UserProperties)
-function getCategories() {
-  return get('categories');
-}
-
-function setCategories(categories) {
-  set('categories', categories, { ttl: config.ttl.longLived });
-}
+  function setCategories(categories) {
+    set('categories', categories, { ttl: config.ttl.longLived });
+  }
 
   /**
    * Get cache statistics
@@ -607,6 +641,9 @@ function setCategories(categories) {
     return stats;
   }
 
+  // ENHANCED: Initialize cache from localStorage on startup
+  loadCacheFromStorage();
+
   /**
    * Public API
    */
@@ -626,7 +663,6 @@ function setCategories(categories) {
     getDashboardData,
     getBudgetData,
     setBudgetData,
-  
     getRecurring,
     setRecurring,
     getSettings,
@@ -634,7 +670,7 @@ function setCategories(categories) {
     getBudgetForMonth,
     calculateDashboardData,
 
-    // Add these to the return statement in CacheManager
+    // Categories with timestamp system
     getCategoriesWithTimestamp: function() {
       return get('categories_with_timestamp');
     },
@@ -675,7 +711,7 @@ function setCategories(categories) {
       currentYear = year;
     },
     
-    // Stats
+    // Stats and debugging
     getStats,
     
     // Check if all priority views are loaded (from Init)
@@ -685,7 +721,22 @@ function setCategories(categories) {
     },
     
     // For backwards compatibility
-    invalidateRelated
+    invalidateRelated,
+    
+    // ENHANCED: Debug methods for persistence
+    reloadFromStorage: function() {
+      loadCacheFromStorage();
+      console.log('CacheManager: Manually reloaded from localStorage');
+    },
+    
+    clearPersistentStorage: function() {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith(STORAGE_PREFIX) || key.startsWith(METADATA_PREFIX)) {
+          localStorage.removeItem(key);
+        }
+      });
+      console.log('CacheManager: Cleared all persistent storage');
+    }
   };
 })();
 
