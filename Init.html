@@ -892,41 +892,37 @@ if (refreshRecurringBtn) {
 
 
  // Refresh expenses button
-  const refreshExpensesBtn = document.getElementById("refreshExpenses");
-  if (refreshExpensesBtn) {
-    refreshExpensesBtn.addEventListener("click", () => {
-      console.log("Manual refresh triggered for expenses");
+// Refresh expenses button
+const refreshExpensesBtn = document.getElementById("refreshExpenses");
+if (refreshExpensesBtn) {
+  refreshExpensesBtn.addEventListener("click", () => {
+    console.log("Manual refresh triggered for expenses");
+    
+  
+    // Signal fresh data needed
+    window.FORCE_FRESH_DATA = true;
+    
+    // Clear expense-related cache
+    if (window.CacheManager) {
+      // Get current month/year from SimBudget's state
+      const currentMonth = this._currentMonth !== undefined ? 
+        this._currentMonth : new Date().getMonth();
+      const currentYear = this._currentYear !== undefined ? 
+        this._currentYear : new Date().getFullYear();
       
-      // Clear session tracking
-      sessionStorage.removeItem('monthlyGrid_sessionActive');
-      
-      // Signal fresh data needed
-      window.FORCE_FRESH_DATA = true;
-      
-      // Clear expense-related cache
-      if (window.CacheManager) {
-        // Get current month/year from SimBudget's state
-        const currentMonth = this._currentMonth !== undefined ? 
-          this._currentMonth : new Date().getMonth();
-        const currentYear = this._currentYear !== undefined ? 
-          this._currentYear : new Date().getFullYear();
-        
-        // Clear current month's expenses
-        CacheManager.invalidate(`expenses_${currentYear}-${currentMonth}`);
-        
-        // Clear master timestamp to force freshness check
-        CacheManager.invalidate('master_data_timestamp');
-      }
-      
-      // Clear MonthlyGrid's local cache if it exists
-      if (window.MonthlyGrid && MonthlyGrid._transactions) {
-        MonthlyGrid._transactions = [];
-      }
-      
-      // Force reload the expense view
-      this.loadViewData("expense", true); // true = force refresh
-    });
-  }
+      // Clear current month's expenses
+      CacheManager.invalidate(`expenses_${currentYear}-${currentMonth}`);
+    }
+    
+    // Clear MonthlyGrid's local cache if it exists
+    if (window.MonthlyGrid && MonthlyGrid._transactions) {
+      MonthlyGrid._transactions = [];
+    }
+    
+    // Force reload the expense view
+    this.loadViewData("expense", true); // true = force refresh
+  });
+}
 
   // Refresh categories
   const refreshCategoriesBtn = document.getElementById("refreshCategories");
