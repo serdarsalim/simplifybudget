@@ -1915,23 +1915,7 @@ loadBudgetData: function(forceRefresh = false) {
   },
 
   // ENHANCED: Clear cache and reload current view
-  refreshCurrentView: function() {
-    const currentView = this.Views.getCurrent();
-    console.log(`Refreshing current view: ${currentView}`);
-    
-    // Clear cache for current view and related views
-    CacheManager.invalidateRelated(currentView);
-    
-    // Stop any running preloader
-    _preloader.stop();
-    
-    // Reload current view with force refresh
-    this.loadViewData(currentView, true);
-  },
-  
-
-
-    loadExpenseData: function() {
+loadExpenseData: function() {
   // Prevent multiple simultaneous loads
   if (_isLoadingExpenseView) {
     console.log('Already loading expense view, skipping');
@@ -1944,39 +1928,33 @@ loadBudgetData: function(forceRefresh = false) {
   if (!contentArea) {
     console.error("Expense content area not found");
     _loadingView = null;
+    _isLoadingExpenseView = false;
     return;
   }
 
+  // ALWAYS create fresh container
   const containerId = "expense-grid-" + Date.now();
   contentArea.innerHTML = `
     <div id="${containerId}" class="monthly-grid-container" 
          style="width:100%; height:100%; position:relative; overflow:auto;">
     </div>
   `;
-
-
   
   if (window.MonthlyGrid) {
-    // TELL MonthlyGrid not to clear cache when coming from budget
-    if (SimBudget.Views.getCurrent() === 'budget') {
-      window._skipCacheClear = true;
-    }
+    // Initialize
     MonthlyGrid.init(containerId);
-
-     // CHECK CACHE FIRST - if we have data, use it!
-    const cachedExpenses = CacheManager.getExpenses(_currentMonth, _currentYear);
-    if (cachedExpenses && cachedExpenses.length > 0) {
-      console.log('Using cached expenses from CacheManager');
-      MonthlyGrid.setExpenseData(cachedExpenses);
-    }
     
-    // FORCE MonthlyGrid to use the app's current month/year
+    // THEN set the correct month/year
     if (typeof _currentMonth !== 'undefined' && typeof _currentYear !== 'undefined') {
-      MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
+      setTimeout(() => {
+        MonthlyGrid.setMonthYear(_currentMonth, _currentYear);
+        MonthlyGrid.refresh();
+      }, 100);
     }
   }
   
   _loadingView = null;
+  _isLoadingExpenseView = false;
 },
    
 
