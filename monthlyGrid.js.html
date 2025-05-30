@@ -2361,9 +2361,22 @@ function clearTransactionById(transactionId, skipRender) {
   
   // ALWAYS ALWAYS ALWAYS call API - REMOVE THE CHECK!
   API.clearTransactionRow(transactionId, function(result) {
-  }, function(error) {
-    console.error('Failed to clear transaction row:', error);
-  });
+  // ✅ SUCCESS: Update cache after server delete
+  if (window.CacheManager) {
+    // Remove from cache
+    const currentExpenses = CacheManager.getExpenses(_currentMonth, _currentYear) || [];
+    const updatedExpenses = currentExpenses.filter(e => 
+      e.id !== transactionId && 
+      e.transactionId !== transactionId &&
+      e.rowIndex !== transactionId
+    );
+    
+    CacheManager.setExpenses(updatedExpenses, _currentMonth, _currentYear);
+    console.log(`Cache updated: Removed transaction ${transactionId}, new count: ${updatedExpenses.length}`);
+  }
+}, function(error) {
+  console.error("Failed to clear transaction row:", error);
+});
   
   // Re-render unless specified not to
   if (!skipRender) {

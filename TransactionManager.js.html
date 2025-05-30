@@ -228,103 +228,133 @@ var TransactionManager = (function() {
   }
   
   /**
-   * Process a batch of transactions
-   */
-  function processBatch() {
-    if (_isProcessingBatch || _queue.length === 0) return;
-    
-    _isProcessingBatch = true;
-    _lastProcessTime = Date.now();
-    
-    // Take up to currentBatchSize transactions from the queue
-    const batchSize = Math.min(_state.currentBatchSize, _queue.length);
-    const batch = _queue.slice(0, batchSize);
-    
-    console.log(`TransactionManager: Processing batch of ${batch.length} transactions`);
-    
-    // Update status of transactions in batch
-    batch.forEach(tx => tx.status = 'saving');
-    
-    // Record start time for performance tracking
-    const startTime = Date.now();
-    
-    // Call the API to save the batch
-    saveTransactionBatch(batch)
-      .then(result => {
-        // Calculate response time
-        const responseTime = Date.now() - startTime;
-        
-        // Update performance metrics
-        _state.responseTimeHistory.push(responseTime);
-        if (_state.responseTimeHistory.length > 20) {
-          _state.responseTimeHistory.shift(); // Keep only last 20 records
-        }
-        _state.averageResponseTime = _state.responseTimeHistory.slice(-10).reduce((sum, time) => sum + time, 0) / 
-                                    Math.min(10, _state.responseTimeHistory.length);
-        
-        console.log(`TransactionManager: Batch saved successfully in ${responseTime}ms`);
-        
-        // Update success streak and reset error streak
-        _state.consecutiveSuccesses++;
-        _state.consecutiveErrors = 0;
-        
-        // Remove saved transactions from queue
-        _queue = _queue.filter(tx => {
-          const txInBatch = batch.some(batchTx => batchTx.id === tx.id);
-          return !txInBatch;
-        });
-        
-        // Update batch size for next run
-        adjustBatchSize();
-        
-        // Persist updated queue to storage
-        persistToStorage();
-        
-        // Dispatch success event for any components that need to know
+ * Process a batch of transactions
+ */
+function processBatch() {
+  if (_isProcessingBatch || _queue.length === 0) return;
+  
+  _isProcessingBatch = true;
+  _lastProcessTime = Date.now();
+  
+  // Take up to currentBatchSize transactions from the queue
+  const batchSize = Math.min(_state.currentBatchSize, _queue.length);
+  const batch = _queue.slice(0, batchSize);
+  
+  console.log(`TransactionManager: Processing batch of ${batch.length} transactions`);
+  
+  // Update status of transactions in batch
+  batch.forEach(tx => tx.status = 'saving');
+  
+  // Record start time for performance tracking
+  const startTime = Date.now();
+  
+  // Call the API to save the batch
+  saveTransactionBatch(batch)
+    .then(result => {
+      // Calculate response time
+      const responseTime = Date.now() - startTime;
       
-      })
-      .catch(error => {
-        console.error('TransactionManager: Error saving batch:', error);
-        
-        // Update error streak and reset success streak
-        _state.consecutiveErrors++;
-        _state.consecutiveSuccesses = 0;
-        
-        // Reduce batch size if we have consecutive errors
-        if (_state.consecutiveErrors > 1) {
-          _state.currentBatchSize = Math.max(_config.minBatchSize, Math.floor(_state.currentBatchSize / 2));
-          console.log(`TransactionManager: Reduced batch size to ${_state.currentBatchSize} due to errors`);
-        }
-        
-        // Handle retry logic for each transaction in the batch
-        batch.forEach(tx => {
-          tx.retryCount = (tx.retryCount || 0) + 1;
-          tx.lastError = error.toString();
-          tx.status = 'error';
-          
-          if (tx.retryCount < _config.maxRetries) {
-            // Keep in queue for retry, but with reduced priority (move to end)
-            _queue = _queue.filter(qTx => qTx.id !== tx.id);
-            _queue.push(tx);
-          } else {
-            // Max retries exceeded, move to failed queue
-            _queue = _queue.filter(qTx => qTx.id !== tx.id);
-            _failedQueue.push(tx);
-          }
-        });
-        
-        // Persist updated queues to storage
-        persistToStorage();
-        
-        // Dispatch error event
-        document.dispatchEvent(new CustomEvent('transaction-batch-error', {
-          detail: { transactions: batch, error: error }
-        }));
-      })
-      .finally(() => {
-        _isProcessingBatch = false;
+      // Update performance metrics
+      _state.responseTimeHistory.push(responseTime);
+      if (_state.responseTimeHistory.length > 20) {
+        _state.responseTimeHistory.shift(); // Keep only last 20 records
+      }
+      _state.averageResponseTime = _state.responseTimeHistory.slice(-10).reduce((sum, time) => sum + time, 0) / 
+                                  Math.min(10, _state.responseTimeHistory.length);
+      
+      console.log(`TransactionManager: Batch saved successfully in ${responseTime}ms`);
+      
+      // Update success streak and reset error streak
+      _state.consecutiveSuccesses++;
+      _state.consecutiveErrors = 0;
+      
+      // Remove saved transactions from queue
+      _queue = _queue.filter(tx => {
+        const txInBatch = batch.some(batchTx => batchTx.id === tx.id);
+        return !txInBatch;
       });
-  }
+      
+      // ✅ CRITICAL FIX: Update CacheManager regardless of current view
+      console.log('TransactionManager: Updating cache with saved transactions');
+      batch.forEach(tx => {
+        if (window.CacheManager) {
+          const txDate = new Date(tx.date);
+          const month = txDate.getMonth();
+          const year = txDate.getFullYear();
+          
+          // Transform to cache format
+          const cacheExpense = {
+            id: tx.id,
+            rowIndex: tx.id,
+            date: tx.date,
+            category: tx.category + (tx.emoji ? ` ${tx.emoji}` : ''),
+            amount: tx.amount,
+            name: tx.description || '',
+            description: tx.description || '',
+            account: tx.account || 'Main Account',
+            notes: tx.notes || '',
+            label: tx.label || '',
+            transactionId: tx.id
+          };
+          
+          // Update cache regardless of current view
+          CacheManager.updateExpense(cacheExpense, month, year);
+          console.log(`TransactionManager: Updated cache for ${tx.id} in ${year}-${month}`);
+        }
+      });
+      
+      // Update batch size for next run
+      adjustBatchSize();
+      
+      // Persist updated queue to storage
+      persistToStorage();
+      
+      // Dispatch success event for any components that need to know
+    
+    })
+    .catch(error => {
+      console.error('TransactionManager: Error saving batch:', error);
+      
+      // Update error streak and reset success streak
+      _state.consecutiveErrors++;
+      _state.consecutiveSuccesses = 0;
+      
+      // Reduce batch size if we have consecutive errors
+      if (_state.consecutiveErrors > 1) {
+        _state.currentBatchSize = Math.max(_config.minBatchSize, Math.floor(_state.currentBatchSize / 2));
+        console.log(`TransactionManager: Reduced batch size to ${_state.currentBatchSize} due to errors`);
+      }
+      
+      // Handle retry logic for each transaction in the batch
+      batch.forEach(tx => {
+        tx.retryCount = (tx.retryCount || 0) + 1;
+        tx.lastError = error.toString();
+        tx.status = 'error';
+        
+        if (tx.retryCount < _config.maxRetries) {
+          // Keep in queue for retry, but with reduced priority (move to end)
+          _queue = _queue.filter(qTx => qTx.id !== tx.id);
+          _queue.push(tx);
+        } else {
+          // Max retries exceeded, move to failed queue
+          _queue = _queue.filter(qTx => qTx.id !== tx.id);
+          _failedQueue.push(tx);
+        }
+      });
+      
+      // Persist updated queues to storage
+      persistToStorage();
+      
+      // Dispatch error event
+      document.dispatchEvent(new CustomEvent('transaction-batch-error', {
+        detail: { transactions: batch, error: error }
+      }));
+    })
+    .finally(() => {
+      _isProcessingBatch = false;
+    });
+}
+
   
   /**
    * Retry failed transactions
