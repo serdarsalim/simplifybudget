@@ -2010,104 +2010,73 @@ function setupTransactionItemEvents(item, tx) {
   // Add a modified flag to track changes
   item.setAttribute('data-modified', 'false');
   
-  // This function is called when a transaction is updated or added
-  // KEEP THIS FUNCTION - closeTransactionModal needs it!
-  function updateTransactionQueue() {
-    // Only queue transactions with valid amounts
-    if (parseFloat(amountInput.value) > 0) {
-      // Mark as modified
-      item.setAttribute('data-modified', 'true');
-      
-      // Get the category emoji
-      let categoryEmoji = '';
-      if (window.getCategoryEmoji) {
-        categoryEmoji = getCategoryEmoji(tx.category);
-      } else {
-        // Fallback: Try to find the category in the categories array
-        const category = _categories.find(c => c.id === tx.category);
-        if (category && category.emoji) {
-          categoryEmoji = category.emoji;
-        }
-      }
 
-      // Create transaction for queue
-      const transaction = {
-        id: tx.id,
-        date: tx.date,
-        amount: parseFloat(amountInput.value) || 0,
-        category: tx.category,
-        description: descriptionInput.value,
-        account: accountSelect ? accountSelect.value : 'Main Account',
-        notes: tx.notes || '',
-        emoji: categoryEmoji
-      };
-      
-      // Update the transaction in our local array
-      tx.amount = transaction.amount;
-      tx.description = transaction.description;
-      if (accountSelect) {
-        tx.account = transaction.account;
-      }
-      
-      // Add/update in TransactionManager's queue
-      if (window.TransactionManager) {
-        // Check if this transaction is already in the queue
-        const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
-        
-        if (existingTx) {
-          TransactionManager.updateTransaction(transaction);
-        } else {
-          TransactionManager.addTransaction(transaction);
-        }
-      }
-      
-      // Check if this transaction is already in our local array
-      const existingIndex = _transactions.findIndex(t => t.id === tx.id);
-      if (existingIndex === -1) {
-        // Add to local transactions array for immediate UI update
-        _transactions.push(tx);
-      } else {
-        // Update the existing transaction
-        _transactions[existingIndex] = tx;
-      }
-      
-      // Update cache using CacheManager
-      if (window.CacheManager) {
-        // First update the single expense
-        CacheManager.updateExpense({
-          id: tx.id,
-          rowIndex: tx.id,
-          date: tx.date,
-          category: tx.category,
-          amount: transaction.amount,
-          name: transaction.description,
-          description: transaction.description,
-          account: transaction.account,
-          notes: transaction.notes
-        }, _currentMonth, _currentYear);
-        
-        // CRITICAL FIX: Also update the entire collection to prevent data loss
-        const currentMonthExpenses = _transactions.filter(t => 
-          t.date && 
-          t.date.getMonth() === _currentMonth && 
-          t.date.getFullYear() === _currentYear
-        ).map(t => ({
-          id: t.id,
-          rowIndex: t.id,
-          date: t.date,
-          category: t.category,
-          amount: t.amount,
-          name: t.description,
-          description: t.description,
-          account: t.account || 'Main Account',
-          notes: t.notes || ''
-        }));
-        
-        // Set the complete collection
-        CacheManager.setExpenses(currentMonthExpenses, _currentMonth, _currentYear);
+/**
+ * Update transaction queue - FIXED: Single source of truth via TransactionManager
+ * Removes duplicate cache updates that caused race conditions
+ */
+function updateTransactionQueue() {
+  // Only queue transactions with valid amounts
+  if (parseFloat(amountInput.value) > 0) {
+    // Mark as modified
+    item.setAttribute('data-modified', 'true');
+    
+    // Get the category emoji
+    let categoryEmoji = '';
+    if (window.getCategoryEmoji) {
+      categoryEmoji = getCategoryEmoji(tx.category);
+    } else {
+      // Fallback: Try to find the category in the categories array
+      const category = _categories.find(c => c.id === tx.category);
+      if (category && category.emoji) {
+        categoryEmoji = category.emoji;
       }
     }
+
+    // Create transaction for queue
+    const transaction = {
+      id: tx.id,
+      date: tx.date,
+      amount: parseFloat(amountInput.value) || 0,
+      category: tx.category,
+      description: descriptionInput.value,
+      account: accountSelect ? accountSelect.value : 'Main Account',
+      notes: tx.notes || '',
+      emoji: categoryEmoji
+    };
+    
+    // ✅ ONLY update local UI state for immediate feedback
+    tx.amount = transaction.amount;
+    tx.description = transaction.description;
+    if (accountSelect) {
+      tx.account = transaction.account;
+    }
+    
+    // ✅ Update local _transactions array for immediate UI updates
+    const existingIndex = _transactions.findIndex(t => t.id === tx.id);
+    if (existingIndex === -1) {
+      // Add to local transactions array for immediate UI update
+      _transactions.push(tx);
+    } else {
+      // Update the existing transaction
+      _transactions[existingIndex] = tx;
+    }
+    
+    // ✅ ONLY use TransactionManager - let it handle all cache updates
+    if (window.TransactionManager) {
+      // Check if this transaction is already in the queue
+      const existingTx = TransactionManager.getQueue().find(qTx => qTx.id === transaction.id);
+      
+      if (existingTx) {
+        TransactionManager.updateTransaction(transaction);
+      } else {
+        TransactionManager.addTransaction(transaction);
+      }
+    }
+    
   }
+}
+
   
   // CRITICAL: Store the function reference so closeTransactionModal can call it
   item._updateTransactionQueue = updateTransactionQueue;
@@ -2361,18 +2330,8 @@ function clearTransactionById(transactionId, skipRender) {
   
   // ALWAYS ALWAYS ALWAYS call API - REMOVE THE CHECK!
   API.clearTransactionRow(transactionId, function(result) {
-  // ✅ SUCCESS: Update cache after server delete
   if (window.CacheManager) {
-    // Remove from cache
-    const currentExpenses = CacheManager.getExpenses(_currentMonth, _currentYear) || [];
-    const updatedExpenses = currentExpenses.filter(e => 
-      e.id !== transactionId && 
-      e.transactionId !== transactionId &&
-      e.rowIndex !== transactionId
-    );
-    
-    CacheManager.setExpenses(updatedExpenses, _currentMonth, _currentYear);
-    console.log(`Cache updated: Removed transaction ${transactionId}, new count: ${updatedExpenses.length}`);
+    CacheManager.removeExpense(transactionId, _currentMonth, _currentYear);
   }
 }, function(error) {
   console.error("Failed to clear transaction row:", error);

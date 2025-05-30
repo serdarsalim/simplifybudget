@@ -780,6 +780,29 @@ getMasterDataTimestamp: function() {
   return get('master_data_timestamp');
 },
 
+// Add this to CacheManager's return object
+removeExpense: function(transactionId, month = currentMonth, year = currentYear) {
+  const cacheKey = `expenses_${year}-${month}`;
+  let expenses = this.get(cacheKey) || [];
+  
+  const originalCount = expenses.length;
+  expenses = expenses.filter(e => 
+    e.id !== transactionId && 
+    e.transactionId !== transactionId &&
+    e.rowIndex !== transactionId
+  );
+  
+  if (expenses.length < originalCount) {
+    this.set(cacheKey, expenses);
+    this.invalidate(`dashboard_${year}-${month}`);
+    console.log(`CacheManager: Removed transaction ${transactionId}, count: ${originalCount} → ${expenses.length}`);
+    return true;
+  }
+  
+  console.warn(`CacheManager: Transaction ${transactionId} not found for removal`);
+  return false;
+},
+
 // Check if transaction data is stale
 isTransactionDataStale: function(callback) {
   const cachedTimestamp = this.getMasterDataTimestamp();
