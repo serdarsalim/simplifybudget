@@ -53,31 +53,12 @@ const CacheManager = (function() {
   };
 
 
-/**
- * Load cache from localStorage on startup - FIXED with Phase 1 optimizations
- */
+// Replace loadCacheFromStorage() with this simple version:
 function loadCacheFromStorage() {
   try {
-    // Check if we've already migrated
-    const migrationDone = localStorage.getItem('simbudget_migration_v2_done');
-    
-    if (!migrationDone) {
-      console.log('CacheManager: Running one-time legacy migration...');
-      
-      // Do the migration ONCE
-      migrateLegacyKeys();
-      
-      // Mark it as done
-      localStorage.setItem('simbudget_migration_v2_done', 'true');
-      
-      console.log('CacheManager: Migration complete and will not run again');
-    }
-    
-    // Now do the normal cache loading (much faster)
     loadCacheEfficiently();
-    
   } catch (error) {
-    console.warn('CacheManager: Error loading cache:', error);
+    console.log('CacheManager: Error loading cache:', error);
   }
 }
 
@@ -107,47 +88,9 @@ function loadCacheEfficiently() {
     }
   });
   
-  console.log(`CacheManager: Loaded ${cacheKeys.length} cache entries`);
 }
 
-/**
- * Migrate legacy keys ONCE and delete them
- */
-function migrateLegacyKeys() {
-  const legacyPrefixes = ['simbudget_'];
-  const ignoreSuffixes = ['transaction_queue', 'lastActiveView', 'accounts', 
-                          'categories-changed', 'cache_', 'meta_', 'migration'];
-  
-  const keysToMigrate = [];
-  
-  // Collect keys to migrate
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    
-    if (key.startsWith('simbudget_') && 
-        !ignoreSuffixes.some(suffix => key.includes(suffix))) {
-      keysToMigrate.push(key);
-    }
-  }
-  
-  console.log(`CacheManager: Migrating ${keysToMigrate.length} legacy keys`);
-  
-  // Migrate and DELETE old keys
-  keysToMigrate.forEach(oldKey => {
-    const value = localStorage.getItem(oldKey);
-    const newKey = oldKey.replace('simbudget_', '');
-    
-    // Save with new format
-    saveToPersistentStorage(newKey, JSON.parse(value), {
-      timestamp: Date.now(),
-      expires: Date.now() + config.ttl.longLived
-    });
-    
-    // DELETE the old key
-    localStorage.removeItem(oldKey);
-    console.log(`CacheManager: Migrated and removed ${oldKey}`);
-  });
-}
+
 
 
   /**
@@ -184,8 +127,6 @@ function saveToPersistentStorage(key, data, metadata) {
       const dataKey = STORAGE_PREFIX + key;
       const metaKey = METADATA_PREFIX + key;
       
-      console.log(`CacheManager: REMOVING from localStorage - data key: "${dataKey}", meta key: "${metaKey}"`);
-      console.trace('CacheManager: removeFromPersistentStorage called by:');
       
       localStorage.removeItem(dataKey);
       localStorage.removeItem(metaKey);
@@ -795,7 +736,6 @@ removeExpense: function(transactionId, month = currentMonth, year = currentYear)
   if (expenses.length < originalCount) {
     this.set(cacheKey, expenses);
     this.invalidate(`dashboard_${year}-${month}`);
-    console.log(`CacheManager: Removed transaction ${transactionId}, count: ${originalCount} → ${expenses.length}`);
     return true;
   }
   
