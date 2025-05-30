@@ -784,7 +784,11 @@ getMasterDataTimestamp: function() {
 isTransactionDataStale: function(callback) {
   const cachedTimestamp = this.getMasterDataTimestamp();
   
+  // LOG 1: Check if we even have a cached timestamp
+  console.log('CacheManager: Cached master timestamp:', cachedTimestamp);
+  
   if (!cachedTimestamp) {
+    console.log('CacheManager: No cached timestamp, returning stale');
     callback(true); // No timestamp = stale
     return;
   }
@@ -793,11 +797,19 @@ isTransactionDataStale: function(callback) {
   API.getMasterDataTimestamp(
     function(result) {
       if (result && result.timestamp) {
+        // LOG 2: Compare the timestamps
+        console.log('CacheManager: Comparing timestamps:');
+        console.log('  - Cached:', cachedTimestamp);
+        console.log('  - Server:', result.timestamp);
+        
         const serverTime = new Date(result.timestamp).getTime();
         const cachedTime = new Date(cachedTimestamp).getTime();
         
         const isStale = serverTime > cachedTime;
-        console.log(`CacheManager: Data ${isStale ? 'is stale' : 'is fresh'}`);
+        
+        // LOG 3: Show the decision
+        console.log(`CacheManager: Data ${isStale ? 'is stale' : 'is fresh'} (server: ${serverTime}, cached: ${cachedTime})`);
+        
         callback(isStale);
       } else {
         callback(true); // Error = assume stale

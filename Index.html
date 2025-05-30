@@ -210,17 +210,7 @@
 }
 
 
-// Clear ONLY expense cache for current month
-if (window.CacheManager) {
-  const currentMonth = window.MonthlyGrid?._currentMonth || new Date().getMonth();
-  const currentYear = window.MonthlyGrid?._currentYear || new Date().getFullYear();
-  
-  // Clear only expense data
-  CacheManager.invalidate(`expenses_${currentYear}-${currentMonth}`);
-  
-  // Also clear the master timestamp so it re-checks
-  CacheManager.invalidate('master_data_timestamp');
-}
+
 
 
 </script>
