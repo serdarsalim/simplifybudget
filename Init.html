@@ -1507,15 +1507,20 @@ loadCategoriesData: function () {
   }
 },
 
-   /**
+  /**
  * Render view using cached data
  * @param {string} viewName - Name of the view to render
  */
 renderViewFromCache: function (viewName) {
   console.log(`Rendering ${viewName} view from cache`);
   
+  // Views that don't use cache rendering (already loaded on init)
+  if (viewName === "settings") {
+    console.log('Settings already loaded during initialization');
+    return;
+  }
   
-  // Categories now use timestamp-based caching
+  // Categories use timestamp-based caching
   if (viewName === "categories") {
     console.log('Categories view: Using timestamp-based cache system');
     this.loadCategoriesData();
@@ -1538,16 +1543,16 @@ renderViewFromCache: function (viewName) {
       this.loadExpenseData();
       break;
     case "income":
-      this.loadIncomeData(); // Just load it - no special render yet
+      this.loadIncomeData();
       break;
     case "recurring":
-      this.loadRecurringData(); // Load with cache support
+      this.loadRecurringData();
       break;
     case "netWorth":
-      this.loadNetWorthData(); // Load placeholder
+      this.loadNetWorthData();
       break;
     case "reports":
-      this.loadReportsSheet(); // Load placeholder
+      this.loadReportsSheet();
       break;
     default:
       console.error(`Unknown view name for cache rendering: ${viewName}`);
