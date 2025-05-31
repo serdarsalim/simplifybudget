@@ -2138,18 +2138,34 @@ loadExpenseData: function() {
 // REPLACE these functions in SimBudget return object:
 
 /**
- * Load income data (stub with one-time preloader trigger)
+ * Load income data using the new IncomeManager
  */
 loadIncomeData: function() {
-  console.log("LoadIncomeData: Income view not implemented yet");
+  console.log("Loading income view...");
   
   const contentArea = document.getElementById("incomeContent");
-  if (contentArea) {
-    contentArea.innerHTML = '<div style="padding:40px;text-align:center;color:#666;"><h3>Income Management Coming Soon</h3></div>';
+  if (!contentArea) {
+    console.error("Income content area not found");
+    _loadingView = null;
+    return;
+  }
+
+  // Check cache first
+  const cachedData = CacheManager.get('income');
+  
+  if (cachedData && Array.isArray(cachedData) && cachedData.length > 0) {
+    console.log('Income: Using cached data');
+    if (window.IncomeManager && typeof IncomeManager.init === 'function') {
+      IncomeManager.init('incomeContent', cachedData);
+    }
+  } else {
+    console.log('Income: No cached data, loading fresh');
+    if (window.IncomeManager && typeof IncomeManager.init === 'function') {
+      IncomeManager.init('incomeContent', null);
+    }
   }
   
   _loadingView = null;
-  CacheManager.startPreloader('income');
 },
 
 

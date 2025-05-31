@@ -644,7 +644,6 @@ clearTransactionRow: function(transactionId, successCallback, errorCallback) {
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success) {
-          console.log("API: Clear transaction successful:", result);
           successCallback(result);
         } else {
           _lastError = result && result.error ? result.error : "Unknown error clearing transaction";
@@ -919,6 +918,115 @@ getMasterDataTimestamp: function(successCallback, errorCallback) {
   }
 },
 
+
+
+// ======== INCOME API FUNCTIONS ========
+
+/**
+ * Get income data from server
+ * @param {Function} successCallback - Called with { success, income, meta }
+ * @param {Function} errorCallback - Called on error
+ */
+getIncomeData: function(successCallback, errorCallback) {
+  try {
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          const err = result && result.error || 'Unknown error';
+          console.error('API.getIncomeData error:', err);
+          errorCallback(err);
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('API.getIncomeData failure:', error);
+        errorCallback(error);
+      })
+      .getIncomeData();
+  } catch (e) {
+    console.error('API.getIncomeData exception:', e);
+    errorCallback(e.toString());
+  }
+},
+
+/**
+ * Save batch income transactions
+ * @param {Array} income - Array of income transaction objects
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+saveBatchIncome: function(income, successCallback, errorCallback) {
+  try {
+    console.log('API: saveBatchIncome called with', income.length, 'items');
+    
+    if (!Array.isArray(income) || income.length === 0) {
+      const error = "Invalid income array";
+      console.error('API.saveBatchIncome:', error);
+      errorCallback(error);
+      return;
+    }
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        console.log('API: saveBatchIncome response:', result);
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          const err = result && result.error || 'Unknown error';
+          console.error('API.saveBatchIncome error:', err);
+          errorCallback(err);
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('API.saveBatchIncome failure:', error);
+        errorCallback(error);
+      })
+      .saveBatchIncome(income);
+  } catch (e) {
+    console.error('API.saveBatchIncome exception:', e);
+    errorCallback(e.toString());
+  }
+},
+
+/**
+ * Clear income transaction row
+ * @param {string} transactionId - Transaction ID to clear
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+clearIncomeRow: function(transactionId, successCallback, errorCallback) {
+  try {
+    console.log('API: clearIncomeRow called:', transactionId);
+    
+    if (!transactionId) {
+      const error = "Transaction ID is required";
+      console.error('API.clearIncomeRow:', error);
+      errorCallback(error);
+      return;
+    }
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        console.log('API: clearIncomeRow response:', result);
+        if (result && result.success) {
+          successCallback(result);
+        } else {
+          const err = result && result.error || 'Unknown error';
+          console.error('API.clearIncomeRow error:', err);
+          errorCallback(err);
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('API.clearIncomeRow failure:', error);
+        errorCallback(error);
+      })
+      .clearIncomeRow(transactionId);
+  } catch (e) {
+    console.error('API.clearIncomeRow exception:', e);
+    errorCallback(e.toString());
+  }
+},
 
 
     /**

@@ -1,18 +1,22 @@
-<!-- income.js.html -->
 <script>
-/**
- * IncomeManager - Income management component for SimBudget
- */
+// ============================================================================
+// CLIENT-SIDE INCOME MODULE - FULL IMPLEMENTATION
+// ============================================================================
+
 var IncomeManager = (function() {
   // Private variables
   let _initialized = false;
   let _incomeData = [];
+  let _currencySymbol = '$';
+  let _showDecimals = true;
+  let _language = 'en';
+  let _currentFilter = 'all';
   
   // DOM element cache
   const _elements = {};
   
   /**
-   * Get an element by ID with caching
+   * Get element with caching
    */
   function getElement(id) {
     if (!_elements[id]) {
@@ -20,549 +24,1280 @@ var IncomeManager = (function() {
     }
     return _elements[id];
   }
-  
+
   /**
-   * Initialize the Income Manager
+   * Load settings from SimBudget
    */
-  function init(containerId) {
-    if (_initialized && !containerId) {
-      return;
+  function loadSettings() {
+    console.log('IncomeManager: Loading settings...');
+    
+    if (window.SimBudget && SimBudget.Settings) {
+      _currencySymbol = SimBudget.Settings.getCurrencySymbol() || '$';
+      _showDecimals = SimBudget.Settings.showDecimals() !== false;
+      _language = SimBudget.Settings.getSetting('language') || 'en';
+      
+      console.log('IncomeManager: Settings loaded -', {
+        currency: _currencySymbol,
+        decimals: _showDecimals,
+        language: _language
+      });
+    }
+  }
+
+  /**
+   * Format currency with user settings
+   */
+  function formatCurrency(amount) {
+    if (window.Utils && typeof Utils.formatCurrency === 'function') {
+      return Utils.formatCurrency(amount);
     }
     
-    console.log('Initializing Income Manager...', containerId);
+    const decimals = _showDecimals ? 2 : 0;
+    return `${_currencySymbol}${amount.toFixed(decimals)}`;
+  }
+
+  /**
+   * Initialize the Income Manager
+   * @param {string} containerId - Container element ID
+   * @param {Array|null} cachedData - Optional cached data to use instead of loading
+   */
+  function init(containerId, cachedData) {
+    console.log('IncomeManager: init called');
     
-    // Find container element
+    // Clean up any unsaved new items when re-initializing (tab switch)
+    _incomeData = _incomeData.filter(item => !item.isNew);
+    
+    // Clear element cache when re-initializing
+    Object.keys(_elements).forEach(key => {
+      delete _elements[key];
+    });
+    
+    // Reset event binding flag
+    const oldContainer = document.getElementById('incomeContent');
+    if (oldContainer) {
+      oldContainer.dataset.eventsbound = 'false';
+    }
+    
+    // Load user settings
+    loadSettings();
+    
+    // Find container
     const container = containerId ? 
       document.getElementById(containerId) : 
       getElement('incomeContent');
     
     if (!container) {
-      console.error('Income container not found');
+      console.error('IncomeManager: Container not found');
       return;
     }
     
-    // Store container in elements cache
     _elements['incomeContent'] = container;
     
-    // Load sample data for immediate display
-    loadSampleData();
     
-    // Render the income view
-    renderIncomeView();
-    
-    // Set up event handlers
-    bindEvents();
+    // Check if we already have data loaded
+    if (_initialized && _incomeData.length > 0 && !cachedData) {
+      console.log('IncomeManager: Using existing loaded data');
+      renderIncomeView();
+      bindEvents();
+      
+      // Set all filter as default
+      setTimeout(() => {
+        const allBtn = document.querySelector('.inc-filter-btn[data-status="all"]');
+        if (allBtn) {
+          allBtn.click();
+        }
+      }, 100);
+      
+    } else if (cachedData && Array.isArray(cachedData)) {
+      console.log('IncomeManager: Using provided cached data');
+      _incomeData = processIncomeData(cachedData);
+      renderIncomeView();
+      bindEvents();
+      
+      // Set all filter as default
+      setTimeout(() => {
+        const allBtn = document.querySelector('.inc-filter-btn[data-status="all"]');
+        if (allBtn) {
+          allBtn.click();
+        }
+      }, 100);
+      
+      // Load fresh data in background after a delay
+      setTimeout(() => {
+        loadRealIncomeData(true); // true = background refresh
+      }, 2000);
+      
+    } else if (!_initialized || _incomeData.length === 0) {
+      console.log('IncomeManager: Loading fresh data');
+      // No data yet, load fresh
+      loadRealIncomeData();
+    }
     
     _initialized = true;
-    console.log('Income Manager initialized');
   }
-  
+
+
+
   /**
-   * Load sample data for initial display
+   * Load real income data from API
    */
-  function loadSampleData() {
-    const incomeSources = [
-      'Salary', 'Freelance', 'Capital Gains', 'Savings Withdrawal', 
-      'Gift', 'Refund', 'Dividend', 'Rental Income', 'Other'
-    ];
+  function loadRealIncomeData(isBackgroundRefresh = false) {
+    console.log('IncomeManager: Loading data...');
     
-    const today = new Date();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(today.getMonth() - 6);
+    if (!isBackgroundRefresh) {
+      showLoadingState();
+    }
     
-    const accounts = ['Revolut', 'Checking', 'Savings', 'Investment'];
+    if (!window.API || typeof API.getIncomeData !== 'function') {
+      console.error('IncomeManager: API.getIncomeData not available');
+      if (!isBackgroundRefresh) {
+        showErrorState('API not available');
+      }
+      return;
+    }
+
+    API.getIncomeData(
+      function(result) {
+        if (result && result.success && Array.isArray(result.income)) {
+          _incomeData = processIncomeData(result.income);
+          
+          // Cache the data in CacheManager
+          if (window.CacheManager && typeof CacheManager.set === 'function') {
+            CacheManager.set('income', result.income);
+          }
+          
+          if (!isBackgroundRefresh) {
+            renderIncomeView();
+            bindEvents();
+            
+            // Set all filter as default
+            setTimeout(() => {
+              const allBtn = document.querySelector('.inc-filter-btn[data-status="all"]');
+              if (allBtn) {
+                allBtn.click();
+              }
+            }, 100);
+          } else {
+            updateSummaryCards();
+            updateIncomeTable();
+          }
+          
+          console.log('IncomeManager: Data loaded successfully');
+        } else {
+          console.warn('IncomeManager: Invalid API response');
+          if (!isBackgroundRefresh) {
+            showErrorState(result?.error || 'No income data received');
+          }
+        }
+      },
+      function(error) {
+        console.error('IncomeManager: API error:', error);
+        if (!isBackgroundRefresh) {
+          showErrorState('Failed to load data: ' + error);
+        }
+      }
+    );
+  }
+
+  /**
+   * Process raw income data from API
+   */
+  function processIncomeData(rawData) {
+    if (!rawData || !Array.isArray(rawData)) {
+      return [];
+    }
     
-    // Generate sample transactions
-    _incomeData = [];
-    for (let i = 0; i < 12; i++) {
-      const date = new Date(
-        sixMonthsAgo.getTime() + Math.random() * (today.getTime() - sixMonthsAgo.getTime())
-      );
+    return rawData.map(item => {
+      const incomeDate = item.date ? new Date(item.date) : new Date();
       
-      const sourceIndex = Math.floor(Math.random() * incomeSources.length);
-      const accountIndex = Math.floor(Math.random() * accounts.length);
-      const amount = Math.floor(Math.random() * 4500) + 500;
-      
-      _incomeData.push({
-        id: `income-${i}-${Date.now()}`,
-        date: date,
-        amount: amount,
-        name: `${incomeSources[sourceIndex]} ${i+1}`,
-        account: accounts[accountIndex],
-        source: incomeSources[sourceIndex],
-        notes: `Sample income entry ${i+1}`
-      });
-    }
-    
-    // Sort by date (newest first)
-    _incomeData.sort((a, b) => b.date - a.date);
+      return {
+          id: item.id || item.transactionId || `INC-${Date.now()}`,
+          rowIndex: item.rowIndex,
+          date: incomeDate,
+          name: item.name || item.description || '',
+          category: 'Income 💵', // Always default to this
+          amount: parseFloat(item.amount) || 0,
+          account: item.account || '',
+          notes: item.notes || '',
+          source: item.source || 'Other'
+};
+    });
   }
-  
+
   /**
-   * Bind event handlers
+   * Calculate summary metrics
    */
-  function bindEvents() {
-    // Add income form submission
-    const addIncomeForm = getElement('addIncomeForm');
-    if (addIncomeForm) {
-      addIncomeForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        addIncomeEntry();
-      });
-    }
-    
-    // Show more button
-    const showMoreBtn = getElement('showMoreIncomeBtn');
-    if (showMoreBtn) {
-      showMoreBtn.addEventListener('click', function() {
-        showMoreIncomeEntries();
-      });
-    }
-    
-    // Set date to today
-    const dateInput = getElement('incomeDate');
-    if (dateInput) {
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
-      dateInput.value = `${year}-${month}-${day}`;
-    }
-  }
-  
-  /**
-   * Add a new income entry from form data
-   */
-  function addIncomeEntry() {
-    const dateInput = getElement('incomeDate');
-    const amountInput = getElement('incomeAmount');
-    const nameInput = getElement('incomeName');
-    const accountSelect = getElement('incomeAccount');
-    const sourceSelect = getElement('incomeSource');
-    const notesInput = getElement('incomeNotes');
-    
-    // Basic validation
-    if (!dateInput || !amountInput || !nameInput || !accountSelect || !sourceSelect) {
-      console.error('Form inputs missing');
-      return;
-    }
-    
-    const date = new Date(dateInput.value);
-    const amount = parseFloat(amountInput.value);
-    const name = nameInput.value.trim();
-    const account = accountSelect.value;
-    const source = sourceSelect.value;
-    const notes = notesInput ? notesInput.value.trim() : '';
-    
-    // Validate required fields
-    if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount');
-      amountInput.focus();
-      return;
-    }
-    
-    if (name === '') {
-      alert('Please enter a name');
-      nameInput.focus();
-      return;
-    }
-    
-    // Create new income entry
-    const newEntry = {
-      id: `income-new-${Date.now()}`,
-      date: date,
-      amount: amount,
-      name: name,
-      account: account,
-      source: source,
-      notes: notes
-    };
-    
-    // Add to local data
-    _incomeData.unshift(newEntry); // Add to beginning of array
-    
-    // Reset form
-    amountInput.value = '';
-    nameInput.value = '';
-    notesInput.value = '';
-    
-    // Re-render
-    renderIncomeView();
-    
-    // Show success message
-    showMessage('Income entry added successfully', 'success');
-  }
-  
-  /**
-   * Show more income entries
-   */
-  function showMoreIncomeEntries() {
-    const incomeTable = getElement('incomeTable');
-    const tbody = incomeTable.querySelector('tbody');
-    
-    // Get current number of visible entries
-    const visibleEntries = tbody.querySelectorAll('tr').length;
-    
-    // Show 10 more entries
-    const entriesToShow = Math.min(visibleEntries + 10, _incomeData.length);
-    
-    // Re-render the table with more entries
-    renderIncomeTable(entriesToShow);
-    
-    // Hide show more button if all entries are displayed
-    if (entriesToShow >= _incomeData.length) {
-      getElement('showMoreIncomeBtn').style.display = 'none';
-    }
-  }
-  
-  /**
-   * Show a status message
-   */
-  function showMessage(message, type = 'info') {
-    const messageContainer = getElement('incomeMessage');
-    if (!messageContainer) return;
-    
-    // Set message content and type
-    messageContainer.textContent = message;
-    messageContainer.className = `inc-message inc-${type}-message`;
-    
-    // Show the message
-    messageContainer.style.display = 'block';
-    
-    // Hide after delay
-    setTimeout(() => {
-      messageContainer.style.display = 'none';
-    }, 3000);
-  }
-  
-  /**
-   * Calculate income summary statistics
-   */
-  function calculateIncomeSummary() {
+  function calculateSummaryMetrics() {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
     // Filter for current year
-    const currentYearIncome = _incomeData.filter(entry => 
-      entry.date.getFullYear() === currentYear
+    const currentYearIncome = _incomeData.filter(item => 
+      item.date.getFullYear() === currentYear
     );
     
     // Filter for current month
-    const currentMonthIncome = currentYearIncome.filter(entry => 
-      entry.date.getMonth() === currentMonth
+    const currentMonthIncome = currentYearIncome.filter(item => 
+      item.date.getMonth() === currentMonth
     );
     
     // Calculate totals
-    const yearTotal = currentYearIncome.reduce((sum, entry) => sum + entry.amount, 0);
-    const monthTotal = currentMonthIncome.reduce((sum, entry) => sum + entry.amount, 0);
+    const yearTotal = currentYearIncome.reduce((sum, item) => sum + item.amount, 0);
+    const monthTotal = currentMonthIncome.reduce((sum, item) => sum + item.amount, 0);
     
-    // Calculate average monthly income for current year
+    // Calculate monthly average
     const monthlyTotals = {};
-    currentYearIncome.forEach(entry => {
-      const monthKey = entry.date.getMonth();
+    currentYearIncome.forEach(item => {
+      const monthKey = item.date.getMonth();
       if (!monthlyTotals[monthKey]) {
         monthlyTotals[monthKey] = 0;
       }
-      monthlyTotals[monthKey] += entry.amount;
+      monthlyTotals[monthKey] += item.amount;
     });
     
-    const monthCount = Object.keys(monthlyTotals).length || 1; // Avoid division by zero
+    const monthCount = Object.keys(monthlyTotals).length || 1;
     const monthlyAverage = yearTotal / monthCount;
-    
+
     return {
+      totalEntries: _incomeData.length,
       yearTotal: yearTotal,
       monthTotal: monthTotal,
       monthlyAverage: monthlyAverage
     };
   }
-  
+
   /**
-   * Render the income view with all components
+   * Show loading state
+   */
+  function showLoadingState() {
+    const container = getElement('incomeContent');
+    if (container) {
+      container.innerHTML = `
+        <div class="inc-loading">
+          <div class="loading-spinner"></div>
+          <p data-translate="loading_income">Loading income data...</p>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Show error state
+   */
+  function showErrorState(error) {
+    const container = getElement('incomeContent');
+    if (container) {
+      container.innerHTML = `
+        <div class="inc-error">
+          <h3 data-translate="error_loading_income">Error Loading Income Data</h3>
+          <p>${error}</p>
+          <button onclick="IncomeManager.refresh()" data-translate="retry">Retry</button>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Render the complete income view
    */
   function renderIncomeView() {
+    console.log('IncomeManager: Rendering view...');
+    
     const container = getElement('incomeContent');
     if (!container) return;
-    
-    // Get summary data
-    const summary = calculateIncomeSummary();
-    
-    // Format currency function
-    const formatCurrency = (amount) => {
-      if (typeof Utils !== 'undefined' && Utils.formatCurrency) {
-        return Utils.formatCurrency(amount);
-      }
-      return '€' + amount.toFixed(2);
-    };
-    
-    // Get currency symbol
-    const currencySymbol = (typeof Utils !== 'undefined' && Utils.getCurrencySymbol) 
-      ? Utils.getCurrencySymbol() 
-      : '€';
-    
-    // Start with empty inner HTML
+
+    const metrics = calculateSummaryMetrics();
+
     container.innerHTML = `
-      <!-- Status message container -->
-      <div id="incomeMessage" class="inc-message" style="display: none;"></div>
-      
-      <!-- Summary Cards -->
+      <!-- Summary Box -->
       <div class="inc-summary-row">
         <div class="inc-summary-box">
           <div class="inc-box-content">
             <div class="inc-box-item">
-              <div class="inc-box-label">Year Total</div>
-              <div class="inc-box-value">${formatCurrency(summary.yearTotal)}</div>
+              <div class="inc-box-label" data-translate="total_entries">Total Entries</div>
+              <div class="inc-box-value" id="totalIncomeEntries">${metrics.totalEntries}</div>
             </div>
             <div class="inc-box-item">
-              <div class="inc-box-label">Monthly Average</div>
-              <div class="inc-box-value">${formatCurrency(summary.monthlyAverage)}</div>
+              <div class="inc-box-label" data-translate="year_total">Year Total</div>
+              <div class="inc-box-value" id="yearTotal">${formatCurrency(metrics.yearTotal)}</div>
             </div>
             <div class="inc-box-item">
-              <div class="inc-box-label">This Month</div>
-              <div class="inc-box-value">${formatCurrency(summary.monthTotal)}</div>
+              <div class="inc-box-label" data-translate="monthly_average">Monthly Average</div>
+              <div class="inc-box-value" id="monthlyAverage">${formatCurrency(metrics.monthlyAverage)}</div>
+            </div>
+            <div class="inc-box-item">
+              <div class="inc-box-label" data-translate="this_month">This Month</div>
+              <div class="inc-box-value" id="monthTotal">${formatCurrency(metrics.monthTotal)}</div>
             </div>
           </div>
         </div>
       </div>
-      
-      <!-- Add Income Form -->
-      <div class="inc-form-container">
-        <h3 class="inc-section-title">Add New Income</h3>
-        <form id="addIncomeForm" class="inc-form">
-          <div class="inc-form-row inc-row-first">
-            <input type="date" id="incomeDate" required class="inc-input">
-            <div class="inc-amount-wrapper">
-              <span class="inc-currency">${currencySymbol}</span>
-              <input type="number" id="incomeAmount" placeholder="Amount" min="0.01" step="0.01" required class="inc-input inc-amount">
-            </div>
-            <input type="text" id="incomeName" placeholder="Name" required class="inc-input">
-            <select id="incomeAccount" required class="inc-input">
-              <option value="" disabled selected>Account</option>
-              <option value="Revolut">Revolut</option>
-              <option value="Checking">Checking</option>
-              <option value="Savings">Savings</option>
-              <option value="Investment">Investment</option>
-            </select>
-          </div>
-          
-          <div class="inc-form-row inc-row-second">
-            <select id="incomeSource" required class="inc-input">
-              <option value="" disabled selected>Source</option>
-              <option value="Salary">Salary</option>
-              <option value="Freelance">Freelance</option>
-              <option value="Capital Gains">Capital Gains</option>
-              <option value="Savings Withdrawal">Savings Withdrawal</option>
-              <option value="Gift">Gift</option>
-              <option value="Refund">Refund</option>
-              <option value="Dividend">Dividend</option>
-              <option value="Rental Income">Rental Income</option>
-              <option value="Other">Other</option>
-            </select>
-            <input type="text" id="incomeNotes" placeholder="Notes (Optional)" class="inc-input inc-notes">
-            <button type="submit" class="btn primary inc-add-btn">
-              <i class="material-icons">add</i> Add
-            </button>
-          </div>
-        </form>
-      </div>
-      
-      <!-- Income Table Section -->
+
+      <!-- Table Section -->
       <div class="inc-table-container">
-        <h3 class="inc-section-title">Recent Income</h3>
+        <div class="inc-table-header">
+          <div class="inc-filters">
+            <div class="inc-status-filters">
+              <button class="inc-filter-btn active" data-status="all" data-translate="all">All</button>
+              <button class="inc-filter-btn" data-status="recent" data-translate="recent">Recent</button>
+              <button class="inc-filter-btn" data-status="this_month" data-translate="this_month">This Month</button>
+              <button class="inc-add-income-btn" id="addIncomeBtn">
+                <i class="material-icons">add</i>
+                <span>Add</span>
+              </button>
+            </div>
+         
+          </div>
+        </div>
+        
         <div class="inc-table-wrapper">
-          <table id="incomeTable" class="inc-table">
+          <table class="inc-table" id="incomeTable">
             <thead>
-              <tr>
-                <th>Date</th>
-                <th>Amount</th>
-                <th>Name</th>
-                <th>Account</th>
-                <th>Source</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Income entries will be populated here -->
+            <tr>
+              <th class="inc-date-header" data-translate="date">Date</th>
+              <th class="inc-name-header" data-translate="name">Name</th>
+              <th class="inc-amount-header" data-translate="amount">Amount</th>
+              <th class="inc-account-header" data-translate="account">Account</th>
+              <th class="inc-source-header" data-translate="source">Source</th>
+              <th class="inc-notes-header">📝</th>
+              <th class="inc-actions-header" data-translate="actions">Actions</th>
+            </tr>
+          </thead>
+            <tbody id="incomeTableBody">
+              <!-- Data will be populated here -->
             </tbody>
           </table>
         </div>
-        <div class="inc-show-more">
-          <button id="showMoreIncomeBtn" class="btn secondary inc-more-btn">
-            Show More
-          </button>
+      </div>
+    `;
+
+    updateIncomeTable();
+    
+    if (window.SimBudget && SimBudget.applyTranslations) {
+      SimBudget.applyTranslations();
+    }
+  }
+
+  /**
+   * Update income table with current data and filters
+   */
+  function updateIncomeTable() {
+    const tbody = getElement('incomeTableBody');
+    if (!tbody) return;
+
+    const statusFilter = _currentFilter;
+    const categoryFilter = getElement('categoryFilter')?.value || 'all';
+
+    let filteredData = _incomeData;
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+
+      if (statusFilter === 'recent') {
+        filteredData = filteredData.filter(item => item.date >= thirtyDaysAgo);
+      } else if (statusFilter === 'this_month') {
+        filteredData = filteredData.filter(item => 
+          item.date.getMonth() === currentMonth && item.date.getFullYear() === currentYear
+        );
+      }
+    }
+
+    // Apply category filter
+    if (categoryFilter !== 'all') {
+      filteredData = filteredData.filter(item => 
+        item.category && item.category.includes(categoryFilter)
+      );
+    }
+
+    // Sort by date (newest first)
+    filteredData.sort((a, b) => b.date - a.date);
+
+    tbody.innerHTML = '';
+
+    filteredData.forEach(item => {
+      const row = createIncomeRow(item);
+      tbody.appendChild(row);
+    });
+
+    if (filteredData.length === 0) {
+      const emptyRow = document.createElement('tr');
+      emptyRow.innerHTML = `
+        <td colspan="7" class="inc-empty-message" data-translate="no_income_found">
+          No income entries found
+        </td>
+      `;
+      tbody.appendChild(emptyRow);
+    }
+  }
+
+  /**
+   * Create a table row for income item
+   */
+  function createIncomeRow(item) {
+  const row = document.createElement('tr');
+  row.setAttribute('data-id', item.id);
+
+  const formatDate = (date) => {
+    if (!date || !(date instanceof Date)) return '';
+    const options = { day: 'numeric', month: 'short', year: 'numeric' };
+    return date.toLocaleDateString('en-GB', options);
+  };
+
+  const dateStr = formatDate(item.date);
+
+  // Truncate name and add title for hover
+  const nameDisplay = item.name.length > 25 ? item.name.substring(0, 25) + '...' : item.name;
+
+  row.innerHTML = `
+    <td class="inc-date-cell">${dateStr}</td>
+    <td class="inc-name-cell">
+      <div class="inc-name-content" title="${item.name}">
+        <span class="inc-item-name">${nameDisplay}</span>
+      </div>
+    </td>
+    <td class="inc-amount-cell">${formatCurrency(item.amount)}</td>
+    <td class="inc-account-cell">${item.account}</td>
+    <td class="inc-source-cell">${item.source}</td>
+    <td class="inc-notes-cell" data-notes="${item.notes || ''}" title="Click to view notes">
+      ${item.notes ? '📝' : ''}
+    </td>
+    <td class="inc-actions-cell">
+      <div class="inc-action-buttons">
+        <button class="inc-action-btn inc-edit-btn" data-id="${item.id}" title="Edit">
+          <i class="material-icons">edit</i>
+        </button>
+        <button class="inc-action-btn inc-delete-btn" data-id="${item.id}" title="Delete">
+          <i class="material-icons">close</i>
+        </button>
+      </div>
+    </td>
+  `;
+
+  return row;
+}
+
+  /**
+   * Show add income popup
+   */
+  function showAddIncomePopup() {
+    // Remove any existing popup
+    const existingPopup = document.querySelector('.inc-add-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
+    
+    // Always reload settings before creating new item to get current currency
+    loadSettings();
+    
+    // Create popup overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'inc-add-overlay';
+    
+    // Create popup
+    const popup = document.createElement('div');
+    popup.className = 'inc-add-popup';
+    
+    popup.innerHTML = `
+      <div class="inc-add-header">
+        <h3>Add New Income</h3>
+      </div>
+      <div class="inc-add-body">
+        <div class="inc-add-grid">
+          <div class="inc-add-row">
+            <label>Name *</label>
+            <input type="text" id="addName" class="inc-add-input" placeholder="Income name" required>
+          </div>
+          <div class="inc-add-row">
+            <label>Amount *</label>
+            <div class="inc-add-amount-wrapper">
+              <span class="inc-add-currency">${_currencySymbol}</span>
+              <input type="number" id="addAmount" class="inc-add-input inc-add-amount" 
+                placeholder="0.00" step="0.01" min="0" required>
+            </div>
+          </div>
+          <div class="inc-add-row">
+            <label>Date *</label>
+            <input type="date" id="addDate" class="inc-add-input" required>
+          </div>
+  
+          <div class="inc-add-row">
+            <label>Account</label>
+            <input type="text" id="addAccount" class="inc-add-input" placeholder="Account/Bank">
+          </div>
+          <div class="inc-add-row">
+            <label>Source</label>
+            <select id="addSource" class="inc-add-input">
+              <option value="Salary">Salary</option>
+              <option value="Freelance">Freelance</option>
+              <option value="Business">Business</option>
+              <option value="Investment">Investment</option>
+              <option value="Gift">Gift</option>
+              <option value="Refund">Refund</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
         </div>
+        <div class="inc-add-row inc-add-notes-row">
+          <label>Notes</label>
+          <textarea id="addNotes" class="inc-add-input inc-add-textarea" placeholder="Additional notes..."></textarea>
+        </div>
+      </div>
+      <div class="inc-add-actions">
+        <button class="inc-add-btn inc-add-cancel-btn" type="button">Cancel</button>
+        <button class="inc-add-btn inc-add-save-btn" type="button">Save</button>
       </div>
     `;
     
-    // Render income table (initially show 10 entries)
-    renderIncomeTable(10);
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
     
-    // Rebind events since we replaced the DOM elements
-    bindEvents();
-  }
-  
-  /**
-   * Render the income table with a specified number of entries
-   */
-  function renderIncomeTable(limit = 10) {
-    const incomeTable = getElement('incomeTable');
-    if (!incomeTable) return;
+    // Set default date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('addDate').value = today;
     
-    const tbody = incomeTable.querySelector('tbody');
-    if (!tbody) return;
-    
-    // Clear existing rows
-    tbody.innerHTML = '';
-    
-    // Format currency function
-    const formatCurrency = (amount) => {
-      if (typeof Utils !== 'undefined' && Utils.formatCurrency) {
-        return Utils.formatCurrency(amount);
+    // Focus the name input
+    setTimeout(() => {
+      const nameInput = document.getElementById('addName');
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
       }
-      return '€' + amount.toFixed(2);
-    };
+    }, 100);
     
-    // Limit entries to display
-    const entriesToShow = _incomeData.slice(0, limit);
+    // Handle button clicks
+    const saveBtn = popup.querySelector('.inc-add-save-btn');
+    const cancelBtn = popup.querySelector('.inc-add-cancel-btn');
     
-    // Add rows for each entry
-    entriesToShow.forEach(entry => {
-      const row = document.createElement('tr');
-      
-      // Format date
-      const formattedDate = entry.date.toLocaleDateString();
-      
-      // Create row content
-      row.innerHTML = `
-        <td class="inc-date-cell">${formattedDate}</td>
-        <td class="inc-amount-cell">${formatCurrency(entry.amount)}</td>
-        <td class="inc-name-cell">${entry.name}</td>
-        <td class="inc-account-cell">${entry.account}</td>
-        <td class="inc-source-cell">${entry.source}</td>
-        <td class="inc-notes-cell">${entry.notes || ''}</td>
-      `;
-      
-      tbody.appendChild(row);
+    saveBtn.addEventListener('click', function() {
+      saveNewIncomeFromPopup(overlay);
     });
     
-    // Show/hide "Show More" button based on data available
-    const showMoreBtn = getElement('showMoreIncomeBtn');
-    if (showMoreBtn) {
-      showMoreBtn.style.display = limit < _incomeData.length ? 'block' : 'none';
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+    });
+    
+    // Handle keyboard events
+    popup.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.target.matches('textarea')) {
+        e.preventDefault();
+        saveBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBtn.click();
+      }
+    });
+    
+    // Handle overlay click (close on outside click)
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        cancelBtn.click();
+      }
+    });
+  }
+
+  /**
+   * Save new income from popup
+   */
+  function saveNewIncomeFromPopup(overlay) {
+   const formData = {
+  name: document.getElementById('addName').value.trim(),
+  amount: document.getElementById('addAmount').value.trim(),
+  date: document.getElementById('addDate').value,
+  // Remove this line: category: document.getElementById('addCategory').value,
+  account: document.getElementById('addAccount').value.trim(),
+  source: document.getElementById('addSource').value,
+  notes: document.getElementById('addNotes').value.trim()
+};
+    
+    // Validate required fields
+    let hasErrors = false;
+    const requiredFields = ['name', 'amount', 'date'];
+    
+    requiredFields.forEach(field => {
+      const input = document.getElementById('add' + field.charAt(0).toUpperCase() + field.slice(1));
+      if (!formData[field] || (field === 'amount' && parseFloat(formData[field]) <= 0)) {
+        input.classList.add('inc-input-error');
+        hasErrors = true;
+      } else {
+        input.classList.remove('inc-input-error');
+      }
+    });
+    
+    if (hasErrors) {
+      if (window.Utils && Utils.showToast) {
+        Utils.showToast('Please fill all required fields (Name, Amount, Date)', 'error');
+      }
+      return;
+    }
+    
+    // Create new item object
+    const newItem = {
+      id: `INC-${Date.now()}`,
+      rowIndex: null,
+      date: new Date(formData.date),
+      name: formData.name,
+    
+      amount: parseFloat(formData.amount),
+      account: formData.account,
+      source: formData.source,
+      notes: formData.notes
+    };
+    
+    // Add to data and save
+    _incomeData.unshift(newItem);
+    saveToServer([newItem]);
+    
+    // Update UI
+    updateSummaryCards();
+    updateIncomeTable();
+    
+    // Close popup
+    overlay.remove();
+    
+    if (window.Utils && Utils.showToast) {
+      Utils.showToast('Income added successfully', 'success');
     }
   }
+
+  /**
+   * Add new income
+   */
+  function addNewIncome() {
+    console.log('IncomeManager: Opening add income popup');
+    showAddIncomePopup();
+  }
+
+  /**
+   * Start editing a row
+   */
+  function startEditingRow(row, item) {
+  console.log('IncomeManager: Start editing', item.id);
   
+  // Always reload settings before editing to get current currency
+  loadSettings();
+  
+  row.classList.add('inc-editing');
+
+  const cells = row.querySelectorAll('td');
+
+  // Date (0)
+  const dateValue = item.date && item.date instanceof Date ? 
+    item.date.toISOString().split('T')[0] : '';
+  cells[0].innerHTML = `
+    <input type="date" class="inc-edit-input" 
+      value="${dateValue}" 
+      data-field="date"
+      required>
+  `;
+
+  // Name (1)
+  cells[1].innerHTML = `
+    <input type="text" class="inc-edit-input" 
+      value="${item.name}" 
+      data-field="name" 
+      placeholder="Income name" required>
+  `;
+
+  // Amount (2) - was previously (3)
+  const amountValue = item.isNew ? '' : item.amount;
+  cells[2].innerHTML = `
+    <div class="inc-amount-wrapper">
+      <span class="inc-currency">${_currencySymbol}</span>
+      <input type="number" class="inc-edit-input inc-amount" 
+        value="${amountValue}" 
+        data-field="amount" 
+        placeholder="0.00" 
+        step="0.01" 
+        min="0" required>
+    </div>
+  `;
+
+  // Account (3) - was previously (4)
+  cells[3].innerHTML = `
+    <input type="text" class="inc-edit-input" 
+      value="${item.account}" 
+      data-field="account" 
+      placeholder="Account/Bank">
+  `;
+
+  // Source (4) - was previously (5)
+  cells[4].innerHTML = `
+    <select class="inc-edit-input" data-field="source">
+      <option value="Salary" ${item.source === 'Salary' ? 'selected' : ''}>Salary</option>
+      <option value="Freelance" ${item.source === 'Freelance' ? 'selected' : ''}>Freelance</option>
+      <option value="Business" ${item.source === 'Business' ? 'selected' : ''}>Business</option>
+      <option value="Investment" ${item.source === 'Investment' ? 'selected' : ''}>Investment</option>
+      <option value="Gift" ${item.source === 'Gift' ? 'selected' : ''}>Gift</option>
+      <option value="Refund" ${item.source === 'Refund' ? 'selected' : ''}>Refund</option>
+      <option value="Other" ${item.source === 'Other' ? 'selected' : ''}>Other</option>
+    </select>
+  `;
+
+  // Notes (5) - was previously (6)
+  cells[5].innerHTML = `
+    <input type="text" class="inc-edit-input inc-notes-input" 
+      value="${item.notes || ''}" 
+      data-field="notes" 
+      placeholder="Notes">
+  `;
+
+  // Actions (6) - was previously (7)
+  cells[6].innerHTML = `
+    <div class="inc-action-buttons">
+      <button class="inc-action-btn inc-save-btn" data-id="${item.id}" title="Save">
+        <i class="material-icons">check</i>
+      </button>
+      <button class="inc-action-btn inc-cancel-btn" data-id="${item.id}" title="Cancel">
+        <i class="material-icons">close</i>
+      </button>
+    </div>
+  `;
+
+  const nameInput = cells[1].querySelector('input');
+  if (nameInput) {
+    nameInput.focus();
+    nameInput.select();
+  }
+}
+ 
+  /**
+   * Save edited row
+   */
+  function saveEditedRow(itemId) {
+    console.log('IncomeManager: Saving row', itemId);
+    
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    if (!row) return;
+
+    const item = _incomeData.find(r => r.id === itemId);
+    if (!item) return;
+
+    const editedData = {};
+    let hasErrors = false;
+
+    // Validate required fields
+    row.querySelectorAll('.inc-edit-input').forEach(input => {
+      const field = input.getAttribute('data-field');
+      const value = input.value.trim();
+
+      // Check required fields
+      if (field === 'name' && !value) {
+        input.classList.add('inc-input-error');
+        hasErrors = true;
+        return;
+      }
+
+      if (field === 'date' && !value) {
+        input.classList.add('inc-input-error');
+        hasErrors = true;
+        return;
+      }
+
+      if (field === 'amount' && (!value || parseFloat(value) <= 0)) {
+        input.classList.add('inc-input-error');
+        hasErrors = true;
+        return;
+      }
+
+      input.classList.remove('inc-input-error');
+      editedData[field] = value;
+    });
+
+    if (hasErrors) {
+      if (window.Utils && Utils.showToast) {
+        Utils.showToast('Please fill in all required fields (Name, Date, Amount)', 'error');
+      }
+      return;
+    }
+
+    // Update item with edited data
+    Object.assign(item, editedData);
+    
+    if (editedData.date) {
+      item.date = new Date(editedData.date);
+    }
+    
+    item.amount = parseFloat(editedData.amount) || 0;
+
+    // For new items, generate a proper ID if still using temporary ID
+    if (item.isNew || item.id.startsWith('new-')) {
+      item.id = `INC-${Date.now()}`;
+    }
+    
+    // Always remove the isNew flag after successful save
+    delete item.isNew;
+
+    // Save to server
+    saveToServer([item]);
+
+    // Replace row with updated view
+    const newRow = createIncomeRow(item);
+    row.replaceWith(newRow);
+
+    // Update summary metrics
+    updateSummaryCards();
+  }
+
+  /**
+   * Cancel editing
+   */
+  function cancelEditingRow(itemId) {
+    console.log('IncomeManager: Cancel editing', itemId);
+    
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    if (!row) return;
+
+    const item = _incomeData.find(r => r.id === itemId);
+    if (!item) return;
+
+    if (item.isNew) {
+      _incomeData = _incomeData.filter(r => r.id !== itemId);
+      row.remove();
+    } else {
+      const newRow = createIncomeRow(item);
+      row.replaceWith(newRow);
+    }
+  }
+
+  /**
+   * Edit income item
+   */
+  function editIncomeItem(itemId) {
+    console.log('IncomeManager: Edit item', itemId);
+    
+    const row = document.querySelector(`tr[data-id="${itemId}"]`);
+    const item = _incomeData.find(r => r.id === itemId);
+    
+    if (row && item) {
+      startEditingRow(row, item);
+    }
+  }
+
+  /**
+   * Show custom confirmation dialog
+   */
+  function showConfirmDialog(message, onConfirm, onCancel) {
+    // Remove any existing dialog
+    const existingDialog = document.querySelector('.inc-confirm-dialog');
+    if (existingDialog) {
+      existingDialog.remove();
+    }
+    
+    // Create dialog overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'inc-confirm-overlay';
+    
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.className = 'inc-confirm-dialog';
+    
+    dialog.innerHTML = `
+      <div class="inc-confirm-header">
+        <h3>Confirm Delete</h3>
+      </div>
+      <div class="inc-confirm-body">
+        <p>${message}</p>
+      </div>
+      <div class="inc-confirm-actions">
+        <button class="inc-confirm-btn inc-cancel-btn" type="button">Cancel</button>
+        <button class="inc-confirm-btn inc-delete-btn" type="button">Delete</button>
+      </div>
+    `;
+    
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    
+    // Focus the delete button
+    const deleteBtn = dialog.querySelector('.inc-delete-btn');
+    const cancelBtn = dialog.querySelector('.inc-cancel-btn');
+    
+    setTimeout(() => deleteBtn.focus(), 100);
+    
+    // Handle button clicks
+    deleteBtn.addEventListener('click', function() {
+      overlay.remove();
+      if (onConfirm) onConfirm();
+    });
+    
+    cancelBtn.addEventListener('click', function() {
+      overlay.remove();
+      if (onCancel) onCancel();
+    });
+    
+    // Handle keyboard events
+    dialog.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        deleteBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelBtn.click();
+      }
+    });
+    
+    // Handle overlay click (close on outside click)
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        cancelBtn.click();
+      }
+    });
+  }
+
+  /**
+   * Delete income item
+   */
+  function deleteIncomeItem(itemId) {
+    console.log('IncomeManager: Delete item', itemId);
+    
+    const item = _incomeData.find(r => r.id === itemId);
+    if (!item) return;
+
+    showConfirmDialog(
+      `Are you sure you want to delete "${item.name}"?`,
+      function() {
+        // On confirm - delete the item
+        const row = document.querySelector(`tr[data-id="${itemId}"]`);
+        if (row) row.remove();
+
+        _incomeData = _incomeData.filter(r => r.id !== itemId);
+        
+        updateSummaryCards();
+
+        if (window.API && typeof API.clearIncomeRow === 'function') {
+          API.clearIncomeRow(itemId, 
+            function(result) {
+              console.log('IncomeManager: Item deleted on server');
+              if (window.Utils && Utils.showToast) {
+                Utils.showToast(`"${item.name}" deleted successfully`, 'success');
+              }
+            },
+            function(error) {
+              console.error('IncomeManager: Delete error', error);
+              if (window.Utils && Utils.showToast) {
+                Utils.showToast('Error deleting item: ' + error, 'error');
+              }
+            }
+          );
+        }
+      },
+      function() {
+        // On cancel - do nothing
+        console.log('IncomeManager: Delete cancelled');
+      }
+    );
+  }
+
+  /**
+   * Save data to server
+   */
+  function saveToServer(items) {
+    console.log('IncomeManager: Saving to server', items.length, 'items');
+    
+    if (!window.API || typeof API.saveBatchIncome !== 'function') {
+      console.error('IncomeManager: API.saveBatchIncome not available');
+      return;
+    }
+
+    // Filter out items without required fields before saving
+    const validItems = items.filter(item => 
+      item.name && item.amount > 0 && item.date
+    );
+
+    if (validItems.length === 0) {
+      console.log('IncomeManager: No valid items to save');
+      return;
+    }
+
+    // Prepare items for saving
+    const itemsToSave = validItems.map(item => {
+      const saveItem = {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        amount: item.amount,
+        account: item.account,
+        source: item.source,
+        notes: item.notes || ''
+      };
+      
+      // Handle dates - convert to ISO strings for transmission
+      if (item.date instanceof Date) {
+        saveItem.date = item.date.toISOString();
+      } else if (item.date) {
+        saveItem.date = new Date(item.date).toISOString();
+      }
+      
+      return saveItem;
+    });
+
+    if (window.Utils && Utils.showToast) {
+      Utils.showToast('Saving...', 'info');
+    }
+
+    API.saveBatchIncome(itemsToSave,
+      function(result) {
+        console.log('IncomeManager: Save success', result);
+        
+        if (window.Utils && Utils.showToast) {
+          const message = result.inserted > 0 ? 
+            `Saved successfully (${result.inserted} added, ${result.updated} updated)` :
+            'Updated successfully';
+          Utils.showToast(message, 'success');
+        }
+        
+        // Update cache after successful save
+        if (window.CacheManager && typeof CacheManager.invalidate === 'function') {
+          CacheManager.invalidate('income');
+        }
+        
+        // Refresh the data to get proper row indices
+        setTimeout(() => {
+          loadRealIncomeData(true); // true = background refresh
+        }, 500);
+      },
+      function(error) {
+        console.error('IncomeManager: Save error', error);
+        if (window.Utils && Utils.showToast) {
+          Utils.showToast('Error saving: ' + error, 'error');
+        }
+      }
+    );
+  }
+
+  /**
+   * Update summary cards only
+   */
+  function updateSummaryCards() {
+    const metrics = calculateSummaryMetrics();
+    
+    const elements = {
+      totalIncomeEntries: getElement('totalIncomeEntries'),
+      yearTotal: getElement('yearTotal'),
+      monthlyAverage: getElement('monthlyAverage'),
+      monthTotal: getElement('monthTotal')
+    };
+
+    if (elements.totalIncomeEntries) {
+      elements.totalIncomeEntries.textContent = metrics.totalEntries;
+    }
+    if (elements.yearTotal) {
+      elements.yearTotal.textContent = formatCurrency(metrics.yearTotal);
+    }
+    if (elements.monthlyAverage) {
+      elements.monthlyAverage.textContent = formatCurrency(metrics.monthlyAverage);
+    }
+    if (elements.monthTotal) {
+      elements.monthTotal.textContent = formatCurrency(metrics.monthTotal);
+    }
+  }
+
+  /**
+   * Show notes popup
+   */
+  function showNotesPopup(notes, elementRect) {
+    // Remove any existing popup
+    const existingPopup = document.querySelector('.inc-notes-popup');
+    if (existingPopup) {
+      existingPopup.remove();
+    }
+    
+    // Create popup
+    const popup = document.createElement('div');
+    popup.className = 'inc-notes-popup';
+    popup.textContent = notes || 'No notes';
+    
+    // Position near the clicked element
+    popup.style.position = 'absolute';
+    popup.style.left = elementRect.left + 'px';
+    popup.style.top = (elementRect.bottom + 5) + 'px';
+    
+    document.body.appendChild(popup);
+    
+    // Close on click outside
+    setTimeout(() => {
+      document.addEventListener('click', function closePopup(e) {
+        if (!popup.contains(e.target)) {
+          popup.remove();
+          document.removeEventListener('click', closePopup);
+        }
+      });
+    }, 100);
+  }
+
+  /**
+   * Bind event listeners
+   */
+  function bindEvents() {
+    console.log('IncomeManager: Binding events...');
+
+    // Use event delegation on the container for all dynamic content
+    const container = getElement('incomeContent');
+    if (!container) return;
+
+    // Check if we already bound events to this container
+    if (container.dataset.eventsbound === 'true') {
+      console.log('IncomeManager: Events already bound to container');
+      return;
+    }
+
+    // Single click handler for everything
+    container.addEventListener('click', function(e) {
+      // Filter buttons
+      if (e.target.classList.contains('inc-filter-btn') && e.target.hasAttribute('data-status')) {
+        document.querySelectorAll('.inc-filter-btn').forEach(btn => {
+          btn.classList.remove('active');
+        });
+        e.target.classList.add('active');
+        _currentFilter = e.target.getAttribute('data-status');
+        
+        updateIncomeTable();
+        return;
+      }
+
+      // Add button
+      if (e.target.id === 'addIncomeBtn' || e.target.closest('#addIncomeBtn')) {
+        addNewIncome();
+        return;
+      }
+
+      // Notes cell
+      const notesCell = e.target.closest('.inc-notes-cell');
+      if (notesCell && notesCell.dataset.notes) {
+        e.stopPropagation();
+        const rect = notesCell.getBoundingClientRect();
+        showNotesPopup(notesCell.dataset.notes, rect);
+        return;
+      }
+
+      // Action buttons
+      const button = e.target.closest('button');
+      if (button) {
+        const itemId = button.getAttribute('data-id');
+        if (!itemId) return;
+
+        if (button.classList.contains('inc-edit-btn')) {
+          editIncomeItem(itemId);
+        } else if (button.classList.contains('inc-delete-btn')) {
+          deleteIncomeItem(itemId);
+        } else if (button.classList.contains('inc-save-btn')) {
+          saveEditedRow(itemId);
+        } else if (button.classList.contains('inc-cancel-btn')) {
+          cancelEditingRow(itemId);
+        }
+      }
+    });
+
+    // Category filter change
+    container.addEventListener('change', function(e) {
+      if (e.target.id === 'categoryFilter') {
+        updateIncomeTable();
+      }
+    });
+
+    // Enter key to save
+    container.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && e.target.classList.contains('inc-edit-input')) {
+        const row = e.target.closest('tr');
+        if (row) {
+          const saveBtn = row.querySelector('.inc-save-btn');
+          if (saveBtn) saveBtn.click();
+        }
+      }
+    });
+
+    // Currency change listener - only add once
+    if (!window._incomeCurrencyListener) {
+      window._incomeCurrencyListener = function(event) {
+        _currencySymbol = event.detail.symbol;
+        updateSummaryCards();
+        updateIncomeTable();
+      };
+      document.addEventListener('currency-changed', window._incomeCurrencyListener);
+    }
+
+    // Settings change listener - only add once
+    if (!window._incomeSettingsListener) {
+      window._incomeSettingsListener = function() {
+        loadSettings();
+        updateSummaryCards();
+        updateIncomeTable();
+      };
+      document.addEventListener('settings-changed', window._incomeSettingsListener);
+    }
+
+    // Mark container as having events bound
+    container.dataset.eventsbound = 'true';
+  }
+
+  /**
+   * Refresh income data
+   */
+  function refresh() {
+    console.log('IncomeManager: Refresh triggered');
+    
+    // Clear cache in main system
+    if (window.CacheManager && typeof CacheManager.invalidate === 'function') {
+      CacheManager.invalidate('income');
+    }
+    
+    // Clear local data
+    _incomeData = [];
+    
+    // Reset initialization flag
+    _initialized = false;
+    
+    // Clear element cache
+    Object.keys(_elements).forEach(key => {
+      delete _elements[key];
+    });
+    
+    // Re-initialize without cached data to force fresh load
+    init('incomeContent', null);
+  }
+
   /**
    * Set income data from external source
    */
   function setIncomeData(incomeData) {
-    if (!incomeData || !Array.isArray(incomeData)) return;
+    if (!incomeData || !Array.isArray(incomeData)) {
+      console.warn('IncomeManager: Invalid income data');
+      return;
+    }
+
+    _incomeData = processIncomeData(incomeData);
     
-    console.log('Setting income data:', incomeData.length, 'entries');
-    
-    // Convert API income data to our format
-    _incomeData = incomeData.map(income => ({
-      id: income.id || `income-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      date: income.date instanceof Date ? income.date : new Date(income.date),
-      amount: parseFloat(income.amount),
-      name: income.name || '',
-      account: income.account || 'Revolut',
-      source: income.source || 'Other',
-      notes: income.notes || ''
-    }));
-    
-    // Sort by date (newest first)
-    _incomeData.sort((a, b) => b.date - a.date);
-    
-    // Render with the new data
-    renderIncomeView();
+    if (_initialized) {
+      updateSummaryCards();
+      updateIncomeTable();
+    }
   }
-  
+
   // Public API
   return {
     init: init,
-    renderIncomeView: renderIncomeView,
-    setIncomeData: setIncomeData
+    refresh: refresh,
+    setIncomeData: setIncomeData,
+    isInitialized: function() { return _initialized; }
   };
 })();
 
-// Expose globally without auto-initialization
+// Expose globally
 window.IncomeManager = IncomeManager;
-
-/**
- * Load income data with simplified reliable rendering
- */
-SimBudget.loadIncomeData = function() {
-  console.log("Loading income view...");
-  
-  const contentArea = document.getElementById("incomeContent");
-  if (!contentArea) {
-    console.error("Income content area not found");
-    _loadingView = null;
-    return;
-  }
-
-  // Show simple loading state
-  contentArea.innerHTML = `
-    <div class="inc-loading">
-      <div class="loading-spinner"></div>
-      <p class="inc-loading-text">Loading income data...</p>
-    </div>
-  `;
-  
-  // Initialize IncomeManager directly - this will replace the loading state
-  setTimeout(() => {
-    if (window.IncomeManager && typeof IncomeManager.init === 'function') {
-      console.log("Initializing IncomeManager");
-      // Explicitly pass the container ID to ensure proper rendering
-      IncomeManager.init('incomeContent');
-      
-      // After UI is shown with sample data, try to fetch real data in background
-      if (window.API && typeof API.getIncomeData === 'function') {
-        console.log("Fetching real income data in background...");
-        
-        API.getIncomeData(
-          function(result) {
-            console.log("Real income data loaded successfully");
-            
-            // Update UI with real data if available
-            if (result && result.success && result.income) {
-              IncomeManager.setIncomeData(result.income);
-            }
-            
-            // Cache the result
-            if (window._cache && typeof _cache.set === 'function') {
-              _cache.set("income", result.income || []);
-            }
-          },
-          function(error) {
-            console.log("Using sample data - couldn't load real data:", error);
-            // Just log the error - user already sees sample data
-          }
-        );
-      }
-    } else {
-      contentArea.innerHTML = '<div class="error-message">Error: Income Manager component not available</div>';
-      console.error("IncomeManager component not found");
-    }
-    
-    // Clear loading flag
-    _loadingView = null;
-  }, 300); // Slightly longer timeout to ensure DOM is ready
-};
 </script>
 
 <style>
 /* ==============================================================
-   INCOME MANAGEMENT - DASHBOARD STYLE MATCHING
+   INCOME MANAGEMENT - ENHANCED STYLES (MATCHING RECURRING)
    ==============================================================
-   All classes use the 'inc-' prefix to avoid conflicts.
-   Mobile-first approach with desktop adjustments after.
-   Matching dashboard's signature border style and color scheme.
 */
 
-/* ======== LOADING ======== */
-.inc-loading {
+/* ======== LOADING & ERROR STATES ======== */
+.inc-loading, .inc-error {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -576,31 +1311,445 @@ SimBudget.loadIncomeData = function() {
   color: var(--text-secondary, #666);
 }
 
-/* ======== MESSAGES ======== */
-.inc-message {
-  padding: 12px 16px;
+.inc-error {
+  background-color: #ffebee;
   border-radius: 0px;
-  margin-bottom: 16px;
-  font-weight: 500;
   border-top: 1px solid rgba(0, 0, 0, 0.5);
   border-left: 1px solid rgba(0, 0, 0, 0.5);
   border-right: 4px solid #334a60;
   border-bottom: 4px solid #334a60;
 }
 
-.inc-success-message {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+/* ======== NOTES POPUP ======== */
+.inc-notes-popup {
+  position: absolute;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  max-width: 300px;
+  z-index: 1000;
+  font-size: 14px;
+  word-wrap: break-word;
 }
 
-.inc-error-message {
-  background-color: #ffebee;
+body.dark-mode .inc-notes-popup {
+  background: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+/* ======== ADD INCOME POPUP ======== */
+.inc-add-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+}
+
+.inc-add-popup {
+  background: white;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  min-width: 400px;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: inc-dialog-appear 0.2s ease-out;
+}
+
+.inc-add-header {
+  background-color: #fe9aa1;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.inc-add-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.inc-add-body {
+  padding: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.inc-add-row {
+  margin-bottom: 16px;
+}
+
+.inc-add-row label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #2c3e50;
+  margin-bottom: 6px;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.inc-add-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  font-size: 14px;
+  background-color: white;
+  color: #2c3e50;
+  box-sizing: border-box;
+}
+
+.inc-add-input:focus {
+  border-color: #2c3e50;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.2);
+}
+
+.inc-add-textarea {
+  height: 40px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.inc-add-amount-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.inc-amount-wrapper, 
+.inc-add-amount-wrapper {
+  min-width: 100px !important;
+}
+
+.inc-add-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.inc-add-amount {
+  padding-left: 36px !important;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.inc-add-actions {
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  border-top: 1px solid #eee;
+}
+
+.inc-add-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 0px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+
+.inc-add-cancel-btn {
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.inc-add-cancel-btn:hover {
+  background-color: #e8e8e8;
+  color: #2c3e50;
+}
+
+.inc-add-save-btn {
+  background-color: #2c3e50;
+  color: white;
+}
+
+.inc-add-save-btn:hover {
+  background-color: #1984c5;
+}
+
+.inc-add-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.3);
+}
+
+/* Dark mode for add income popup */
+body.dark-mode .inc-add-popup {
+  background: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-add-header {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-add-header h3 {
+  color: #DDA15E;
+}
+
+body.dark-mode .inc-add-row label {
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-add-input {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-add-input:focus {
+  border-color: #DDA15E;
+  box-shadow: 0 0 0 2px rgba(221, 161, 94, 0.3);
+}
+
+body.dark-mode .inc-add-currency {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+body.dark-mode .inc-add-actions {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-add-cancel-btn {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-add-cancel-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-add-save-btn {
+  background-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .inc-add-save-btn:hover {
+  background-color: #c9955a;
+}
+
+body.dark-mode .inc-add-btn:focus {
+  box-shadow: 0 0 0 2px rgba(221, 161, 94, 0.3);
+}
+
+/* Mobile responsive for add popup */
+@media (max-width: 768px) {
+  .inc-add-popup {
+    width: 95%;
+    max-width: 95%;
+    margin: 10px;
+  }
+  
+  .inc-add-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .inc-add-row {
+    margin-bottom: 16px;
+  }
+  
+  .inc-add-body {
+    padding: 16px;
+  }
+  
+  .inc-add-actions {
+    padding: 12px 16px;
+    flex-direction: column;
+  }
+  
+  .inc-add-btn {
+    width: 100%;
+  }
+}
+
+/* Confirmation dialog styles */
+.inc-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+}
+
+.inc-confirm-dialog {
+  background: white;
+  border-radius: 0px;
+  border-top: 1px solid rgba(0, 0, 0, 0.5);
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  border-right: 4px solid #334a60;
+  border-bottom: 4px solid #334a60;
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: inc-dialog-appear 0.2s ease-out;
+}
+
+@keyframes inc-dialog-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.inc-confirm-header {
+  background-color: #fe9aa1;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.inc-confirm-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+}
+
+.inc-confirm-body {
+  padding: 20px;
+}
+
+.inc-confirm-body p {
+  margin: 0;
+  font-size: 15px;
+  color: #2c3e50;
+  line-height: 1.4;
+}
+
+.inc-confirm-actions {
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  border-top: 1px solid #eee;
+}
+
+.inc-confirm-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 0px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 80px;
+}
+
+.inc-confirm-btn.inc-cancel-btn {
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #ddd;
+}
+
+.inc-confirm-btn.inc-cancel-btn:hover {
+  background-color: #e8e8e8;
+  color: #2c3e50;
+}
+
+.inc-confirm-btn.inc-delete-btn {
+  background-color: transparent;
+  color: #f44336;
+  border: 1px solid #f44336;
+}
+
+.inc-confirm-btn.inc-delete-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1);
   color: #d32f2f;
 }
 
-.inc-info-message {
-  background-color: #e3f2fd;
-  color: #1976d2;
+.inc-confirm-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.3);
+}
+
+/* Dark mode for confirmation dialog */
+body.dark-mode .inc-confirm-dialog {
+  background: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-confirm-header {
+  background-color: var(--dark-surface, #1e1e1e);
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-confirm-header h3 {
+  color: #DDA15E;
+}
+
+body.dark-mode .inc-confirm-body p {
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-confirm-actions {
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-confirm-btn.inc-cancel-btn {
+  background-color: var(--dark-surface, #1e1e1e);
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
+}
+
+body.dark-mode .inc-confirm-btn.inc-cancel-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+body.dark-mode .inc-confirm-btn.inc-delete-btn:focus {
+  box-shadow: 0 0 0 2px rgba(239, 83, 80, 0.3);
+}
+
+body.dark-mode .inc-confirm-btn.inc-delete-btn {
+  background-color: transparent;
+  color: #ef5350;
+  border-color: #ef5350;
+}
+
+body.dark-mode .inc-confirm-btn.inc-delete-btn:hover {
+  background-color: rgba(239, 83, 80, 0.1);
+  color: #f44336;
 }
 
 /* ======== SUMMARY BOX ======== */
@@ -611,8 +1760,6 @@ SimBudget.loadIncomeData = function() {
 }
 
 .inc-summary-box {
-  grid-column: auto;
-  margin-top: 15px;
   background-color: #fe9aa1;
   border-radius: 0px;
   padding: 20px;
@@ -623,23 +1770,18 @@ SimBudget.loadIncomeData = function() {
   width: 100%;
 }
 
-@media (min-width: 769px) {
-  .inc-summary-box {
-    max-width: 60%; /* Match the form container width */
-  }
-}
-
 .inc-box-content {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
 }
 
 .inc-box-item {
-  flex: 1;
+  flex: 1 0 calc(50% - 10px);
+  padding: 8px;
   text-align: center;
-  padding: 0 8px;
+  margin-bottom: 5px;
 }
 
 .inc-box-label {
@@ -650,95 +1792,42 @@ SimBudget.loadIncomeData = function() {
 }
 
 .inc-box-value {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   color: #2c3e50;
   font-family: 'Lato', sans-serif;
   font-weight: 700;
 }
 
-/* ======== FORM SECTION ======== */
-.inc-form-container {
-  background-color: #ffffff;
+/* Hide summary on mobile */
+@media (max-width: 768px) {
+  .inc-summary-row {
+    display: none;
+  }
+}
+
+/* Add button styling */
+.inc-add-income-btn {
+  background-color: #2c3e50;
+  color: white;
+  border: none;
   border-radius: 0px;
-  padding: 20px;
-  margin-bottom: 16px;
-  border-top: 1px solid rgba(0, 0, 0, 0.5);
-  border-left: 1px solid rgba(0, 0, 0, 0.5);
-  border-right: 4px solid #334a60;
-  border-bottom: 4px solid #334a60;
-}
-
-.inc-section-title {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  font-weight: 500;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-.inc-form {
-  width: 100%;
-  gap: 12px;
-}
-
-.inc-form-row {
-  margin-bottom: 12px;
-  width: 100%;
-}
-
-/* First row has 4 columns */
-.inc-row-first {
-  display: grid;
-  grid-template-columns: 1fr 0.5fr 1.5fr 1fr; /* Date, Amount, Name, Account */
-  gap: 12px;
-}
-
-/* Second row has 3 columns, with Notes taking more space */
-.inc-row-second {
-  display: grid;
-  grid-template-columns: 1fr 2fr 1fr; /* Source, Notes, Add button */
-  gap: 12px;
-}
-
-.inc-input {
-  width: 100%;
-  height: 44px;
   padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 0px;
-  font-size: 16px; /* Prevents zoom on iOS */
-}
-
-.inc-amount-wrapper {
-  position: relative;
-  width: 100%;
-}
-
-.inc-currency {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #666;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-.inc-amount {
-  padding-left: 24px;
-  font-family: 'Lato', sans-serif;
-  font-weight: 700;
-}
-
-.inc-add-btn {
-  height: 44px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  border-radius: 0px;
+  gap: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-left: 8px;
+}
+
+.inc-add-income-btn:hover {
+  background-color: #1984c5;
+}
+
+.inc-add-income-btn i {
+  font-size: 18px;
 }
 
 /* ======== TABLE SECTION ======== */
@@ -752,6 +1841,49 @@ SimBudget.loadIncomeData = function() {
   border-bottom: 4px solid #334a60;
 }
 
+.inc-table-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+.inc-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inc-status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inc-filter-btn {
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.inc-filter-btn.active {
+  background-color: #2c3e50;
+  color: white;
+  border-color: #2c3e50;
+}
+
+.inc-filter-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  font-size: 14px;
+}
+
 .inc-table-wrapper {
   overflow-x: auto;
   margin-bottom: 16px;
@@ -760,62 +1892,272 @@ SimBudget.loadIncomeData = function() {
 .inc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px; /* More compact for mobile */
+  font-size: 14px;
 }
 
 .inc-table th,
 .inc-table td {
-  padding: 10px 4px;
-  text-align: left;
+  padding: 6px 5px;
+  text-align: center;
   border-bottom: 1px solid #eee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .inc-table th {
   font-weight: 500;
-  color: var(--text-secondary, #666);
-  white-space: nowrap;
+  color: #607d8b;
+  position: sticky;
+  top: 0;
+  background-color: white;
+  z-index: 10;
   font-family: 'Lato', sans-serif;
   font-weight: 700;
+}
+
+/* Name cell - prevent wrapping */
+.inc-name-cell {
+  max-width: 200px;
+  text-align: left !important;
+}
+
+.inc-name-content {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+/* Notes cell styling */
+.inc-notes-cell {
+  width: 40px;
+  text-align: center;
+  cursor: pointer;
+  color: #666;
+}
+
+.inc-notes-cell:hover {
+  color: #2c3e50;
+  background-color: rgba(0,0,0,0.05);
+}
+
+.inc-notes-header {
+  width: 40px !important;
+  text-align: center !important;
+  padding: 6px 5px !important;
+}
+
+.inc-notes-input {
+  max-width: 100px;
+}
+
+.inc-table tbody tr {
+  transition: background-color 0.2s;
+}
+
+.inc-table tbody tr:hover {
+  filter: brightness(0.95);
+}
+
+.inc-table tbody tr.inc-editing {
+  box-shadow: 0 0 0 2px #2c3e50;
+  position: relative;
+  z-index: 5;
 }
 
 .inc-amount-cell {
+   min-width: 100px !important; 
   font-weight: 500;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
   color: #2c3e50;
+}
+
+/* Action buttons */
+.inc-action-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+}
+
+.inc-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  width: 32px;
+  height: 32px;
+  border-radius: 0px;
+}
+
+.inc-action-btn:hover {
+  background-color: rgba(0,0,0,0.05);
+  color: #2c3e50;
+}
+
+.inc-actions-cell {
   white-space: nowrap;
+}
+
+.inc-save-btn {
+  color: #4caf50;
+}
+
+.inc-cancel-btn {
+  color: #757575;
+}
+
+.inc-delete-btn {
+  color: #f44336 !important;
+}
+
+.inc-delete-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1) !important;
+  color: #d32f2f !important;
+}
+
+.inc-edit-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 0px;
+  font-size: 14px;
+}
+
+.inc-input-error {
+  border-color: #f44336 !important;
+  background-color: rgba(244, 67, 54, 0.1) !important;
+}
+
+/* Currency input wrapper */
+.inc-amount-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.inc-currency {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  z-index: 1;
   font-family: 'Lato', sans-serif;
   font-weight: 700;
 }
 
-/* Hide less important columns on mobile */
-.inc-notes-cell, 
-.inc-table th:nth-child(6) {
-  display: none;
+.inc-amount {
+  padding-left: 36px !important;
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
 }
 
-.inc-source-cell, 
-.inc-table th:nth-child(5) {
-  display: none;
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .inc-table {
+    font-size: 12px;
+  }
+  
+  /* Hide less important columns on mobile */
+  .inc-source-cell,
+  .inc-table th:nth-child(5) {
+    display: none;
+  }
+  
+  .inc-account-cell,
+  .inc-table th:nth-child(4) {
+    display: none;
+  }
+  
+  /* Name column */
+  .inc-name-cell,
+  .inc-table th:nth-child(2) {
+    max-width: 80px;
+  }
+  
+  /* Category emoji column */
+  .inc-category-cell,
+  .inc-table th:nth-child(3) {
+    width: 30px;
+    max-width: 30px;
+  }
+  
+  /* Notes column */
+  .inc-notes-cell,
+  .inc-table th:nth-child(6) {
+    width: 30px;
+  }
+  
+  /* Actions column */
+  .inc-actions-cell,
+  .inc-table th:nth-child(7) {
+    width: 60px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  
+  /* Action button smaller */
+  .inc-action-btn {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .inc-action-btn i {
+    font-size: 16px;
+  }
+  
+  /* Filter adjustments */
+  .inc-filter-btn {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
 }
 
-/* Optimize date display */
-.inc-date-cell {
-  white-space: nowrap;
-}
-
-.inc-show-more {
+/* Emoji-only category display */
+.category-emoji-only {
+  font-size: 16px !important;
   display: flex;
   justify-content: center;
+  align-items: center;
+  height: 100%;
+  width: 100%;
 }
 
-.inc-more-btn {
-  min-width: 120px;
-  height: 44px;
-  border-radius: 0px;
+.inc-category-cell:hover .category-emoji-only {
+  transform: scale(1.1);
+  transition: transform 0.2s ease;
+}
+
+.inc-table th:nth-child(3) {
+  width: 40px !important;
+}
+
+.inc-category-cell {
+  width: 40px !important;
+  cursor: help;
+}
+
+/* iOS-specific fix for date inputs */
+input[type="date"].inc-edit-input {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block !important;
 }
 
 /* ======== DARK MODE SUPPORT ======== */
-body.dark-mode .inc-summary-box,
-body.dark-mode .inc-form-container,
+body.dark-mode .inc-summary-box {
+  background-color: var(--dark-surface, #1e1e1e) !important;
+  color: var(--dark-text-primary, rgba(255, 255, 255, 0.87)) !important;
+}
+
 body.dark-mode .inc-table-container {
   background-color: var(--dark-surface, #1e1e1e);
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
@@ -823,15 +2165,21 @@ body.dark-mode .inc-table-container {
 
 body.dark-mode .inc-box-label,
 body.dark-mode .inc-table th {
-  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6)) !important;
 }
 
 body.dark-mode .inc-box-value,
 body.dark-mode .inc-amount-cell {
-  color: #DDA15E;
+  color: #DDA15E !important;
 }
 
-body.dark-mode .inc-input {
+body.dark-mode .inc-currency {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+body.dark-mode .inc-filter-select,
+body.dark-mode .inc-filter-btn,
+body.dark-mode .inc-edit-input {
   background-color: var(--dark-surface, #1e1e1e);
   color: var(--dark-text-primary, rgba(255, 255, 255, 0.87));
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
@@ -841,109 +2189,62 @@ body.dark-mode .inc-table td {
   border-color: var(--dark-border, rgba(255, 255, 255, 0.12));
 }
 
-body.dark-mode .inc-currency {
+body.dark-mode .inc-table th {
+  background-color: var(--dark-surface, #1e1e1e);
+}
+
+body.dark-mode .inc-action-btn {
+  color: var(--dark-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+body.dark-mode .inc-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #DDA15E;
+}
+
+body.dark-mode .category-emoji-only {
+  color: #ffffff !important;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+body.dark-mode .inc-filter-btn.active {
+  background-color: #DDA15E;
+  border-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .inc-add-income-btn {
+  background-color: #DDA15E;
+  color: #1e1e1e;
+}
+
+body.dark-mode .inc-add-income-btn:hover {
+  background-color: #c9955a;
+}
+
+body.dark-mode .inc-notes-cell {
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* ======== MOBILE ADJUSTMENTS ======== */
-@media (max-width: 768px) {
-  /* Reset the layout for mobile */
-  .inc-summary-row {
-    display: block;
-    padding: 0 10px;
-  }
-  
-  .inc-summary-box {
-    grid-column: auto;
-  }
-  
-  .inc-box-content {
-    display: flex;
-    justify-content: space-between;
-  }
-  
-  /* Mobile form layout */
-  .inc-form {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .inc-form-row,
-  .inc-row-first,
-  .inc-row-second {
-    grid-column: auto; /* Reset grid column */
-    display: grid;
-    grid-template-columns: 1fr 1fr; /* 2 columns for mobile */
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-  
-  /* Set specific mobile layout for form fields */
-  .inc-row-first {
-    display: grid;
-    grid-template-areas: 
-      "date amount"
-      "name account";
-  }
-  
-  .inc-row-second {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas: 
-      "source add";
-  }
-  
-  /* Notes are hidden on mobile */
-  .inc-notes {
-    display: none;
-  }
-  
-  /* Position each field in its grid area */
-  #incomeDate {
-    grid-area: date;
-  }
-  
-  .inc-amount-wrapper {
-    grid-area: amount;
-    grid-column: auto; /* Reset from full-width */
-  }
-  
-  #incomeName {
-    grid-area: name;
-  }
-  
-  #incomeAccount {
-    grid-area: account;
-  }
-  
-  #incomeSource {
-    grid-area: source;
-  }
-  
-  .inc-add-btn {
-    grid-area: add;
-    width: 100%;
-  }
-  
-  /* Make amount box smaller than date */
-  .inc-row-first {
-    grid-template-columns: 3fr 2fr; /* Date wider than amount */
-  }
-  
-  /* Improve table display on mobile */
-  .inc-table {
-    font-size: 13px;
-  }
-  
-  .inc-table th,
-  .inc-table td {
-    padding: 8px 4px;
-  }
+body.dark-mode .inc-notes-cell:hover {
+  color: #DDA15E;
 }
 
+body.dark-mode .inc-delete-btn {
+  color: #ef5350 !important;
+}
+
+body.dark-mode .inc-delete-btn:hover {
+  background-color: rgba(239, 83, 80, 0.1) !important;
+  color: #f44336 !important;
+}
+
+/* ======== DESKTOP STYLES ======== */
 @media (min-width: 769px) {
-  /* Increase font size for desktop */
+  .inc-box-item {
+    flex: 1;
+  }
+  
   .inc-box-label {
     font-size: 14px;
   }
@@ -952,73 +2253,52 @@ body.dark-mode .inc-currency {
     font-size: 22px;
   }
   
-  /* Simple margin-based approach for form container */
-  .inc-form-container,
-  .inc-table-container {
-    margin-left: auto;
-    margin-right: auto;
-    max-width: 60%; /* Adjust width to match summary box */
+  .inc-filters {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
   }
   
-  /* Improve table display */
+  .inc-status-filters {
+    flex: 3;
+  }
+  
+  .inc-category-filter {
+    flex: 1;
+    max-width: 200px;
+  }
+  
   .inc-table {
     font-size: 15px;
   }
   
-  .inc-table th,
-  .inc-table td {
-    padding: 12px 8px;
-  }
-  
-  /* Show all table columns on desktop */
-  .inc-source-cell, 
-  .inc-table th:nth-child(5) {
-    display: table-cell;
-  }
-  
-  /* Large desktop - show all columns */
-  @media (min-width: 1200px) {
-    .inc-notes-cell, 
-    .inc-table th:nth-child(6) {
-      display: table-cell;
-    }
+  .inc-table-container,
+  .inc-summary-box {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 85%;
   }
 }
 
-/* ======== PRINT STYLES ======== */
-@media print {
-  .income-view {
-    background-color: white !important;
-    color: black !important;
-  }
-  
-  .inc-add-btn, 
-  .inc-more-btn {
-    display: none !important;
-  }
-  
-  .inc-summary-box,
-  .inc-form-container,
-  .inc-table-container {
-    border: 1px solid #ccc !important;
-    break-inside: avoid !important;
-  }
-  
-  .inc-table-wrapper {
-    overflow: visible !important;
-  }
-  
-  .inc-table th,
-  .inc-table td {
-    padding: 8px !important;
-  }
-  
-  /* Show all columns when printing */
-  .inc-notes-cell, 
-  .inc-table th:nth-child(6),
-  .inc-source-cell, 
-  .inc-table th:nth-child(5) {
-    display: table-cell !important;
+/* Empty message styling */
+.inc-empty-message {
+  text-align: center;
+  color: #999;
+  font-style: italic;
+  padding: 20px !important;
+}
+
+/* Grid layout for popup form */
+.inc-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 0px;
+}
+
+@media (max-width: 768px) {
+  .inc-add-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

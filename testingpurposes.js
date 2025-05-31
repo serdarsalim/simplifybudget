@@ -207,3 +207,257 @@ function updateMasterDataTimestamp() {
     Logger.log("Error updating master timestamp: " + error.toString());
   }
 }
+
+
+
+
+
+// ======== INCOME SERVER FUNCTIONS ========
+
+// ======== FIXED INCOME SERVER FUNCTIONS WITH CORRECT HEADERS ========
+
+/**
+ * Get income data from Income sheet range D4:J6000 
+ * Headers: transactionId | Date | Amount | Name | Account | Source | Notes 📝
+ * @return {Object} Result with income transactions data
+ */
+function getIncomeData() {
+  console.log("=== SERVER INCOME DATA FETCH ===");
+  
+  try {
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    
+    if (!spreadsheetId) {
+      return { success: false, error: "No spreadsheet ID found" };
+    }
+
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const incomeSheet = ss.getSheetByName("Income");
+    
+    if (!incomeSheet) {
+      return { success: false, error: "Income sheet not found" };
+    }
+
+    // Headers are at D4:J4 (7 columns)
+    // D=transactionId, E=Date, F=Amount, G=Name, H=Account, I=Source, J=Notes
+    const headerRange = "D4:J4";
+    const headers = incomeSheet.getRange(headerRange).getValues()[0];
+    console.log("Income headers found: " + JSON.stringify(headers));
+    
+    // Direct column mapping based on known positions
+    const columnMap = {
+      transactionId: 0,  // Column D
+      date: 1,           // Column E  
+      amount: 2,         // Column F
+      name: 3,           // Column G
+      account: 4,        // Column H
+      source: 5,         // Column I
+      notes: 6           // Column J
+    };
+
+    // Read data from D5:J6000
+    const dataRange = "D5:J6000";
+    const lastRow = incomeSheet.getLastRow();
+    const actualRange = "D5:J" + Math.min(6000, lastRow);
+    
+    console.log("Reading income data from range: " + actualRange);
+    const incomeData = incomeSheet.getRange(actualRange).getValues();
+    console.log("Successfully read " + incomeData.length + " rows");
+
+    const income = [];
+    let processedCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < incomeData.length; i++) {
+      const row = incomeData[i];
+      
+      // Skip empty rows
+      if (!row || row.every(cell => !cell || cell.toString().trim() === '')) {
+        skippedCount++;
+        continue;
+      }
+
+      // Extract data using direct column mapping
+      const transactionId = row[columnMap.transactionId] || '';
+      const date = row[columnMap.date];
+      const amount = row[columnMap.amount];
+      const name = row[columnMap.name] || '';
+      const account = row[columnMap.account] || '';
+      const source = row[columnMap.source] || 'Other';
+      const notes = row[columnMap.notes] || '';
+      
+      // Skip rows without essential data
+      if (!amount || parseFloat(amount) <= 0) {
+        skippedCount++;
+        continue;
+      }
+
+      // Parse date
+      let incomeDate = null;
+      if (date) {
+        if (date instanceof Date) {
+          incomeDate = date.toISOString();
+        } else {
+          incomeDate = new Date(date).toISOString();
+        }
+      }
+
+      // Parse amount
+      const parsedAmount = parseFloat(amount);
+      if (isNaN(parsedAmount)) {
+        skippedCount++;
+        continue;
+      }
+
+      income.push({
+        id: transactionId || "INC-" + (i + 5),
+        rowIndex: i + 5,
+        date: incomeDate,
+        name: name.toString(),
+        category: 'Income 💵', // Default category since not in sheet
+        amount: parsedAmount,
+        account: account.toString(),
+        source: source.toString(),
+        notes: notes.toString()
+      });
+
+      processedCount++;
+    }
+
+    return {
+      success: true,
+      income: income,
+      meta: {
+        totalRows: incomeData.length,
+        processedRows: processedCount,
+        skippedRows: skippedCount,
+        range: actualRange,
+        columnMap: columnMap
+      }
+    };
+
+  } catch (error) {
+    console.log("ERROR in getIncomeData: " + error.toString());
+    return { 
+      success: false, 
+      error: error.toString() 
+    };
+  }
+}
+
+/**
+ * Save batch income transactions - FIXED with correct column order
+ * D=transactionId, E=Date, F=Amount, G=Name, H=Account, I=Source, J=Notes
+ */
+function saveBatchIncome(income) {
+  const sh = getBudgetSheet("Income");
+  if (!sh) return { success: false, error: "Income sheet missing" };
+
+  // 1) pull only col D (transactionId), build map + empty‐row list
+  const startRow = 5;
+  const lastRow = Math.max(sh.getLastRow(), startRow);
+  const ids = sh.getRange(startRow, 4, lastRow - startRow + 1).getValues().flat(); // Column D = 4
+  const map = {};
+  const holes = [];
+  ids.forEach((id, i) => {
+    const r = startRow + i;
+    if (id) map[id] = r;
+    else if (holes.length < income.length) holes.push(r);
+  });
+
+  // 2) separate out updates vs inserts
+  const toUpdate = [];
+  const toInsert = [];
+  for (const e of income) {
+    if (!e.amount || +e.amount <= 0) continue;
+    const row = map[e.id];
+    
+    // Create values array matching exact header order: D=transactionId, E=Date, F=Amount, G=Name, H=Account, I=Source, J=Notes
+    const values = [
+      e.id,                           // D - transactionId
+      new Date(e.date),              // E - Date  
+      +e.amount,                     // F - Amount
+      e.name || e.description || "", // G - Name
+      e.account || "",               // H - Account
+      e.source || "Other",           // I - Source
+      e.notes || ""                  // J - Notes
+    ];
+    
+    if (row) {
+      toUpdate.push({ row, values });
+    } else {
+      const target = holes.length ? holes.shift() : ++lastRow;
+      toInsert.push({ row: target, values });
+      map[e.id] = target;
+    }
+  }
+
+  // 3) batch‐write updates (D:J = 7 columns)
+  toUpdate.forEach(u => {
+    sh.getRange(u.row, 4, 1, 7).setValues([u.values]);
+  });
+  
+  // 4) batch‐write inserts (D:J = 7 columns)
+  toInsert.forEach(i => {
+    sh.getRange(i.row, 4, 1, 7).setValues([i.values]);
+  });
+  
+  // Update master timestamp
+  updateMasterDataTimestamp();
+  
+  return {
+    success: true,
+    updated: toUpdate.length,
+    inserted: toInsert.length,
+    reused: income.length - toUpdate.length - toInsert.length
+  };
+}
+
+/**
+ * Clear income transaction row by ID - searches column D, clears D:J
+ * @param {string} transactionId - Transaction ID to clear
+ * @return {Object} Result object with success status
+ */
+function clearIncomeRow(transactionId) {
+  try {
+    // Get the income sheet
+    const sheet = getBudgetSheet("Income");
+    if (!sheet) {
+      return { success: false, error: "Income sheet not found" };
+    }
+    
+    // Use TextFinder to locate the exact ID in column D
+    const finder = sheet.createTextFinder(transactionId.toString())
+                       .matchEntireCell(true)
+                       .matchCase(false)
+                       .useRegularExpression(false)
+                       .findNext();
+    if (!finder) {
+      return {
+        success: false,
+        error: "Income transaction not found: " + transactionId
+      };
+    }
+    
+    // Determine the row of the found cell
+    const rowIndex = finder.getRow();
+    
+    // Clear the cells in that row (columns D through J = 7 columns)
+    sheet.getRange(rowIndex, 4, 1, 7).clearContent();
+    
+    // Update master timestamp
+    updateMasterDataTimestamp();
+    
+    return {
+      success: true,
+      message: "Income transaction row cleared successfully",
+      transactionId,
+      rowIndex
+    };
+    
+  } catch (e) {
+    Logger.log("Error in clearIncomeRow: " + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
