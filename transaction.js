@@ -401,7 +401,7 @@ function setUserSettings(settings) {
       version: 1
     };
     
-    // Save to L88 (same pattern as budget data in N86)
+    // Save to L88 (same pattern as budget data in N88)
     sheet.getRange("L88").setValue(JSON.stringify(enhancedSettings));
     
     // Update cache with enhanced data
@@ -536,7 +536,7 @@ function saveBatchExpenses(expenses) {
       e.transactionId,
       new Date(e.date),
       +e.amount,
-      e.category,
+      convertCategoryToZategory(e.category), 
       e.name || e.description || "",
       e.label  || "",
       e.notes  || "",
@@ -739,8 +739,8 @@ function saveRecurringTransaction(recurring) {
       }
       
       if (columnMap.category !== undefined) {
-        values[columnMap.category] = item.category || '';
-      }
+  values[columnMap.category] = convertCategoryToZategory(item.category);  // ← CHANGED!
+}
       
       if (columnMap.type !== undefined) {
         // Write "TRUE" or "FALSE" as strings
@@ -1022,7 +1022,7 @@ function getRecurringData() {
 
 /**
  * Enhanced saveBudgetData function with timestamp support
- * Saves to Dontedit sheet, cell N86 with embedded timestamp
+ * Saves to Dontedit sheet, cell N88 with embedded timestamp
  * @param {Object} budgetData - Complete budget data object
  * @return {Object} Result with success status and timestamp
  */
@@ -1049,8 +1049,8 @@ function saveBudgetData(budgetData) {
       version: 1
     };
     
-    // Save to N86 (same cell as before, but with timestamp)
-    sheet.getRange("N86").setValue(JSON.stringify(enhancedBudgetData));
+    // Save to N88 (same cell as before, but with timestamp)
+    sheet.getRange("N88").setValue(JSON.stringify(enhancedBudgetData));
     
     // Update cache with enhanced data
     props.setProperty("CACHED_BUDGET_DATA", JSON.stringify(enhancedBudgetData));
@@ -1105,8 +1105,8 @@ function getBudgetData(useCache = true) {
       return { success: false, error: "Dontedit sheet not found" };
     }
     
-    // Get budget JSON from N86
-    const budgetCell = sheet.getRange("N86").getValue();
+    // Get budget JSON from N88
+    const budgetCell = sheet.getRange("N88").getValue();
     
     if (!budgetCell) {
       // Return empty object with current timestamp if no data yet
@@ -1137,7 +1137,7 @@ function getBudgetData(useCache = true) {
       budgetData.version = 1;
       
       // Save back to spreadsheet with timestamp
-      sheet.getRange("N86").setValue(JSON.stringify(budgetData));
+      sheet.getRange("N88").setValue(JSON.stringify(budgetData));
     }
     
     // Cache for next time
@@ -1152,5 +1152,55 @@ function getBudgetData(useCache = true) {
   } catch (error) {
     Logger.log("Error in getBudgetData: " + error.toString());
     return { success: false, error: error.toString() };
+  }
+}
+
+
+/**
+ * Convert category name to zategory formula for spreadsheet storage
+ * @param {string} categoryName - Full category name like "Food 🍕"
+ * @return {string} Formula like "=zategory1" or original name if not found
+ */
+function convertCategoryToZategory(categoryName) {
+  try {
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    
+    if (!spreadsheetId) {
+      Logger.log("No spreadsheet ID found, returning original category");
+      return categoryName;
+    }
+    
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const setupSheet = ss.getSheetByName("Setup");
+    if (!setupSheet) {
+      Logger.log("Setup sheet not found, returning original category");
+      return categoryName;
+    }
+    
+    // Get categories from G15:G44
+    const categoriesRange = setupSheet.getRange("G15:G44");
+    const categoriesData = categoriesRange.getValues().flat();
+    
+    // Find the index of our category
+    const categoryIndex = categoriesData.findIndex(cat => 
+      cat && cat.toString().trim() === categoryName.toString().trim()
+    );
+    
+    if (categoryIndex === -1) {
+      Logger.log("Category not found in Setup sheet: " + categoryName);
+      return categoryName; // Return original if not found
+    }
+    
+    // Convert to zategory formula (index 0 = zategory1)
+    const zategoryNumber = categoryIndex + 1;
+    const zategoryFormula = "=zategory" + zategoryNumber;
+    
+    Logger.log("Converted '" + categoryName + "' to '" + zategoryFormula + "'");
+    return zategoryFormula;
+    
+  } catch (error) {
+    Logger.log("Error in convertCategoryToZategory: " + error.toString());
+    return categoryName; // Return original on error
   }
 }
