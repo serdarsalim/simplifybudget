@@ -546,91 +546,74 @@ function notifyMonthlyGridOfCategoryChange() {
 }
 
 /**
- * Load categories using existing CacheManager - NO MORE API CALLS unless needed
+ * Load categories using existing CacheManager - Cache guaranteed to exist
  */
 function loadAndRenderCategories() {
   window._addingInactiveCategories = false;
   
   return new Promise((resolve, reject) => {
-    // ✅ Use YOUR existing cache implementation first
+    // Categories are GUARANTEED to be cached at startup
     const cachedData = window.CacheManager.getCategoriesWithTimestamp();
     
-    if (cachedData && cachedData.categories && Array.isArray(cachedData.categories)) {
-      
-      // Use the exact same processing logic, just with cached data
-      const categories = cachedData.categories;
-      
-      // Store all categories for reference
-      window._allCategories = categories;
-      
-      // Start with active categories
-      _categories = categories
-        .filter(cat => cat.active)
-        .map(cat => ({
-          id: cat.name,
-          name: cat.name,
-          emoji: cat.emoji || '',
-          active: true,
-          fullName: cat.fullName || cat.name,
-          order: cat.order || 999,
-          originalIndex: 999
-        }));
-      
-      // Find inactive categories with spending in current month
-      const categoryIdsWithTransactions = new Set();
-      _transactions.forEach(tx => {
-        if (tx.date && 
-            tx.date.getMonth() === _currentMonth && 
-            tx.date.getFullYear() === _currentYear && 
-            tx.category) {
-          const lowerCaseCat = tx.category.toLowerCase();
-          if (!lowerCaseCat.includes("income")) {
-            categoryIdsWithTransactions.add(tx.category);
-          }
-        }
-      });
-      
-      // Get inactive categories with transactions
-      const inactiveWithSpending = categories
-        .filter(cat => !cat.active && categoryIdsWithTransactions.has(cat.name))
-        .map(cat => ({
-          id: cat.name,
-          name: cat.name,
-          emoji: cat.emoji || '🛸',
-          active: false,
-          hasTransactions: true,
-          fullName: cat.fullName || cat.name,
-          order: cat.order || 999,
-          originalIndex: 999
-        }));
-      
-      // Combine active and inactive categories
-      _categories = [..._categories, ...inactiveWithSpending];
-      
-      // Render immediately with cached data
-      renderGrid();
-      resolve(_categories);
-      
-    } else {
-      // ✅ Only make API call if cache is empty/invalid
-      
-      API.getCategoriesWithTimestamp(
-        function(result) {
-          // Same processing logic as before...
-          if (result && result.success && Array.isArray(result.categories)) {
-            window._allCategories = result.categories;
-            // ... rest of existing logic
-            renderGrid();
-            resolve(_categories);
-          } else {
-            reject(result?.error || 'Failed to load categories');
-          }
-        },
-        function(error) {
-          reject(error);
-        }
-      );
+    if (!cachedData || !cachedData.categories) {
+      // This should NEVER happen with new startup system
+      console.error('Categories cache missing despite startup initialization!');
+      reject('Categories cache not available');
+      return;
     }
+    
+    const categories = cachedData.categories;
+    
+    // Store all categories for reference
+    window._allCategories = categories;
+    
+    // Start with active categories
+    _categories = categories
+      .filter(cat => cat.active)
+      .map(cat => ({
+        id: cat.name,
+        name: cat.name,
+        emoji: cat.emoji || '',
+        active: true,
+        fullName: cat.fullName || cat.name,
+        order: cat.order || 999,
+        originalIndex: 999
+      }));
+    
+    // Find inactive categories with spending in current month
+    const categoryIdsWithTransactions = new Set();
+    _transactions.forEach(tx => {
+      if (tx.date && 
+          tx.date.getMonth() === _currentMonth && 
+          tx.date.getFullYear() === _currentYear && 
+          tx.category) {
+        const lowerCaseCat = tx.category.toLowerCase();
+        if (!lowerCaseCat.includes("income")) {
+          categoryIdsWithTransactions.add(tx.category);
+        }
+      }
+    });
+    
+    // Get inactive categories with transactions
+    const inactiveWithSpending = categories
+      .filter(cat => !cat.active && categoryIdsWithTransactions.has(cat.name))
+      .map(cat => ({
+        id: cat.name,
+        name: cat.name,
+        emoji: cat.emoji || '🛸',
+        active: false,
+        hasTransactions: true,
+        fullName: cat.fullName || cat.name,
+        order: cat.order || 999,
+        originalIndex: 999
+      }));
+    
+    // Combine active and inactive categories
+    _categories = [..._categories, ...inactiveWithSpending];
+    
+    // Render immediately with cached data
+    renderGrid();
+    resolve(_categories);
   });
 }
 
