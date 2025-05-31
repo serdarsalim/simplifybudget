@@ -1626,7 +1626,10 @@ function getNextMonth(month, year) {
             colorClass = 'amount-medium';
           }
           
-          cell.innerHTML = `<div class="cell-content ${colorClass} ${hasRecurring ? 'recurring' : ''}"><span class="amount">${formatCurrency(amount)}</span><span class="transaction-count">(${dayTransactions.length})</span></div>`;
+          cell.innerHTML = `<div class="cell-content ${colorClass} ${hasRecurring ? 'recurring' : ''}">
+          <span class="amount">${formatCurrency(amount)}</span>
+          ${dayTransactions.length > 1 ? `<span class="transaction-count">(${dayTransactions.length})</span>` : ''}
+        </div>`;
         }
         
         row.appendChild(cell);
@@ -2671,7 +2674,7 @@ window.notifyMonthlyGridOfCategoryChange = notifyMonthlyGridOfCategoryChange;
 
 /* Color coding */
 .amount-small {
-  background-color: rgb(156 242 251 / 15%); /* Light blue */
+  background-color: rgb(170 255 222 / 15%) /* Light blue */
 }
 
 .amount-medium {
@@ -3236,6 +3239,38 @@ body.dark-mode .popup-close {
   .detail-account {
     display: none;
   }
+
+  .transaction-detail {
+    display: grid;
+    grid-template-columns: 120px 1fr 80px !important;
+    gap: 8px !important;
+  }
+  
+  /* Allow enough width for BOTH emoji and name */
+  .detail-category {
+    width: 120px !important;
+    min-width: 120px !important;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  
+  /* Let name take remaining space */
+  .detail-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* Account still hidden to save space */
+  .detail-account {
+    display: none;
+  }
+
+
+
+
 }
 
 /* ============= RESPONSIVE DESIGN - MOBILE FIRST ============= */
@@ -3668,8 +3703,8 @@ body.dark-mode .loading-spinner {
 /* ============= MEDIUM-LARGE SCREEN OPTIMIZATION ============= */
 @media (min-width: 1400px) {
   .category-header {
-    min-width: 85px;
-    width: 85px;
+    min-width: 80px;
+    width: 80px;
   }
 }
 
