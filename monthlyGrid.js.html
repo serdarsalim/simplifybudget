@@ -15,11 +15,7 @@ var MonthlyGrid = (function() {
   let _categories = [];
   let _transactions = [];
   let _isLoading = false;
- let _currencySymbol = '$';
-  
-// Using centralized CacheManager now
-
-  const MAX_CACHE_MONTHS = 6; // Limit cache size
+  let _currencySymbol = '$';
   
   // DOM element cache for performance
   const _elements = {};
@@ -321,6 +317,7 @@ function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   
   // If we have ANY cache, use it - no staleness check!
   if (monthExpenses) {
+    console.log('MonthlyGrid: Using cached data immediately (no staleness check)');
     
     // Process cached data immediately
     processRealExpenseData(monthExpenses);

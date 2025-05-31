@@ -203,6 +203,7 @@ _fetchFromServer: function() {
 
       // Get current view
       getCurrent: function () {
+  
         return _currentView;
       },
     };
@@ -235,6 +236,9 @@ initialize: function() {
   sessionStorage.setItem('monthlyGrid_sessionActive', 'true');
   this.loadGlobalCategories();
 
+    // 🔥 ADD THIS HERE - ONE-TIME STARTUP TIMESTAMP CHECK
+  this.checkDataFreshnessOnStartup();
+
   // Set up event listeners
   this.bindEvents();
 
@@ -261,8 +265,185 @@ initialize: function() {
     this.loadViewData("expense");
   }
 
-  _initialized = true;
 },
+
+checkDataFreshnessOnStartup: function() {
+  // Safety checks first
+  if (!window.CacheManager || !window.API) {
+    console.log('Cache timestamp check skipped - dependencies not ready');
+    return;
+  }
+  
+  console.log('Starting timestamp validation for cached data...');
+  
+  // Check each area safely
+  this.checkExpensesTimestamp();
+  this.checkSettingsTimestamp(); 
+  this.checkCategoriesTimestamp();
+  this.checkBudgetTimestamp();
+},
+
+checkExpensesTimestamp: function() {
+  try {
+    const currentMonth = typeof _currentMonth !== 'undefined' ? _currentMonth : new Date().getMonth();
+    const currentYear = typeof _currentYear !== 'undefined' ? _currentYear : new Date().getFullYear();
+    
+    const cachedExpenses = CacheManager.getExpenses(currentMonth, currentYear);
+    if (!cachedExpenses) return;
+    
+    // Use existing master timestamp system
+    if (typeof CacheManager.isTransactionDataStale === 'function') {
+      CacheManager.isTransactionDataStale(function(isStale) {
+        if (isStale) {
+          console.log('Expenses data is stale, clearing cache');
+          CacheManager.invalidate(`expenses_${currentYear}-${currentMonth}`);
+        }
+      });
+    }
+  } catch (error) {
+    console.log('Error checking expenses timestamp:', error);
+  }
+},
+
+checkSettingsTimestamp: function() {
+  try {
+    const cachedSettings = CacheManager.getSettingsWithTimestamp();
+    
+    if (!cachedSettings) {
+      // No cache at all - populate it
+      console.log('No settings cache found, fetching...');
+      API.getUserSettings(
+        function(result) {
+          if (result && result.success && result.settings) {
+            CacheManager.setSettingsWithTimestamp(result.settings, result.timestamp);
+            console.log('Settings cache populated');
+          }
+        },
+        function(error) {
+          console.log('Failed to populate settings cache:', error);
+        },
+        true // Force fresh fetch
+      );
+      return;
+    }
+    
+    // Cache exists - check if stale
+    if (!cachedSettings.timestamp) return;
+    
+    API.getUserSettings(
+      function(result) {
+        if (result && result.timestamp) {
+          const serverTime = new Date(result.timestamp).getTime();
+          const cachedTime = new Date(cachedSettings.timestamp).getTime();
+          
+          if (serverTime > cachedTime) {
+            console.log('Settings data is stale, clearing cache');
+            CacheManager.invalidate('settings_with_timestamp');
+          }
+        }
+      },
+      function(error) {
+        console.log('Could not check settings timestamp:', error);
+      },
+      false // Don't force refresh, just check timestamp
+    );
+  } catch (error) {
+    console.log('Error checking settings timestamp:', error);
+  }
+},
+
+checkCategoriesTimestamp: function() {
+  try {
+    const cachedCategories = CacheManager.getCategoriesWithTimestamp();
+    
+    if (!cachedCategories) {
+      // No cache at all - populate it
+      console.log('No categories cache found, fetching...');
+      API.getCategoriesWithTimestamp(
+        function(result) {
+          if (result && result.success) {
+            CacheManager.setCategoriesWithTimestamp(result.categories, result.timestamp);
+            console.log('Categories cache populated');
+          }
+        },
+        function(error) {
+          console.log('Failed to populate categories cache:', error);
+        }
+      );
+      return;
+    }
+    
+    // Cache exists - check if stale
+    if (!cachedCategories.timestamp) return;
+    
+    API.getCategoriesWithTimestamp(
+      function(result) {
+        if (result && result.timestamp) {
+          const serverTime = new Date(result.timestamp).getTime();
+          const cachedTime = new Date(cachedCategories.timestamp).getTime();
+          
+          if (serverTime > cachedTime) {
+            console.log('Categories data is stale, clearing cache');
+            CacheManager.invalidate('categories_with_timestamp');
+          }
+        }
+      },
+      function(error) {
+        console.log('Could not check categories timestamp:', error);
+      }
+    );
+  } catch (error) {
+    console.log('Error checking categories timestamp:', error);
+  }
+},
+
+checkBudgetTimestamp: function() {
+  try {
+    const cachedBudget = CacheManager.getBudgetDataWithTimestamp();
+    
+    if (!cachedBudget) {
+      // No cache at all - populate it
+      console.log('No budget cache found, fetching...');
+      API.getBudgetData(
+        function(result) {
+          if (result && result.success && result.budgetData) {
+            CacheManager.setBudgetDataWithTimestamp(result.budgetData, result.timestamp);
+            console.log('Budget cache populated');
+          }
+        },
+        function(error) {
+          console.log('Failed to populate budget cache:', error);
+        },
+        true // Force fresh fetch
+      );
+      return;
+    }
+    
+    // Cache exists - check if stale
+    if (!cachedBudget.timestamp) return;
+    
+    API.getBudgetData(
+      function(result) {
+        if (result && result.timestamp) {
+          const serverTime = new Date(result.timestamp).getTime();
+          const cachedTime = new Date(cachedBudget.timestamp).getTime();
+          
+          if (serverTime > cachedTime) {
+            console.log('Budget data is stale, clearing cache');
+            CacheManager.invalidate('budget_data_with_timestamp');
+          }
+        }
+      },
+      function(error) {
+        console.log('Could not check budget timestamp:', error);
+      },
+      false // Don't force refresh, just check timestamp
+    );
+  } catch (error) {
+    console.log('Error checking budget timestamp:', error);
+  }
+},
+
 
 /**
  * Load settings using timestamp-based caching (ENHANCED VERSION)
@@ -372,7 +553,6 @@ applySettingsFromData: function(settingsData) {
  * Apply settings from data object (not from Settings module)
  */
 applySettingsFromData: function(settingsData) {
-  console.log('SimBudget: Applying settings:', settingsData);
   
   // Apply dark mode if enabled
   if (settingsData.darkMode) {
