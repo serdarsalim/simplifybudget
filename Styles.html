@@ -192,6 +192,8 @@ body.dark-mode .sidebar-item.active {
   display: flex;
 }
 
+
+
 /* Update the view-header styles */
 .view-header {
   display: flex;
@@ -208,7 +210,7 @@ body.dark-mode .sidebar-item.active {
   display: flex !important;
   flex-direction: row !important;
   justify-content: flex-end !important;
-
+ height: 30px !important;
 }
 
 /* Modify the view-header-title for horizontal layout */
@@ -727,6 +729,46 @@ body.dark-mode .sidebar-item.active {
 
 
 @media (max-width: 768px) {
+
+
+  /* Remove excess padding from view header */
+  .view-header {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+    min-height: 36px !important;
+  }
+  
+  /* Make selects smaller */
+  .month-select, 
+  .year-select,
+  .view-header select {
+    padding: 1px 4px !important;
+    height: 28px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+  }
+  
+  /* Compact refresh buttons */
+  .view-header .btn.icon-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Reduce icon size */
+  .view-header .btn.icon-btn i {
+    font-size: 18px !important;
+  }
+  
+  /* Remove margins from container */
+  .view-actions,
+  .month-year-selector {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   /* Hide all header text in mobile view */
   .view-header h1 span {
     display: none;
@@ -842,6 +884,35 @@ button {
     margin-left: 8px !important;
     flex: 0 0 auto !important; /* Don't grow or shrink */
   }
+
+
+
+  /* Make month navigation buttons more compact */
+  .month-nav-btn {
+    width: 24px !important;
+    height: 24px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    min-height: 0 !important;
+  }
+  
+  /* Adjust the icon inside the button */
+  .month-nav-btn i {
+    font-size: 16px !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+  }
+  
+  /* Fix the month/year display text alignment */
+  .month-year-display {
+    font-size: 13px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 1 !important;
+    min-height: 0 !important;
+  }
+
 }
 
 
@@ -886,6 +957,20 @@ button {
 @keyframes rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+
+/* DIRECT FIX FOR NETWORTH REFRESH BUTTON ORDER - Place at the end of your CSS */
+#netWorthView .view-actions {
+  display: flex !important;
+  flex-direction: row-reverse !important;  /* THIS IS THE KEY CHANGE */
+  justify-content: flex-start !important;
+  margin-left: auto !important;
+}
+
+/* Make sure month selector has enough padding for proper spacing */
+#netWorthView .month-selector {
+  margin-right: 8px !important;
 }
 </style>
 
