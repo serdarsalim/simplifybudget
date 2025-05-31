@@ -20,7 +20,6 @@ var MonthlyGrid = (function() {
 // Using centralized CacheManager now
 
   const MAX_CACHE_MONTHS = 6; // Limit cache size
-  const SESSION_STORAGE_KEY = 'monthlyGrid_sessionActive'; // Track if session is new
   
   // DOM element cache for performance
   const _elements = {};
@@ -94,34 +93,14 @@ function showDayDetailsPopup(day) {
   setTimeout(() => popup.classList.add('visible'), 10);
 }
 
-/**
+   /**
    * Generate cache key for a specific month/year
    */
   function getCacheKey(month, year) {
     return `${year}-${String(month).padStart(2, '0')}`;
   }
   
-  /**
-   * Check if this is a new session (page refresh/new tab) and clear cache if so
-   */
-function handleSessionStart() {
-  // Skip if coming from budget view
-  if (window._skipCacheClear) {
-    window._skipCacheClear = false;
-    sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
-    return;
-  }
-  
-  const isSessionActive = sessionStorage.getItem(SESSION_STORAGE_KEY);
-  
-  if (!isSessionActive) {
-    console.log('New session detected, clearing cache');
-    if (window.CacheManager) {
-      CacheManager.clear();
-    }
-    sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
-  }
-}
+
   
   /**
    * Get expense data from cache (memory first, then localStorage)
@@ -189,31 +168,13 @@ function getNextMonth(month, year) {
 
 
 
-// Replace the loadCurrencyFromSettings function with this:
 function loadCurrencyFromSettings() {
-  // First try - immediate
+  // Just get it once - no polling needed
   if (window.SimBudget && SimBudget.Settings) {
     _currencySymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
   } else {
     _currencySymbol = '$'; // Default
   }
-  
-  // BRUTE FORCE: Keep checking for 10 seconds with increasing intervals
-  const checkTimes = [100, 300, 500, 1000, 2000, 3000, 5000, 8000];
-  
-  checkTimes.forEach(delay => {
-    setTimeout(() => {
-      if (window.SimBudget && SimBudget.Settings) {
-        const newSymbol = SimBudget.Settings.getSetting('currencySymbol') || '$';
-        
-        // Only update if it changed
-        if (newSymbol !== _currencySymbol) {
-          _currencySymbol = newSymbol;
-          renderGrid(); // Re-render with new currency
-        }
-      }
-    }, delay);
-  });
 }
 
       
@@ -245,9 +206,6 @@ function loadCurrencyFromSettings() {
     _currentMonth = _systemCurrentMonth;
     _currentYear = _systemCurrentYear;
   }
-  
-  // Handle session start (clear cache on page refresh/new session)
-  handleSessionStart();
   
 
   // Use the app's current month/year from CacheManager if available
@@ -363,7 +321,6 @@ function loadRealExpenseData(month = _currentMonth, year = _currentYear) {
   
   // If we have ANY cache, use it - no staleness check!
   if (monthExpenses) {
-    console.log('MonthlyGrid: Using cached data immediately (no staleness check)');
     
     // Process cached data immediately
     processRealExpenseData(monthExpenses);
@@ -602,7 +559,6 @@ function loadAndRenderCategories() {
     const cachedData = window.CacheManager.getCategoriesWithTimestamp();
     
     if (cachedData && cachedData.categories && Array.isArray(cachedData.categories)) {
-      console.log('MonthlyGrid: Using cached categories (no API call)');
       
       // Use the exact same processing logic, just with cached data
       const categories = cachedData.categories;
@@ -660,7 +616,6 @@ function loadAndRenderCategories() {
       
     } else {
       // ✅ Only make API call if cache is empty/invalid
-      console.log('MonthlyGrid: No cached categories, making API call');
       
       API.getCategoriesWithTimestamp(
         function(result) {
