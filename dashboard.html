@@ -191,6 +191,7 @@ body, .dashboard-container {
   justify-content: space-between;
   align-items: center;
   padding-bottom: 0;
+  padding-right: 20px !important;
 }
 
 .view-header h1 {
@@ -224,6 +225,16 @@ body, .dashboard-container {
 .month-select, .year-select {
   font-size: 13px;
   padding: 5px 8px;
+}
+
+/* Target the month-year-selector specifically - add at the end of your CSS */
+.view-header .month-year-selector {
+  margin-left: auto !important;
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+
 }
 
 /* ======================
@@ -708,13 +719,6 @@ body.dark-mode .subscription-list-header {
     font-size: 16px;
   }
 }
-
-
-
-
-
-    /* Add this after your existing mobile ordering CSS */
-    /* CONSOLIDATED MOBILE STYLES */
 
   
   /* ---------- GRID LAYOUT ---------- */

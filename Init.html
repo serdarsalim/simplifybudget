@@ -1070,8 +1070,26 @@ if (refreshRecurringBtn) {
   });
 }
 
+// Refresh income button
+const refreshIncomeBtn = document.getElementById("refreshIncome");
+if (refreshIncomeBtn) {
+  refreshIncomeBtn.addEventListener("click", () => {
+    console.log("Manual refresh triggered for income");
+    
+    // Use IncomeManager's refresh method directly instead of loadViewData
+    if (window.IncomeManager && typeof IncomeManager.refresh === 'function') {
+      IncomeManager.refresh();
+    } else {
+      // Fallback if refresh not available
+      if (window.CacheManager) {
+        CacheManager.invalidate("income");
+      }
+      this.loadViewData("income", true);
+    }
+  });
+}
 
- // Refresh expenses button
+
 // Refresh expenses button
 const refreshExpensesBtn = document.getElementById("refreshExpenses");
 if (refreshExpensesBtn) {
@@ -1123,14 +1141,7 @@ if (refreshExpensesBtn) {
     });
   }
 
-  const refreshIncomeBtn = document.getElementById("refreshIncome");
-  if (refreshIncomeBtn) {
-    refreshIncomeBtn.addEventListener("click", () => {
-      // Force refresh by invalidating cache
-      CacheManager.invalidate("income");
-      this.loadViewData("income", true);
-    });
-  }
+
 
   // Mobile sidebar toggle - Using event delegation for reliability
 document.addEventListener("click", function(e) {

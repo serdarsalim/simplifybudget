@@ -393,19 +393,24 @@ var IncomeManager = (function() {
 
     // Apply status filter
     if (statusFilter !== 'all') {
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+  const now = new Date();
+  
+  // Changed from 30 days to 3 months
+  const threeMonthsAgo = new Date(now);
+  threeMonthsAgo.setMonth(now.getMonth() - 3);
+  
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
 
-      if (statusFilter === 'recent') {
-        filteredData = filteredData.filter(item => item.date >= thirtyDaysAgo);
-      } else if (statusFilter === 'this_month') {
-        filteredData = filteredData.filter(item => 
-          item.date.getMonth() === currentMonth && item.date.getFullYear() === currentYear
-        );
-      }
-    }
+  if (statusFilter === 'recent') {
+    // Show last 3 months instead of 30 days
+    filteredData = filteredData.filter(item => item.date >= threeMonthsAgo);
+  } else if (statusFilter === 'this_month') {
+    filteredData = filteredData.filter(item => 
+      item.date.getMonth() === currentMonth && item.date.getFullYear() === currentYear
+    );
+  }
+}
 
     // Apply category filter
     if (categoryFilter !== 'all') {
@@ -1352,7 +1357,6 @@ body.dark-mode .inc-notes-popup {
   align-items: center;
   justify-content: center;
   z-index: 2000;
-  backdrop-filter: blur(2px);
 }
 
 .inc-add-popup {
@@ -1367,7 +1371,6 @@ body.dark-mode .inc-notes-popup {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  animation: inc-dialog-appear 0.2s ease-out;
 }
 
 .inc-add-header {
@@ -1620,16 +1623,7 @@ body.dark-mode .inc-add-btn:focus {
   animation: inc-dialog-appear 0.2s ease-out;
 }
 
-@keyframes inc-dialog-appear {
-  from {
-    opacity: 0;
-    transform: scale(0.9) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
+
 
 .inc-confirm-header {
   background-color: #fe9aa1;
