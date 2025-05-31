@@ -1029,6 +1029,49 @@ clearIncomeRow: function(transactionId, successCallback, errorCallback) {
 },
 
 
+/**
+ * Update a category name and/or emoji
+ * @param {string} oldFullName - Current full category name "Food 🍕"
+ * @param {string} newName - New category name "Groceries" 
+ * @param {string} newEmoji - New emoji "🛒"
+ * @param {Function} successCallback - Called on success
+ * @param {Function} errorCallback - Called on error
+ */
+updateCategoryName: function(oldFullName, newName, newEmoji, successCallback, errorCallback) {
+  try {
+    console.log('API: updateCategoryName called with:', { oldFullName, newName, newEmoji });
+    
+    if (!oldFullName || !newName || !newEmoji) {
+      const error = "Missing required parameters for category update";
+      console.error('API.updateCategoryName:', error);
+      if (errorCallback) errorCallback(error);
+      return;
+    }
+    
+    google.script.run
+      .withSuccessHandler(function(result) {
+        console.log('API: updateCategoryName response:', result);
+        if (result && result.success) {
+          if (successCallback) successCallback(result);
+        } else {
+          const err = result && result.error || 'Unknown error updating category';
+          console.error('API.updateCategoryName error:', err);
+          if (errorCallback) errorCallback(err);
+        }
+      })
+      .withFailureHandler(function(error) {
+        console.error('API.updateCategoryName failure:', error);
+        if (errorCallback) errorCallback(error);
+      })
+      .updateCategoryName(oldFullName, newName, newEmoji);
+  } catch (e) {
+    console.error('API.updateCategoryName exception:', e);
+    if (errorCallback) errorCallback(e.toString());
+  }
+},
+
+
+
     /**
      * Gets the last error that occurred in any API call
      * @return {string} Last error message

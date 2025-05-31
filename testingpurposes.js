@@ -461,3 +461,147 @@ function clearIncomeRow(transactionId) {
     return { success: false, error: e.toString() };
   }
 }
+
+
+/**
+ * Update a category name and/or emoji in the Setup sheet
+ * @param {string} oldFullName - Current full name "Food 🍕" 
+ * @param {string} newName - New category name "Groceries"
+ * @param {string} newEmoji - New emoji "🛒"
+ * @return {Object} Success response or error
+ */
+function updateCategoryName(oldFullName, newName, newEmoji) {
+  try {
+    Logger.log("updateCategoryName called with:", { oldFullName, newName, newEmoji });
+    
+    const props = PropertiesService.getUserProperties();
+    const spreadsheetId = props.getProperty("BUDGET_SPREADSHEET_ID");
+    
+    if (!spreadsheetId) {
+      return {
+        success: false,
+        error: "No spreadsheet ID found in user properties"
+      };
+    }
+    
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const setupSheet = ss.getSheetByName("Setup");
+    if (!setupSheet) {
+      return {
+        success: false,
+        error: "Setup sheet not found"
+      };
+    }
+    
+    // Get category data from G15:G44
+    const range = setupSheet.getRange("G15:G44");
+    const values = range.getValues();
+    
+    // Find the category to update
+    let categoryRowIndex = -1;
+    for (let i = 0; i < values.length; i++) {
+      const currentValue = values[i][0];
+      if (currentValue && currentValue.toString().trim() === oldFullName.trim()) {
+        categoryRowIndex = i;
+        break;
+      }
+    }
+    
+    if (categoryRowIndex === -1) {
+      // If exact match not found, try to find by name part
+      for (let i = 0; i < values.length; i++) {
+        const currentValue = values[i][0];
+        if (currentValue && currentValue.toString().includes(newName)) {
+          categoryRowIndex = i;
+          break;
+        }
+      }
+    }
+    
+    if (categoryRowIndex === -1) {
+      return {
+        success: false,
+        error: "Category not found in Setup sheet: " + oldFullName
+      };
+    }
+    
+    // Validate inputs
+    if (!newName || !newName.trim()) {
+      return {
+        success: false,
+        error: "Category name cannot be empty"
+      };
+    }
+    
+    if (!newEmoji || !newEmoji.trim()) {
+      return {
+        success: false,
+        error: "Category emoji cannot be empty"
+      };
+    }
+    
+    // Create the new full name
+    const newFullName = `${newName.trim()} ${newEmoji.trim()}`;
+    
+    // Check for duplicates (exclude current row)
+    for (let i = 0; i < values.length; i++) {
+      if (i !== categoryRowIndex && values[i][0] && 
+          values[i][0].toString().trim() === newFullName) {
+        return {
+          success: false,
+          error: "A category with this name and emoji already exists"
+        };
+      }
+    }
+    
+    // Update the category in the spreadsheet
+    const actualRowNumber = categoryRowIndex + 15; // G15 is row 15
+    setupSheet.getRange(actualRowNumber, 7).setValue(newFullName); // Column G
+    
+    // AWESOMICO: Update the named range to point to the new value
+    // The zategory named ranges will automatically reference the updated cell
+    const zategoryNumber = categoryRowIndex + 1;
+    const namedRangeName = `zategory${zategoryNumber}`;
+    
+    try {
+      // The named range should already exist and point to G15+categoryRowIndex
+      // Since we updated that cell, the named range will automatically resolve to new value
+      Logger.log(`Named range ${namedRangeName} will automatically reference new value: ${newFullName}`);
+    } catch (namedRangeError) {
+      Logger.log("Note: Named range update not required - automatic reference: " + namedRangeError.toString());
+    }
+    
+    // Update categories timestamp
+    try {
+      setupSheet.getRange("I50").setValue(new Date());
+      Logger.log("Updated categories timestamp");
+    } catch (timestampError) {
+      Logger.log("Warning: Could not update categories timestamp: " + timestampError.toString());
+    }
+    
+    // Clear cache to force refresh
+    try {
+      props.deleteProperty("CACHED_CATEGORIES");
+      props.deleteProperty("ACTIVE_CATEGORIES");
+      Logger.log("Cleared categories cache");
+    } catch (cacheError) {
+      Logger.log("Warning: Could not clear cache: " + cacheError.toString());
+    }
+    
+    Logger.log("Successfully updated category: " + oldFullName + " → " + newFullName);
+    
+    return {
+      success: true,
+      oldFullName: oldFullName,
+      newFullName: newFullName,
+      message: "Category updated successfully"
+    };
+    
+  } catch (error) {
+    Logger.log("Error in updateCategoryName: " + error.toString());
+    return {
+      success: false,
+      error: error.toString()
+    };
+  }
+}

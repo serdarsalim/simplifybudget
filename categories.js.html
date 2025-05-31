@@ -429,81 +429,521 @@ function refreshCategories() {
     container.appendChild(grid);
   }
   
-  /**
-   * Create a category card element
-   * @param {Object} category - Category data
-   * @param {number} index - Index in the array
-   * @return {HTMLElement} Card element
-   */
-  function createCategoryCard(category, index) {
-    const card = document.createElement('div');
-    card.className = 'category-card';
-    card.dataset.index = index;
+/**
+ * Robust emoji validation function that works across all browsers
+ * @param {string} text - Text to validate
+ * @return {boolean} True if it's a valid emoji
+ */
+function isValidEmoji(text) {
+  if (!text || text.length === 0) return false;
+  
+  // Method 1: Comprehensive regex for most common emoji ranges
+  const emojiRegex = /^[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{2300}-\u{23FF}]|[\u{2B00}-\u{2BFF}]|[\u{25A0}-\u{25FF}]|[\u{2190}-\u{21FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]|[\u{24C2}]|[\u{1F004}]|[\u{1F0CF}]|[\u{1F18E}]$/u;
+  
+  if (emojiRegex.test(text)) return true;
+  
+  // Method 2: Check for variation selector (like ▶️)
+  if (text.length === 2 && text.charCodeAt(1) === 0xFE0F) {
+    return true;
+  }
+  
+  // Method 3: Basic heuristic - single character that's not alphanumeric or common punctuation
+  if (text.length === 1) {
+    const char = text.charCodeAt(0);
+    // Exclude basic ASCII alphanumeric and common punctuation
+    if (char > 127 && // Non-ASCII
+        !/[a-zA-Z0-9\s.,!?;:'"()\-_]/.test(text)) {
+      return true;
+    }
+  }
+  
+  // Method 4: Check if it's a multi-character emoji sequence (like flag emojis)
+  if (text.length >= 2 && text.length <= 8) {
+    // Contains high surrogate pairs (emoji territory)
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      if (char >= 0xD800 && char <= 0xDFFF) { // Surrogate pairs
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Robust emoji validation function that works across all browsers
+ * @param {string} text - Text to validate
+ * @return {boolean} True if it's a valid emoji
+ */
+function isValidEmoji(text) {
+  if (!text || text.length === 0) return false;
+  
+  // Method 1: Comprehensive regex for most common emoji ranges
+  const emojiRegex = /^[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F700}-\u{1F77F}]|[\u{1F780}-\u{1F7FF}]|[\u{1F800}-\u{1F8FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{2300}-\u{23FF}]|[\u{2B00}-\u{2BFF}]|[\u{25A0}-\u{25FF}]|[\u{2190}-\u{21FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]|[\u{24C2}]|[\u{1F004}]|[\u{1F0CF}]|[\u{1F18E}]$/u;
+  
+  if (emojiRegex.test(text)) return true;
+  
+  // Method 2: Check for variation selector (like ▶️)
+  if (text.length === 2 && text.charCodeAt(1) === 0xFE0F) {
+    return true;
+  }
+  
+  // Method 3: Basic heuristic - single character that's not alphanumeric or common punctuation
+  if (text.length === 1) {
+    const char = text.charCodeAt(0);
+    // Exclude basic ASCII alphanumeric and common punctuation
+    if (char > 127 && // Non-ASCII
+        !/[a-zA-Z0-9\s.,!?;:'"()\-_]/.test(text)) {
+      return true;
+    }
+  }
+  
+  // Method 4: Check if it's a multi-character emoji sequence (like flag emojis)
+  if (text.length >= 2 && text.length <= 8) {
+    // Contains high surrogate pairs (emoji territory)
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      if (char >= 0xD800 && char <= 0xDFFF) { // Surrogate pairs
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Create a category card element with inline editing
+ * @param {Object} category - Category data
+ * @param {number} index - Index in the array
+ * @return {HTMLElement} Card element
+ */
+function createCategoryCard(category, index) {
+  const card = document.createElement('div');
+  card.className = 'category-card';
+  card.dataset.index = index;
+  
+  // Set active class if category is active
+  if (category.active) {
+    card.classList.add('active');
+  }
+  
+  // Create checkbox for active toggle
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'category-toggle';
+  checkbox.checked = category.active;
+  checkbox.id = `category-toggle-${index}`;
+  
+  // Add saving indicator
+  const savingIndicator = document.createElement('div');
+  savingIndicator.className = 'saving-indicator';
+  savingIndicator.innerHTML = '<div class="spinner"></div>';
+  savingIndicator.style.display = 'none';
+  
+  // Add change listener for active/inactive toggle
+  checkbox.addEventListener('change', function() {
+    // Show saving indicator
+    savingIndicator.style.display = 'inline-block';
+    this.disabled = true;
     
-    // Set active class if category is active
-    if (category.active) {
-      card.classList.add('active');
+    // Toggle the category
+    toggleCategory(index, this.checked, function() {
+      // On success, hide indicator and re-enable checkbox
+      savingIndicator.style.display = 'none';
+      checkbox.disabled = false;
+    }, function() {
+      // On error, revert the checkbox and show error
+      checkbox.checked = !checkbox.checked;
+      savingIndicator.style.display = 'none';
+      checkbox.disabled = false;
+      
+      // Flash the card red to indicate error
+      card.classList.add('save-error');
+      setTimeout(function() {
+        card.classList.remove('save-error');
+      }, 1000);
+    });
+  });
+  
+  // AWESOMICO: Create clickable emoji
+  const emojiSpan = document.createElement('span');
+  emojiSpan.className = 'category-emoji clickable-emoji';
+  emojiSpan.textContent = category.emoji || '📝';
+  emojiSpan.title = 'Click to change emoji';
+  
+  // Emoji click handler
+  emojiSpan.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    startEmojiEdit(index, emojiSpan);
+  });
+  
+  // AWESOMICO: Create clickable category name
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'category-name-cat clickable-name';
+  nameSpan.textContent = category.name;
+  nameSpan.title = 'Click to rename category';
+  
+  // Name click handler  
+  nameSpan.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    startNameEdit(index, nameSpan);
+  });
+  
+  // Create label container (NOT a label element to avoid checkbox issues)
+  const labelContainer = document.createElement('div');
+  labelContainer.className = 'category-label-container';
+  
+  // Append emoji and name to container
+  labelContainer.appendChild(emojiSpan);
+  labelContainer.appendChild(document.createTextNode(' ')); // Space between emoji and name
+  labelContainer.appendChild(nameSpan);
+  
+  // Append elements to card
+  card.appendChild(checkbox);
+  card.appendChild(savingIndicator);
+  card.appendChild(labelContainer);
+  
+  return card;
+}
+
+/**
+ * Start emoji editing using contenteditable (cross-platform reliable)
+ * @param {number} index - Category index
+ * @param {HTMLElement} emojiElement - The emoji span element
+ */
+function startEmojiEdit(index, emojiElement) {
+  console.log('CategoriesManager: Starting emoji edit for index', index);
+  
+  // Create contenteditable div for emoji input
+  const editableDiv = document.createElement('div');
+  editableDiv.contentEditable = true;
+  editableDiv.className = 'emoji-editor';
+  editableDiv.setAttribute('data-placeholder', '😊');
+  
+  // Position near the clicked emoji
+  const rect = emojiElement.getBoundingClientRect();
+  editableDiv.style.position = 'absolute';
+  editableDiv.style.left = rect.left + 'px';
+  editableDiv.style.top = (rect.bottom + 5) + 'px';
+  editableDiv.style.width = '40px';
+  editableDiv.style.height = '30px';
+  editableDiv.style.fontSize = '20px';
+  editableDiv.style.border = '2px solid #3498db';
+  editableDiv.style.borderRadius = '4px';
+  editableDiv.style.textAlign = 'center';
+  editableDiv.style.background = 'white';
+  editableDiv.style.zIndex = '9999';
+  editableDiv.style.outline = 'none';
+  editableDiv.style.display = 'flex';
+  editableDiv.style.alignItems = 'center';
+  editableDiv.style.justifyContent = 'center';
+  editableDiv.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+  
+  // Add to document with helpful hint
+  document.body.appendChild(editableDiv);
+  
+  // Show keyboard shortcut hint
+  const hint = document.createElement('div');
+  hint.className = 'emoji-keyboard-hint';
+  hint.style.position = 'absolute';
+  hint.style.left = rect.left + 'px';
+  hint.style.top = (rect.bottom + 40) + 'px';
+  hint.style.fontSize = '11px';
+  hint.style.background = 'rgba(0,0,0,0.8)';
+  hint.style.color = 'white';
+  hint.style.padding = '4px 8px';
+  hint.style.borderRadius = '4px';
+  hint.style.zIndex = '9998';
+  hint.style.whiteSpace = 'nowrap';
+  
+  // Detect platform for correct shortcut
+  const isMac = /Mac/.test(navigator.platform);
+  const isWindows = /Win/.test(navigator.platform);
+  
+  if (isMac) {
+    hint.textContent = '⌘+Ctrl+Space for emoji keyboard';
+  } else if (isWindows) {
+    hint.textContent = 'Win+. or Win+; for emoji keyboard';
+  } else {
+    hint.textContent = 'Use your device\'s emoji keyboard';
+  }
+  
+  document.body.appendChild(hint);
+  
+  // Remove hint after 3 seconds
+  setTimeout(() => {
+    if (document.body.contains(hint)) {
+      hint.remove();
+    }
+  }, 3000);
+  
+  // Focus and position cursor
+  editableDiv.focus();
+  
+  // Force cursor to end and select all content
+  setTimeout(() => {
+    const range = document.createRange();
+    range.selectNodeContents(editableDiv);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, 10);
+  
+  // Handle emoji input with robust validation
+  editableDiv.addEventListener('input', function() {
+    const text = this.textContent.trim();
+    
+    if (text && text !== '😊') {
+      // Check if input is a valid emoji using multiple methods
+      if (isValidEmoji(text)) {
+        // Valid emoji - update and save
+        emojiElement.textContent = text;
+        saveEmojiUpdate(index, text);
+        this.remove();
+        if (document.body.contains(hint)) {
+          hint.remove();
+        }
+      } else {
+        // Invalid input - clear and show feedback
+        this.textContent = '';
+        this.style.borderColor = '#e74c3c';
+        this.setAttribute('data-placeholder', '😊 Only emojis!');
+        
+        // Reset border color after 1 second
+        setTimeout(() => {
+          this.style.borderColor = '#3498db';
+          this.setAttribute('data-placeholder', '😊');
+        }, 1000);
+      }
+    }
+  });
+  
+  // Handle Enter key to confirm with robust validation
+  editableDiv.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const text = this.textContent.trim();
+      
+      if (text && isValidEmoji(text) && text !== emojiElement.textContent) {
+        emojiElement.textContent = text;
+        saveEmojiUpdate(index, text);
+      }
+      this.remove();
+      if (document.body.contains(hint)) {
+        hint.remove();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this.remove();
+      if (document.body.contains(hint)) {
+        hint.remove();
+      }
+    }
+  });
+  
+  // Clean up on blur
+  editableDiv.addEventListener('blur', function() {
+    setTimeout(() => {
+      if (document.body.contains(this)) {
+        this.remove();
+      }
+      if (document.body.contains(hint)) {
+        hint.remove();
+      }
+    }, 150);
+  });
+  
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function closeHandler(e) {
+      if (!editableDiv.contains(e.target) && e.target !== emojiElement) {
+        editableDiv.remove();
+        if (document.body.contains(hint)) {
+          hint.remove();
+        }
+        document.removeEventListener('click', closeHandler);
+      }
+    });
+  }, 100);
+}
+
+/**
+ * Start name editing with inline input
+ * @param {number} index - Category index  
+ * @param {HTMLElement} nameElement - The name span element
+ */
+function startNameEdit(index, nameElement) {
+  console.log('CategoriesManager: Starting name edit for index', index);
+  
+  const originalName = nameElement.textContent;
+  
+  // Create input field
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'category-name-input';
+  input.value = originalName;
+  
+  // Replace span with input
+  nameElement.style.display = 'none';
+  nameElement.parentNode.insertBefore(input, nameElement);
+  
+  // Focus and select
+  input.focus();
+  input.select();
+  
+  // Save function
+  function saveName() {
+    const newName = input.value.trim();
+    
+    if (!newName) {
+      // Revert if empty
+      revertNameEdit();
+      return;
     }
     
-    // Create checkbox for active toggle
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'category-toggle';
-    checkbox.checked = category.active;
-    checkbox.id = `category-toggle-${index}`;
+    if (newName === originalName) {
+      // No change, just revert
+      revertNameEdit();
+      return;
+    }
     
-    // Add saving indicator
-    const savingIndicator = document.createElement('div');
-    savingIndicator.className = 'saving-indicator';
-    savingIndicator.innerHTML = '<div class="spinner"></div>';
-    savingIndicator.style.display = 'none';
+    // Update UI immediately
+    nameElement.textContent = newName;
     
-    // Add change listener
-    checkbox.addEventListener('change', function() {
-      // Show saving indicator
-      savingIndicator.style.display = 'inline-block';
-      this.disabled = true;
-      
-      // Toggle the category
-      toggleCategory(index, this.checked, function() {
-        // On success, hide indicator and re-enable checkbox
-        savingIndicator.style.display = 'none';
-        checkbox.disabled = false;
-      }, function() {
-        // On error, revert the checkbox and show error
-        checkbox.checked = !checkbox.checked;
-        savingIndicator.style.display = 'none';
-        checkbox.disabled = false;
-        
-        // Flash the card red to indicate error
-        card.classList.add('save-error');
-        setTimeout(function() {
-          card.classList.remove('save-error');
-        }, 1000);
-      });
-    });
+    // Save to server
+    saveNameUpdate(index, newName);
     
-    // Create label with category name
-    const label = document.createElement('label');
-    label.htmlFor = `category-toggle-${index}`;
-    label.className = 'category-name-cat';
-    
-    // Display full name with emoji
-    const displayName = category.emoji ? 
-      `${category.emoji} ${category.name}` : 
-      category.name;
-    
-    label.textContent = Utils && Utils.translateCategory ? 
-      Utils.translateCategory(displayName) : 
-      displayName;
-    
-    // Append elements to card
-    card.appendChild(checkbox);
-    card.appendChild(savingIndicator);
-    card.appendChild(label);
-    
-    return card;
+    // Clean up
+    input.remove();
+    nameElement.style.display = '';
   }
+  
+  // Revert function
+  function revertNameEdit() {
+    input.remove();
+    nameElement.style.display = '';
+  }
+  
+  // Event listeners
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveName();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      revertNameEdit();
+    }
+  });
+  
+  input.addEventListener('blur', function() {
+    // Small delay to allow other clicks to register
+    setTimeout(saveName, 100);
+  });
+}
+
+/**
+ * Save emoji update to server
+ * @param {number} index - Category index
+ * @param {string} newEmoji - New emoji
+ */
+function saveEmojiUpdate(index, newEmoji) {
+  const category = _categories[index];
+  if (!category) return;
+  
+  console.log('CategoriesManager: Saving emoji update:', category.name, '→', newEmoji);
+  
+  const newFullName = `${category.name} ${newEmoji}`;
+  
+  // Update local data
+  category.emoji = newEmoji;
+  category.fullName = newFullName;
+  
+  // Save to server
+  if (window.API && typeof API.updateCategoryName === 'function') {
+    API.updateCategoryName(
+      category.fullName, // old full name (will be different now, but server can handle)
+      category.name,
+      newEmoji,
+      function(result) {
+        console.log('CategoriesManager: Emoji update successful');
+        
+        // Update cache and notify other components
+        if (window.CacheManager) {
+          CacheManager.setCategoriesWithTimestamp(_categories, new Date().toISOString());
+        }
+        
+        // Broadcast change
+        document.dispatchEvent(new CustomEvent('categories-changed', {
+          detail: { 
+            changedCategory: category.name,
+            newEmoji: newEmoji,
+            allCategories: _categories
+          }
+        }));
+      },
+      function(error) {
+        console.error('CategoriesManager: Error saving emoji:', error);
+        // Could revert UI here if needed
+      }
+    );
+  }
+}
+
+/**
+ * Save name update to server
+ * @param {number} index - Category index
+ * @param {string} newName - New category name
+ */
+function saveNameUpdate(index, newName) {
+  const category = _categories[index];
+  if (!category) return;
+  
+  console.log('CategoriesManager: Saving name update:', category.name, '→', newName);
+  
+  const oldFullName = category.fullName;
+  const newFullName = `${newName} ${category.emoji}`;
+  
+  // Update local data
+  category.name = newName;
+  category.fullName = newFullName;
+  
+  // Save to server
+  if (window.API && typeof API.updateCategoryName === 'function') {
+    API.updateCategoryName(
+      oldFullName,
+      newName,
+      category.emoji,
+      function(result) {
+        console.log('CategoriesManager: Name update successful');
+        
+        // Update cache and notify other components
+        if (window.CacheManager) {
+          CacheManager.setCategoriesWithTimestamp(_categories, new Date().toISOString());
+        }
+        
+        // Broadcast change
+        document.dispatchEvent(new CustomEvent('categories-changed', {
+          detail: { 
+            changedCategory: newName,
+            oldName: category.name,
+            allCategories: _categories
+          }
+        }));
+      },
+      function(error) {
+        console.error('CategoriesManager: Error saving name:', error);
+        // Could revert UI here if needed
+      }
+    );
+  }
+}
   
   /**
    * Update the quick expense dropdown to show only active categories
@@ -804,6 +1244,199 @@ body.dark-mode .saving-indicator .spinner {
 @media (max-width: 320px) {
   .categories-grid {
     grid-template-columns: 1fr; /* 1 column on tiny screens */
+  }
+}
+
+
+/* AWESOMICO: Clickable category elements */
+.clickable-emoji, .clickable-name {
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  border-radius: 3px;
+  padding: 2px 4px;
+  margin: -2px -4px; /* Offset padding for consistent spacing */
+}
+
+.clickable-emoji:hover, .clickable-name:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.clickable-emoji:active, .clickable-name:active {
+  transform: scale(0.95);
+}
+
+/* Dark mode hover states */
+body.dark-mode .clickable-emoji:hover, 
+body.dark-mode .clickable-name:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Category name input for inline editing */
+.category-name-input {
+  background: white;
+  border: 2px solid #2c3e50;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  min-width: 120px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.category-name-input:focus {
+  border-color: #3498db;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+/* Dark mode input styles */
+body.dark-mode .category-name-input {
+  background: #2c2c2c;
+  border-color: #DDA15E;
+  color: white;
+}
+
+body.dark-mode .category-name-input:focus {
+  border-color: #ffd866;
+  box-shadow: 0 2px 8px rgba(255, 216, 102, 0.3);
+}
+
+/* AWESOMICO: Emoji editor using contenteditable */
+.emoji-editor {
+  position: absolute !important;
+  width: 40px !important;
+  height: 30px !important;
+  font-size: 20px !important;
+  border: 2px solid #3498db !important;
+  border-radius: 4px !important;
+  text-align: center !important;
+  background: white !important;
+  z-index: 9999 !important;
+  outline: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+  cursor: text !important;
+  transition: border-color 0.3s ease !important;
+}
+
+.emoji-editor:focus {
+  border-color: #2980b9 !important;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.4) !important;
+}
+
+.emoji-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #bdc3c7;
+  font-style: italic;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Error state for invalid input */
+.emoji-editor[style*="border-color: rgb(231, 76, 60)"] {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+/* Dark mode emoji editor */
+body.dark-mode .emoji-editor {
+  background: #2c2c2c !important;
+  border-color: #DDA15E !important;
+  color: white !important;
+}
+
+body.dark-mode .emoji-editor:focus {
+  border-color: #ffd866 !important;
+  box-shadow: 0 2px 8px rgba(255, 216, 102, 0.4) !important;
+}
+
+/* Keyboard shortcut hint */
+.emoji-keyboard-hint {
+  position: absolute !important;
+  font-size: 11px !important;
+  background: rgba(0,0,0,0.8) !important;
+  color: white !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  z-index: 9998 !important;
+  white-space: nowrap !important;
+  pointer-events: none !important;
+  animation: fadeInOut 3s ease-in-out !important;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateY(5px); }
+  20%, 80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-5px); }
+}
+
+/* Dark mode hint */
+body.dark-mode .emoji-keyboard-hint {
+  background: rgba(255,255,255,0.9) !important;
+  color: #2c2c2c !important;
+}
+
+body.dark-mode .emoji-editor:empty:before {
+  color: #7f8c8d;
+}
+
+/* Enhanced label container for better layout */
+.category-label-container {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  cursor: inherit;
+}
+
+/* Ensure emojis don't break layout */
+.clickable-emoji {
+  display: inline-block;
+  min-width: 20px;
+  text-align: center;
+}
+
+/* Visual feedback for editing states */
+.category-card.editing {
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+  border-left: 3px solid #3498db;
+}
+
+/* Smooth transitions for all interactive elements */
+.category-card * {
+  transition: all 0.2s ease;
+}
+
+/* Better visual hierarchy */
+.clickable-name {
+  font-weight: 500;
+}
+
+.category-card.active .clickable-name {
+  font-weight: 600;
+}
+
+/* Mobile-friendly touch targets */
+@media (max-width: 768px) {
+  .clickable-emoji, .clickable-name {
+    padding: 6px 8px;
+    margin: -6px -8px;
+    min-height: 32px; /* Ensure good touch target size */
+    display: inline-flex;
+    align-items: center;
+  }
+  
+  .category-name-input {
+    font-size: 16px; /* Prevent zoom on iOS */
+    padding: 8px 12px;
+    min-width: 140px;
   }
 }
 </style>
