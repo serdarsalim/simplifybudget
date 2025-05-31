@@ -2426,6 +2426,7 @@ window.notifyMonthlyGridOfCategoryChange = notifyMonthlyGridOfCategoryChange;
   border-left: 1px solid rgba(0, 0, 0, 0.5);
   border-right: 4px solid #334a60;
   border-bottom: 4px solid #334a60;
+  padding-bottom: 80px;
 }
 
 /* ============= GRID HEADER ============= */
@@ -3242,14 +3243,14 @@ body.dark-mode .popup-close {
 
   .transaction-detail {
     display: grid;
-    grid-template-columns: 120px 1fr 80px !important;
+    grid-template-columns: 100px 1fr 60px !important;
     gap: 8px !important;
   }
   
   /* Allow enough width for BOTH emoji and name */
   .detail-category {
-    width: 120px !important;
-    min-width: 120px !important;
+    width: 90px !important;
+    min-width: 90px !important;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -3269,8 +3270,6 @@ body.dark-mode .popup-close {
   }
 
 
-
-
 }
 
 /* ============= RESPONSIVE DESIGN - MOBILE FIRST ============= */
@@ -3282,7 +3281,7 @@ body.dark-mode .popup-close {
   }
   
   .monthly-grid-container {
-    padding: 0px 0px 120px 0px !important;
+    padding: 0px 0px 180px 0px !important;
     max-height: none !important;
     top: 0 !important;
     left: 0 !important;
